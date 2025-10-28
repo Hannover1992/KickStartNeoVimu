@@ -1,0 +1,22 @@
+# Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Temp files
+*.tmp
+*.bak
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Scripts
+/tmp/
+*.sh
