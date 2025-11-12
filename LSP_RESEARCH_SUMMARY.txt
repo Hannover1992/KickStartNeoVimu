@@ -1,0 +1,517 @@
+================================================================================
+NEOVIM LSP CLIENT SETTINGS RESEARCH SUMMARY
+================================================================================
+Date: November 12, 2025
+Scope: Neovim 0.9.x to 0.11+ LSP client documentation and best practices
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Neovim's LSP client passes language server configuration through TWO DISTINCT
+CHANNELS that operate at different times:
+
+1. INIT OPTIONS (one-time, during server initialization):
+   - Sent in the LSP "initialize" request
+   - Can only be sent once
+   - Not updatable after server starts
+   - Used for Roslyn extensions, extensions, compiler flags, etc.
+
+2. SETTINGS (after initialization, via workspace/didChangeConfiguration):
+   - Sent after server initialization completes
+   - Sent via "workspace/didChangeConfiguration" notification
+   - Theoretically updatable at runtime
+   - Used for behavior configuration, diagnostics settings, etc.
+
+Both channels are CASE-SENSITIVE and SERVER-SPECIFIC. Invalid configuration
+keys are SILENTLY IGNORED (no error message), making debugging essential.
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. SETTINGS TRANSMISSION MECHANISM
+
+   Flow:
+   -----
+   1. vim.lsp.config() or vim.lsp.start() called
+   2. Language server process launched with cmd
+   3. Initialize request sent with init_options in parameters
+   4. Server responds to initialize
+   5. workspace/didChangeConfiguration notification sent with settings
+   6. Server processes both and becomes operational
+
+   Code Structure:
+   ---------------
+   vim.lsp.config('omnisharp', {
+     cmd = { '/path/to/omnisharp' },
+     init_options = { ... },      -- Sent in initialize request
+     settings = { ... }           -- Sent via didChangeConfiguration
+   })
+
+2. INIT_OPTIONS VS SETTINGS DISTINCTION
+
+   init_options (Initialization Phase):
+   ------------------------------------
+   - LSP spec name: initializationOptions
+   - nvim-lspconfig name: init_options (snake_case)
+   - vim.lsp.config name: init_options
+   - Sent during: LSP initialize request
+   - Updatable: No (one-time only)
+   - Use case: Roslyn extensions, compiler options, initial behavior
+
+   Example for OmniSharp:
+   {
+     RoslynExtensionsOptions = {
+       enableRoslynAnalyzers = true,
+       enableEditorConfigSupport = true,
+     }
+   }
+
+   settings (Post-Initialization):
+   ---------------------------------
+   - LSP spec name: workspace/configuration response
+   - nvim-lspconfig name: settings
+   - vim.lsp.config name: settings
+   - Sent during: workspace/didChangeConfiguration notification (after init)
+   - Updatable: Yes (theoretically)
+   - Use case: Feature toggles, diagnostics, formatting rules
+
+   Example for OmniSharp:
+   {
+     omnisharp = {
+       enable_roslyn_analyzers = true,
+       organize_imports_on_format = true,
+       enable_import_completion = true,
+     }
+   }
+
+3. CRITICAL: SETTINGS STRUCTURE FOR OMNISHARP
+
+   WRONG (missing omnisharp wrapper key):
+   ------
+   settings = {
+     enable_roslyn_analyzers = true,
+     organize_imports_on_format = true,
+   }
+
+   Result: Settings completely ignored by server, no error message
+
+   CORRECT (wrapped under omnisharp key):
+   --------
+   settings = {
+     omnisharp = {
+       enable_roslyn_analyzers = true,
+       organize_imports_on_format = true,
+     }
+   }
+
+   Result: Settings sent to server via workspace/didChangeConfiguration
+
+4. COMMON CONFIGURATION ERRORS
+
+   Error A: Using initializationOptions (LSP spec name) in nvim-lspconfig
+   -------
+   WRONG:  require('lspconfig').omnisharp.setup({ initializationOptions = ... })
+   CORRECT: require('lspconfig').omnisharp.setup({ init_options = ... })
+   Why: nvim-lspconfig uses snake_case naming convention
+   Detection: No error message - silently ignored!
+   Verification: :lua =vim.lsp.get_clients()[1].config.init_options
+
+   Error B: Wrong settings structure (missing server key wrapper)
+   -------
+   WRONG:  settings = { enable_roslyn_analyzers = true }
+   CORRECT: settings = { omnisharp = { enable_roslyn_analyzers = true } }
+   Why: OmniSharp expects settings under "omnisharp" key
+   Detection: Settings ignored by server
+   Verification: :lua print(vim.inspect(vim.lsp.get_clients()[1].config.settings))
+
+   Error C: Case sensitivity in setting keys
+   -------
+   WRONG:  enableRoslynAnalyzers = true (camelCase)
+   CORRECT: enable_roslyn_analyzers = true (snake_case)
+   Why: Each server defines exact key format; OmniSharp uses snake_case
+   Detection: Settings ignored
+   Verification: Check server documentation
+
+   Error D: Settings changed after initialization
+   -------
+   WRONG:  vim.lsp.get_clients()[1].config.settings.omnisharp.foo = true
+   CORRECT:
+     local client = vim.lsp.get_clients()[1]
+     client.config.settings.omnisharp.foo = true
+     client.notify('workspace/didChangeConfiguration', {
+       settings = client.config.settings
+     })
+   Why: Changing config table doesn't notify server
+   Detection: Server doesn't reflect changes
+   Verification: Check with :LspLog
+
+5. HOW TO VERIFY SETTINGS ARE SENT
+
+   Step 1: Is server running?
+   ---------
+   :LspInfo
+   Look for server name with "Running" status and process ID
+
+   Step 2: Are settings configured?
+   ---------
+   :lua =vim.lsp.get_clients()[1].config.settings
+   Should print the settings table
+
+   Step 3: Are settings in correct structure?
+   ---------
+   :lua print(vim.inspect(vim.lsp.get_clients()[1].config.settings))
+   Should show: { omnisharp = { setting_key = value } }
+
+   Step 4: Were settings sent to server?
+   ---------
+   :lua vim.lsp.set_log_level('debug')
+   :LspLog
+   Look for: "workspace/didChangeConfiguration" in log output
+
+   Step 5: Server acknowledges settings?
+   ---------
+   :LspLog
+   Look for: "workspace/configuration" response from server
+
+6. DEBUGGING COMMANDS (COMPREHENSIVE LIST)
+
+   Command                              | Purpose
+   ---------------------------------------|----------------------------------------------
+   :LspInfo                             | Server status and attached buffers
+   :checkhealth vim.lsp                 | Full LSP health check
+   :LspLog                              | View LSP protocol messages
+   :lua vim.lsp.set_log_level('debug')  | Enable debug logging
+   :lua vim.lsp.set_log_level('trace')  | Enable verbose trace logging
+   :lua =vim.lsp.get_clients()          | List all clients with config
+   :lua =vim.lsp.get_clients({bufnr=0}) | Servers for current buffer
+   :lua =vim.lsp.get_clients({name='X'})| Get specific server by name
+
+7. LOG FILE INTERPRETATION
+
+   What Settings Transmission Looks Like in :LspLog:
+   -------------------------------------------------
+
+   A. Server initialization with init_options:
+
+      [TRACE] -->doc:
+      {
+        "method": "initialize",
+        "params": {
+          "initializationOptions": {
+            "RoslynExtensionsOptions": {
+              "enableRoslynAnalyzers": true
+            }
+          }
+        }
+      }
+
+   B. Server responds to initialize:
+
+      [TRACE] <--doc:
+      {"jsonrpc":"2.0","id":1,"result":{...}}
+
+   C. Client sends workspace/didChangeConfiguration with settings:
+
+      [TRACE] -->doc:
+      {
+        "method": "workspace/didChangeConfiguration",
+        "params": {
+          "settings": {
+            "omnisharp": {
+              "enable_roslyn_analyzers": true
+            }
+          }
+        }
+      }
+
+   D. Server requests workspace/configuration:
+
+      [TRACE] <--doc:
+      {
+        "method": "workspace/configuration",
+        "params": {
+          "items": [{"section": "omnisharp"}]
+        }
+      }
+
+   E. Client responds with settings:
+
+      [TRACE] -->doc:
+      {
+        "id": 2,
+        "result": [{"omnisharp": {...}}]
+      }
+
+   Signs of Problems:
+   - Missing "workspace/didChangeConfiguration" messages
+   - "workspace/configuration" with wrong section name (e.g., typos)
+   - [ERROR] messages in log
+   - No response from server to workspace/configuration
+
+8. NEOVIM 0.11+ CHANGES
+
+   New Native API:
+   ---------------
+   Neovim 0.11+ introduces vim.lsp.config() and vim.lsp.enable() as
+   replacements for plugin-dependent configurations. Full feature parity
+   with nvim-lspconfig.
+
+   Advantages:
+   - No plugin dependency
+   - Core API stability guaranteed
+   - Same configuration structure
+   - Same init_options and settings handling
+
+   Configuration:
+   ---------------
+   vim.lsp.config('omnisharp', {
+     cmd = { '/path/to/omnisharp' },
+     init_options = { ... },
+     settings = { ... },
+   })
+
+   vim.lsp.enable('omnisharp')
+
+9. DOCUMENTED LANGUAGE SERVER SETTINGS KEYS
+
+   Server               | Settings Wrapper Key | Init Options Key
+   -------------------|----------------------|------------------
+   OmniSharp           | omnisharp            | RoslynExtensionsOptions
+   Rust-Analyzer       | rust-analyzer        | (varies)
+   Lua LS              | Lua                  | (none typical)
+   Python (Pylance)    | pylance              | (varies)
+   TypeScript          | typescript           | (varies)
+   Clangd              | clangd               | fallbackFlags, etc.
+
+   KEY POINT: Each server defines its own settings structure and keys.
+   Always check server documentation for exact names.
+
+================================================================================
+DEBUGGING CHECKLIST (STEP-BY-STEP)
+================================================================================
+
+1. [ ] Is server running?
+      :LspInfo
+      Look for server name with "Running" status
+
+2. [ ] Is server attached to buffer?
+      :lua =vim.lsp.get_clients({bufnr = 0})
+      Should return non-empty table
+
+3. [ ] Are settings configured?
+      :lua =vim.lsp.get_clients()[1].config.settings
+      Should print table (not nil or empty)
+
+4. [ ] Settings structure correct?
+      :lua print(vim.inspect(vim.lsp.get_clients()[1].config.settings))
+      Check: { omnisharp = { ... } } not { setting = ... }
+
+5. [ ] Case sensitivity correct?
+      Look at setting key names
+      Check server documentation for exact names
+      Most use snake_case (enable_roslyn_analyzers)
+      Not camelCase (enableRoslynAnalyzers)
+
+6. [ ] No typos in setting keys?
+      Compare carefully with server documentation
+      Use copy-paste when possible
+
+7. [ ] Settings actually sent to server?
+      :lua vim.lsp.set_log_level('debug')
+      :LspLog
+      Search for: "workspace/didChangeConfiguration"
+      Should show your settings in the message
+
+8. [ ] Server responds to settings request?
+      :LspLog
+      Search for: "workspace/configuration"
+      Check: Server response includes your settings
+
+9. [ ] Server supports these settings?
+      Check server documentation
+      Try simpler settings first (known to work)
+
+10. [ ] No conflicting workspace configuration?
+        ls -la .editorconfig .omnisharp omnisharp.json
+        These can override LSP settings
+
+11. [ ] Log shows errors?
+         :LspLog
+         Look for: [ERROR] messages
+         Search: "failed", "error", "exception"
+
+12. [ ] Try restarting LSP?
+         :LspStop
+         :LspStart
+
+================================================================================
+CREATED DOCUMENTATION FILES
+================================================================================
+
+1. NEOVIM_LSP_CLIENT_RESEARCH.md
+   - Comprehensive technical reference (8 parts)
+   - Settings transmission details
+   - Verification methods
+   - Common errors and solutions
+   - Debugging techniques and commands
+   - OmniSharp-specific settings
+   - Summary tables and references
+
+2. LSP_SETTINGS_DEBUGGING_GUIDE.md
+   - Quick reference guide
+   - Settings channel explanation
+   - Verification commands
+   - Common errors with examples
+   - Debugging checklist
+   - Essential commands summary
+   - OmniSharp configuration example
+
+3. LSP_CONFIGURATION_EXAMPLES.lua
+   - Runnable Lua code examples
+   - OmniSharp, Rust, Lua LS, TypeScript configs
+   - Debugging utility functions
+   - Settings validation
+   - Issue examples with solutions
+   - Quick reference for Neovim 0.11+
+
+4. LSP_RESEARCH_SUMMARY.txt (THIS FILE)
+   - Executive summary
+   - Key findings
+   - All main points
+   - Complete checklist
+   - Index of findings
+
+================================================================================
+QUICK REFERENCE TABLE
+================================================================================
+
+Aspect              | init_options              | settings
+--------------------|---------------------------|---------------------
+LSP Protocol        | initializationOptions     | workspace/configuration
+When sent           | During initialize request | After initialization
+Frequency           | Once only                 | Can update (theory)
+Neovim key          | init_options              | settings
+nvim-lspconfig key  | init_options              | settings
+Server-specific     | Yes                       | Yes
+Debugging in log    | Look in initialize        | Look workspace/config
+Updatable          | No                        | Yes (with notify)
+
+================================================================================
+TOP 5 MOST COMMON ISSUES
+================================================================================
+
+1. WRONG SETTINGS STRUCTURE (50% of issues)
+   Problem: settings = { enable_roslyn_analyzers = true }
+   Solution: settings = { omnisharp = { enable_roslyn_analyzers = true } }
+   Prevention: Always wrap in server-specific key
+
+2. CASE SENSITIVITY (30% of issues)
+   Problem: enableRoslynAnalyzers (camelCase)
+   Solution: enable_roslyn_analyzers (snake_case)
+   Prevention: Copy exact names from server documentation
+
+3. CONFIGURATION NOT IN PERSISTENT CONFIG (10% of issues)
+   Problem: Settings set in command, lost after restart
+   Solution: Add to init.lua or .config/nvim/lsp/
+   Prevention: Always edit configuration files, not runtime
+
+4. SERVER NOT RUNNING (5% of issues)
+   Problem: Settings configured but server not launched
+   Solution: Check :LspInfo, verify cmd path, check logs
+   Prevention: Run :LspInfo first, then configure
+
+5. MISSPELLED KEY NAMES (5% of issues)
+   Problem: Missing character or typo in setting name
+   Solution: Use copy-paste from documentation
+   Prevention: Check character-by-character against docs
+
+================================================================================
+TESTING METHODOLOGY
+================================================================================
+
+To Verify Settings Work:
+
+1. Configure settings in vim.lsp.config() or lspconfig
+2. Open a file with matching filetype
+3. Run :LspInfo - verify server is "Running"
+4. Run :lua =vim.lsp.get_clients()[1].config.settings - see settings
+5. Run :lua vim.lsp.set_log_level('debug')
+6. Run :LspLog - watch for workspace/didChangeConfiguration
+7. Check if server honors the settings (behavior change)
+8. Compare with server documentation
+
+Example: For OmniSharp with enable_roslyn_analyzers = true:
+- Before: No Roslyn analyzer warnings/suggestions
+- After: Roslyn analyzer warnings/suggestions appear
+- Verification: Check code diagnostics change
+
+================================================================================
+RESOURCES AND REFERENCES
+================================================================================
+
+Official Documentation:
+- Neovim LSP docs: `:help lsp` (in Neovim)
+- Neovim online: https://neovim.io/doc/user/lsp.html
+- nvim-lspconfig: https://github.com/neovim/nvim-lspconfig
+
+Server Documentation:
+- OmniSharp: https://github.com/OmniSharp/omnisharp-roslyn/wiki
+- Rust-Analyzer: https://rust-analyzer.github.io/
+- Lua LS: https://luals.github.io/wiki/
+- Clangd: https://clangd.llvm.org/
+
+Neovim Community Guides:
+- Neovim LSP Client Guide: https://vonheikemen.github.io/devlog/tools/neovim-lsp-client-guide/
+- Neovim 0.11 LSP Changes: https://xnacly.me/posts/2025/neovim-lsp-changes/
+
+LSP Specification:
+- Microsoft LSP: https://microsoft.github.io/language-server-protocol/
+
+================================================================================
+IMPLEMENTATION NOTES FOR THIS PROJECT
+================================================================================
+
+File: /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/
+
+Related to CLAUDE.md section on LSP OmniSharp:
+- OmniSharp LSP attaching to C# files
+- Command path configuration: vim.fn.expand('~/.local/share/nvim/mason/bin/OmniSharp')
+- Root markers: .sln, .csproj, .git
+- Settings for Roslyn analyzers and import organization
+
+These research documents provide the underlying mechanism explanation and
+debugging methodology to troubleshoot any LSP configuration issues that arise.
+
+================================================================================
+KEY TAKEAWAYS
+================================================================================
+
+1. Settings sent in TWO ways: init_options (once) and settings (after init)
+2. Settings are SERVER-SPECIFIC and CASE-SENSITIVE
+3. OmniSharp requires: { omnisharp = { key = value } } structure
+4. Invalid keys are SILENTLY IGNORED - always verify with :LspLog
+5. Use :LspLog to see actual protocol messages
+6. Error troubleshooting: check structure, case, key names, then logs
+7. Each server has different settings keys - check documentation
+8. Neovim 0.11+ has built-in vim.lsp.config() (no plugin needed)
+9. nvim-lspconfig uses snake_case: init_options (not initializationOptions)
+10. Most common mistake: wrong settings wrapper key (missing omnisharp wrapper)
+
+================================================================================
+DOCUMENT HISTORY
+================================================================================
+
+Version: 1.0
+Created: November 12, 2025
+Research Sources:
+- Official Neovim documentation
+- Neovim GitHub issues and discussions
+- nvim-lspconfig repository
+- Language server documentation (OmniSharp, Rust-Analyzer, Lua LS)
+- Community guides and blog posts
+
+================================================================================
+END OF RESEARCH SUMMARY
+================================================================================

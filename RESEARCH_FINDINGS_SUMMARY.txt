@@ -1,0 +1,292 @@
+================================================================================
+nvim-lspconfig OmniSharp cmd Parameter Handling - Research Findings Summary
+================================================================================
+
+RESEARCH COMPLETED: November 12, 2025
+
+Online Documentation Sources Searched:
+1. Official nvim-lspconfig GitHub repository
+   - File: lua/lspconfig/configs/omnisharp.lua
+   - Reference: https://github.com/neovim/nvim-lspconfig
+
+2. nvim-lspconfig Official Documentation
+   - Reference: https://www.andersevenrud.net/neovim.github.io/lsp/configurations/omnisharp/
+
+3. OmniSharp-Roslyn Official GitHub
+   - Wiki: Configuration Options
+   - Reference: https://github.com/OmniSharp/omnisharp-roslyn
+
+4. Community Discussions and Issue Reports
+   - Neovim Discourse
+   - Stack Overflow
+   - GitHub Issues (nvim-lspconfig, OmniSharp-Roslyn, mason-lspconfig)
+
+================================================================================
+RESEARCH QUESTION 1: How does nvim-lspconfig pass cmd parameters to OmniSharp?
+================================================================================
+
+ANSWER:
+nvim-lspconfig uses a two-stage process for cmd parameter handling:
+
+Stage 1: User Configuration
+  - Users specify the base cmd in their setup:
+    cmd = { "dotnet", "/path/to/OmniSharp.dll" }
+
+Stage 2: Automatic Parameter Injection via on_new_config
+  - The on_new_config callback is triggered when LSP attaches
+  - It automatically APPENDS hard-coded arguments to the cmd array
+  - Final cmd becomes: { "dotnet", "/path/to/OmniSharp.dll", "--languageserver", 
+                         "--hostPID", "12345", "-z", "DotNet:enablePackageRestore=false", 
+                         "--encoding utf-8", ... }
+
+Key Point: Users should ONLY provide the base command. They should NOT manually 
+add parameters that on_new_config will add automatically.
+
+================================================================================
+RESEARCH QUESTION 2: What about OmniSharp cmd parameter handling specifically?
+================================================================================
+
+ANSWER:
+The official nvim-lspconfig documentation explicitly states:
+
+"By default, omnisharp-roslyn doesn't have a cmd set because nvim-lspconfig 
+does not make assumptions about your path."
+
+Users MUST manually configure cmd to point to the absolute path of the 
+OmniSharp binary or DLL.
+
+Critical Details:
+- Tilde (~) is NOT expanded - must use vim.fn.expand("~")
+- Environment variables are NOT expanded
+- Relative paths are NOT supported
+- Must provide absolute paths only
+
+Parameters Automatically Added by on_new_config:
+  '-z'
+  '--hostPID' <process_id>
+  'DotNet:enablePackageRestore=false'
+  '--encoding utf-8'
+  '--languageserver'
+  + All settings flattened into arguments
+
+================================================================================
+RESEARCH QUESTION 3: Custom OmniSharp configurations with -s parameter?
+================================================================================
+
+ANSWER:
+The "-s" parameter is used by OmniSharp to specify an explicit solution file:
+  OmniSharp --stdio -s /path/to/solution.sln --languageserver --hostPID 12345
+
+CRITICAL FINDING: The on_new_config function does NOT automatically add the 
+"-s" parameter.
+
+However, you should NOT manually add the "-s" parameter because:
+
+1. nvim-lspconfig uses root_dir for automatic solution discovery
+   - Default pattern: util.root_pattern('*.sln', '*.csproj', 'omnisharp.json', 'function.json')
+
+2. Manually adding "-s" causes conflicts with automatic detection
+   - Results in duplicate parameters
+   - Can cause malformed commands when multiple solutions are present
+
+3. The framework is designed to work WITHOUT the "-s" parameter
+   - OmniSharp is launched with the root_dir as working directory
+   - OmniSharp automatically searches for .sln/.csproj files
+
+Example of Problem from Search Results:
+  "omnisharp -z -s /path/to/solution1 --hostPID 59024 DotNet:enablePackageRestore=false 
+   --encoding utf-8 --languageserver FormattingOptions:EnableEditorConfigSupport=true 
+   -z -s /path/to/solution2"
+   
+  This is MALFORMED because:
+  - Duplicate -z flags
+  - Duplicate --languageserver flags
+  - Multiple -s flags (OmniSharp doesn't know which to use)
+
+================================================================================
+RESEARCH QUESTION 4: Known issues with OmniSharp cmd parameter application?
+================================================================================
+
+ANSWER:
+Multiple documented issues found:
+
+Issue 1: vim.lsp.config() vs lspconfig.setup()
+  - vim.lsp.config() is a lower-level API that doesn't trigger on_new_config
+  - lspconfig.setup() is the correct way to configure OmniSharp
+  - Settings applied with vim.lsp.config() may not work properly
+  - Solution: Always use require('lspconfig').omnisharp.setup() { ... }
+
+Issue 2: Path Expansion Not Supported
+  - Tilde (~) not expanded in cmd
+  - Environment variables not expanded
+  - Must use vim.fn.expand("~") for dynamic paths
+  - Problem Example: cmd = { "~/.local/share/nvim/mason/bin/OmniSharp" } -- FAILS
+  - Correct Example: cmd = { vim.fn.expand("~/.local/share/nvim/mason/bin/OmniSharp") }
+
+Issue 3: Multiple Solution Workspace Conflicts
+  - When cmd contains multiple -s parameters
+  - Results in duplicate parameters in final command
+  - Solution: Don't use -s parameter; rely on root_dir detection
+  - If needed, override root_dir pattern instead
+
+Issue 4: mason-lspconfig Configuration Issues
+  - May not configure root_dir correctly
+  - May not properly set cmd
+  - Workaround: Disable mason-lspconfig auto-configuration and manually configure
+    lspconfig with explicit cmd and root_dir
+
+Issue 5: Parameter Type Mismatch
+  - Parameters must be STRINGS in the cmd array
+  - Numbers and booleans may not be properly converted
+  - Example: --hostPID must be tostring(pid), not just pid
+
+Issue 6: Duplicate Parameter Addition
+  - If you manually add --languageserver, --hostPID, etc., they get added AGAIN
+  - Results in duplicate arguments in the final command
+  - Some versions of OmniSharp may tolerate this, others may fail
+
+================================================================================
+KEY FINDING: Why -s Parameter is NOT Recommended
+================================================================================
+
+From search results, we found examples of users attempting to use the -s parameter:
+
+Problematic Configuration:
+  cmd = { omnisharp_bin, "-s", "/path/to/solution.sln" }
+
+Why This Fails:
+1. on_new_config doesn't add -s, so it's passed through as-is
+2. on_new_config adds other parameters around it
+3. Final cmd becomes malformed with parameters in wrong order
+4. Root_dir detection may ALSO try to find a solution file
+5. Results in conflicting or duplicate solution paths
+
+Documented Examples of Failure:
+- Multiple -s flags in single command (from GitHub issues)
+- OmniSharp not initializing properly with explicit -s
+- Users reporting LSP not attaching when using -s parameter
+
+================================================================================
+OFFICIAL RECOMMENDATIONS FROM DOCUMENTATION
+================================================================================
+
+From nvim-lspconfig Official Documentation:
+
+1. Use setup(), not vim.lsp.config()
+   require('lspconfig').omnisharp.setup { ... }
+
+2. Provide ONLY the base command
+   cmd = { "dotnet", "/path/to/OmniSharp.dll" }
+   
+3. Use absolute paths
+   - Don't use tilde without vim.fn.expand()
+   - Don't use relative paths
+   - Don't use environment variables without expansion
+
+4. Let root_dir detection work
+   - Default pattern searches for .sln, .csproj, omnisharp.json, function.json
+   - OmniSharp is launched in the detected root_dir
+   - OmniSharp searches for solution files from that location
+
+5. Configure settings, not command parameters
+   - Use the settings table for configuration
+   - Enable roslyn analyzers via settings, not cmd
+   - Set import organization via settings, not cmd
+
+6. Don't duplicate parameters
+   - Don't add --languageserver, --hostPID, -z manually
+   - on_new_config handles this automatically
+   - Duplication causes malformed commands
+
+================================================================================
+CORRECT CONFIGURATION EXAMPLE
+================================================================================
+
+require('lspconfig').omnisharp.setup {
+  cmd = { 
+    "dotnet",
+    vim.fn.expand("~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll")
+  },
+  
+  -- Let on_new_config handle: --languageserver, --hostPID, -z
+  -- Let root_dir detection find: *.sln, *.csproj files
+  -- Don't add -s parameter
+  
+  enable_roslyn_analyzers = true,
+  organize_imports_on_format = true,
+  enable_import_completion = true,
+  
+  settings = {
+    FormattingOptions = {
+      EnableEditorConfigSupport = true,
+      OrganizeImports = nil,
+    },
+    MsBuild = {
+      LoadProjectsOnDemand = nil,
+    },
+    RoslynExtensionsOptions = {
+      EnableAnalyzersSupport = true,
+      EnableImportCompletion = true,
+    },
+  },
+}
+
+================================================================================
+DEBUGGING COMMANDS
+================================================================================
+
+To verify cmd parameters are being applied correctly:
+
+In Neovim:
+  :LspInfo                    -- Shows cmd being executed
+  :LspLog                     -- Shows LSP error messages
+  :!tail ~/.local/state/nvim/lsp.log    -- Detailed OmniSharp logs
+
+In Terminal:
+  ps aux | grep -i omnisharp  -- Check if OmniSharp process is running
+  dotnet /path/to/OmniSharp.dll --version  -- Test if OmniSharp works
+
+================================================================================
+CONCLUSION
+================================================================================
+
+How nvim-lspconfig Passes cmd Parameters to OmniSharp:
+- User provides base cmd in setup()
+- on_new_config callback automatically appends hard-coded arguments
+- Final cmd is passed to vim.fn.jobstart() to spawn process
+- on_new_config does NOT add the -s parameter
+- Users should NOT manually add -s; rely on root_dir detection instead
+
+Why Parameters Might Not Be Applied:
+1. Using vim.lsp.config() instead of setup() - on_new_config not called
+2. Manually duplicating parameters that on_new_config adds
+3. Using tilde/env vars without vim.fn.expand()
+4. Adding -s parameter which conflicts with root_dir detection
+5. Incorrect path format (relative instead of absolute)
+6. Parameter type issues (numbers instead of strings)
+
+The Key Insight:
+nvim-lspconfig is designed to work WITHOUT the -s parameter. The framework 
+uses root_dir pattern matching to automatically discover and use solution files. 
+Manually adding -s creates conflicts and breaks the intended design.
+
+================================================================================
+DOCUMENTATION FILES GENERATED
+================================================================================
+
+1. OMNISHARP_CMD_PARAMETER_ANALYSIS.md (13 KB)
+   - Comprehensive 10-section detailed analysis
+   - Includes best practices and troubleshooting
+   - Full parameter flow diagrams
+
+2. OMNISHARP_CMD_QUICK_REFERENCE.md (4 KB)
+   - Quick reference guide
+   - Common mistakes and fixes
+   - Summary tables
+
+3. RESEARCH_FINDINGS_SUMMARY.txt (this file)
+   - Research methodology
+   - Specific answers to research questions
+   - Key findings and conclusions
+
+================================================================================

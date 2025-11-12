@@ -1,0 +1,269 @@
+================================================================================
+                    OMNISHARP SETTINGS FLOW DIAGRAM
+================================================================================
+
+Step 1: User Configuration in init.lua
+---------------------------------------
+require('lspconfig').omnisharp.setup({
+  cmd = { 'dotnet', '/path/to/OmniSharp.dll' },
+  settings = {
+    RoslynExtensionsOptions = {
+      EnableAnalyzersSupport = true,
+      EnableImportCompletion = true,
+    },
+    FormattingOptions = {
+      EnableEditorConfigSupport = true,
+    }
+  }
+})
+                    |
+                    | (passed to lspconfig)
+                    v
+
+Step 2: on_new_config Function Triggered
+-----------------------------------------
+on_new_config(new_config, _)
+  |
+  |- Step 2a: Copy base cmd
+  |    new_config.cmd = { 'dotnet', '/path/to/OmniSharp.dll' }
+  |
+  |- Step 2b: Add hard-coded args
+  |    new_config.cmd += [
+  |      '-z',
+  |      '--hostPID', '12345',
+  |      'DotNet:enablePackageRestore=false',
+  |      '--encoding', 'utf-8',
+  |      '--languageserver'
+  |    ]
+  |
+  |- Step 2c: Flatten settings
+  |    flatten(new_config.settings)
+  |         |
+  |         v
+  |    [Step 3: flatten() function - see below]
+  |
+  |- Step 2d: Append flattened settings
+  |    new_config.cmd += flatten_result
+  |
+  v
+Final cmd array ready
+
+================================================================================
+
+Step 3: flatten() Function (Recursive)
+---------------------------------------
+
+Input: {
+  RoslynExtensionsOptions = {
+    EnableAnalyzersSupport = true,
+    EnableImportCompletion = true,
+  },
+  FormattingOptions = {
+    EnableEditorConfigSupport = true,
+  }
+}
+                    |
+                    | (recursive processing)
+                    v
+
+Processing RoslynExtensionsOptions (table):
+  |- Key: "RoslynExtensionsOptions"
+  |- Value: { EnableAnalyzersSupport = true, EnableImportCompletion = true }
+  |
+  |- Recurse into value:
+  |    |- Key: "EnableAnalyzersSupport", Value: true
+  |    |  -> Return: "EnableAnalyzersSupport=true"
+  |    |
+  |    |- Key: "EnableImportCompletion", Value: true
+  |       -> Return: "EnableImportCompletion=true"
+  |
+  |- Prepend parent key:
+  |    "RoslynExtensionsOptions:" + "EnableAnalyzersSupport=true"
+  |    -> "RoslynExtensionsOptions:EnableAnalyzersSupport=true"
+  |
+  |    "RoslynExtensionsOptions:" + "EnableImportCompletion=true"
+  |    -> "RoslynExtensionsOptions:EnableImportCompletion=true"
+
+Processing FormattingOptions (table):
+  |- Key: "FormattingOptions"
+  |- Value: { EnableEditorConfigSupport = true }
+  |
+  |- Recurse into value:
+  |    |- Key: "EnableEditorConfigSupport", Value: true
+  |       -> Return: "EnableEditorConfigSupport=true"
+  |
+  |- Prepend parent key:
+       "FormattingOptions:" + "EnableEditorConfigSupport=true"
+       -> "FormattingOptions:EnableEditorConfigSupport=true"
+
+                    |
+                    | (return flattened array)
+                    v
+
+Output: [
+  "FormattingOptions:EnableEditorConfigSupport=true",
+  "RoslynExtensionsOptions:EnableAnalyzersSupport=true",
+  "RoslynExtensionsOptions:EnableImportCompletion=true"
+]
+
+================================================================================
+
+Step 4: Final Command Array
+----------------------------
+
+[1]  dotnet
+[2]  /path/to/OmniSharp.dll
+[3]  -z
+[4]  --hostPID
+[5]  12345
+[6]  DotNet:enablePackageRestore=false
+[7]  --encoding
+[8]  utf-8
+[9]  --languageserver
+[10] FormattingOptions:EnableEditorConfigSupport=true
+[11] RoslynExtensionsOptions:EnableAnalyzersSupport=true
+[12] RoslynExtensionsOptions:EnableImportCompletion=true
+
+                    |
+                    | (executed by Neovim)
+                    v
+
+Step 5: OmniSharp Process Launched
+-----------------------------------
+$ dotnet /path/to/OmniSharp.dll \
+    -z \
+    --hostPID 12345 \
+    DotNet:enablePackageRestore=false \
+    --encoding utf-8 \
+    --languageserver \
+    FormattingOptions:EnableEditorConfigSupport=true \
+    RoslynExtensionsOptions:EnableAnalyzersSupport=true \
+    RoslynExtensionsOptions:EnableImportCompletion=true
+
+                    |
+                    | (OmniSharp parses arguments)
+                    v
+
+Step 6: OmniSharp Internal Configuration
+-----------------------------------------
+OmniSharp recognizes:
+  - FormattingOptions:
+      EnableEditorConfigSupport = true
+  
+  - RoslynExtensionsOptions:
+      EnableAnalyzersSupport = true
+      EnableImportCompletion = true
+
+Roslyn analyzers enabled ✓
+EditorConfig support enabled ✓
+Import completion enabled ✓
+
+================================================================================
+
+COMPARISON: Correct vs Incorrect Settings
+==========================================
+
+CORRECT (nested under parent key):
+-----------------------------------
+Input Settings:
+{
+  RoslynExtensionsOptions = {
+    EnableAnalyzersSupport = true,
+  }
+}
+      |
+      v
+Flattened:
+"RoslynExtensionsOptions:EnableAnalyzersSupport=true"
+      |
+      v
+OmniSharp recognizes: ✓
+
+
+INCORRECT (flat, no parent key):
+---------------------------------
+Input Settings:
+{
+  EnableAnalyzersSupport = true,
+}
+      |
+      v
+Flattened:
+"EnableAnalyzersSupport=true"
+      |
+      v
+OmniSharp does NOT recognize: ✗
+(Missing "RoslynExtensionsOptions:" prefix)
+
+================================================================================
+
+VISUAL TREE: Settings Nesting Requirement
+==========================================
+
+Required Structure:
+-------------------
+settings (root)
+  ├── FormattingOptions (parent key) ← REQUIRED
+  │   ├── EnableEditorConfigSupport (child)
+  │   └── OrganizeImports (child)
+  │
+  ├── MsBuild (parent key) ← REQUIRED
+  │   └── LoadProjectsOnDemand (child)
+  │
+  ├── RoslynExtensionsOptions (parent key) ← REQUIRED
+  │   ├── EnableAnalyzersSupport (child)
+  │   ├── EnableImportCompletion (child)
+  │   └── AnalyzeOpenDocumentsOnly (child)
+  │
+  └── Sdk (parent key) ← REQUIRED
+      └── IncludePrereleases (child)
+
+Incorrect Structure (flat):
+---------------------------
+settings (root)
+  ├── EnableAnalyzersSupport ← WRONG: no parent key
+  ├── EnableImportCompletion ← WRONG: no parent key
+  └── EnableEditorConfigSupport ← WRONG: no parent key
+
+================================================================================
+
+KEY ALGORITHM: flatten() Recursive Logic
+=========================================
+
+function flatten(tbl)
+  result = []
+  
+  for each (key, value) in tbl:
+    if value is table:
+      // Recursive case (nested table)
+      nested_result = flatten(value)  // Recurse
+      for each nested_item in nested_result:
+        result.append(key + ":" + nested_item)  // Prepend key
+    else:
+      // Base case (scalar value)
+      result.append(key + "=" + value)
+  
+  return result
+
+Example Execution:
+------------------
+Input: { A = { B = { C = true } } }
+
+Step 1: Process A (table)
+  - Recurse into { B = { C = true } }
+  
+  Step 2: Process B (table)
+    - Recurse into { C = true }
+    
+    Step 3: Process C (scalar)
+      - Return: "C=true"
+    
+    - Prepend B: "B:C=true"
+    - Return: ["B:C=true"]
+  
+  - Prepend A: "A:B:C=true"
+  - Return: ["A:B:C=true"]
+
+Output: ["A:B:C=true"]
+
+================================================================================

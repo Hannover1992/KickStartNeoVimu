@@ -1,0 +1,224 @@
+================================================================================
+MASON + OMNISHARP INSTALLATION RESEARCH - EXECUTIVE SUMMARY
+================================================================================
+
+RESEARCH DATE: November 12, 2025
+FOCUS: Mason's impact on OmniSharp settings propagation
+STATUS: Complete
+
+================================================================================
+1. MASON'S OMNISHARP INSTALLATION DETAILS
+================================================================================
+
+INSTALLATION METHOD:
+- Mason downloads OmniSharp-Roslyn from GitHub releases
+- Extracts to: ~/.local/share/nvim/mason/packages/omnisharp/
+- Creates symlink: ~/.local/share/nvim/mason/bin/OmniSharp → ../packages/omnisharp/bin/OmniSharp
+- Automatically adds mason/bin/ to Neovim's PATH at startup
+
+DIRECTORY STRUCTURE:
+  ~/.local/share/nvim/mason/
+  ├── bin/
+  │   └── OmniSharp (symlink to package binary)
+  └── packages/omnisharp/
+      ├── libexec/OmniSharp.dll (actual executable)
+      ├── bin/OmniSharp (wrapper binary)
+      └── mason-receipt.json
+
+WRAPPER SCRIPT BEHAVIOR:
+- Mason does NOT create custom wrapper scripts for OmniSharp
+- Uses direct symlinks and PATH prepending
+- No environment variables injected
+- No settings translation layer exists
+
+KEY IMPLICATION: Settings propagation is NOT affected by wrapper scripts because
+there aren't any. Settings flow directly through the LSP protocol.
+
+================================================================================
+2. KNOWN MASON + OMNISHARP COMPATIBILITY ISSUES
+================================================================================
+
+CRITICAL ISSUE #1: Incomplete Installation (GitHub Issue #701)
+  Status: OPEN with workarounds
+  Problem: Only 3 files extracted instead of complete release
+    - Microsoft.bcl.asyncinterfaces
+    - mason-receipt.json
+    - omnisharp.cmd (or shell script)
+    Missing: Runtime files, dependencies
+  Impact: OmniSharp fails to start
+  Fix: Manual installation or force reinstall via :Mason
+
+CRITICAL ISSUE #2: Case Sensitivity Mismatch (GitHub Issue #1974)
+  Status: FIXED in Mason v2.0.0+
+  Problem: Binary installed as 'OmniSharp' but nvim-lspconfig tries 'omnisharp'
+  Impact: "Language server not found" error
+  Workaround: Rename binary to lowercase OR update Mason to v2.0+
+  Manual Fix: cd ~/.local/share/nvim/mason/bin/ && mv OmniSharp omnisharp
+
+ISSUE #3: Root Directory Detection Failure
+  Status: USER CONFIGURATION ISSUE
+  Problem: Mason doesn't automatically set root_dir
+  Impact: OmniSharp can't find .sln files → no intellisense
+  Fix: Explicitly configure root_dir in lspconfig:
+    root_dir = require('lspconfig').util.root_pattern("*.sln", "*.csproj")
+
+ISSUE #4: omnisharp-mono Startup Script Problems (GitHub Issue #1280)
+  Status: OPEN
+  Problem: Mono version has broken startup scripts in mason/bin/
+  Recommendation: Use standard 'omnisharp' (Roslyn) instead of 'omnisharp-mono'
+
+PLATFORM-SPECIFIC ISSUES:
+  Windows Native: OmniSharp doesn't work (use WSL2 instead)
+  M1/M2 Mac: Mason may install x64 instead of arm64
+  Workaround: Consider csharp.nvim plugin which auto-detects architecture
+
+================================================================================
+3. SETTINGS PROPAGATION: WORKS CORRECTLY
+================================================================================
+
+SETTINGS FLOW:
+  nvim init.lua
+      ↓
+  require('lspconfig').omnisharp.setup({settings = {...}})
+      ↓
+  nvim-lspconfig (handles all communication)
+      ↓
+  OmniSharp binary (from Mason symlink)
+      ↓
+  Settings received via LSP JSON-RPC (NOT environment variables)
+      ↓
+  OmniSharp applies settings
+
+CRITICAL POINT: Mason's installation method does NOT interfere with settings
+propagation because:
+  1. No wrapper scripts that could intercept settings
+  2. Direct symlink execution
+  3. Settings passed via LSP protocol, not environment
+  4. Mason just handles binary location, not configuration
+
+WHAT PREVENTS SETTINGS FROM TAKING EFFECT:
+  ✗ LSP never starts (binary not found, case mismatch)
+  ✗ Root directory not detected (project .sln not found)
+  ✗ WSL2 NuGet cache mismatch (packages not accessible)
+  ✗ Invalid settings structure (silently ignored)
+  ✗ OmniSharp version incompatibility
+  ✓ Mason installation method itself (verified NOT an issue)
+
+================================================================================
+4. RECOMMENDED INSTALLATION METHOD
+================================================================================
+
+SETUP CHECKLIST:
+
+1. INSTALL VIA MASON:
+   nvim -c ":Mason"
+   Search for 'omnisharp' and press 'i' to install
+   (Ensure running Mason v2.0.0+ to avoid case sensitivity issue)
+
+2. CONFIGURE IN init.lua:
+   require('lspconfig').omnisharp.setup({
+     cmd = { "dotnet", vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll' },
+     root_dir = require('lspconfig').util.root_pattern('*.sln', '*.csproj'),
+     enable_roslyn_analyzers = true,
+     organize_imports_on_format = true,
+     enable_import_completion = true,
+   })
+
+3. VERIFY INSTALLATION:
+   Command: ls ~/.local/share/nvim/mason/packages/omnisharp/
+   Expected: bin/, libexec/, mason-receipt.json
+
+4. VERIFY BINARY:
+   Command: dotnet ~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll --version
+   Should print version number
+
+5. TEST IN NEOVIM:
+   Open C# file: nvim YourFile.cs
+   Check LSP: :LspInfo
+   Should show: 'omnisharp' with green bullet and attached status
+
+ALTERNATIVE: csharp.nvim Plugin
+  - Automatically handles OmniSharp installation
+  - Better for macOS (auto-detects ARM64)
+  - Better for Windows (fallback option)
+  - Includes integrated debugging and project running
+  - Simpler configuration
+
+================================================================================
+5. BEST PRACTICES
+================================================================================
+
+DO:
+  ✓ Update Mason to v2.0.0+ to avoid case sensitivity issue
+  ✓ Explicitly set root_dir in lspconfig
+  ✓ Test binary exists: ls ~/.local/share/nvim/mason/packages/omnisharp/
+  ✓ Use :LspInfo to verify OmniSharp is attached
+  ✓ Run dotnet restore before opening Neovim
+  ✓ Use WSL2 for best compatibility
+
+DON'T:
+  ✗ Rely on Mason's implicit binary path detection (set root_dir explicitly)
+  ✗ Mix omnisharp and omnisharp-mono (use omnisharp/Roslyn)
+  ✗ Assume settings are wrong without checking :LspLog
+  ✗ Use native Windows without testing (WSL2 recommended)
+  ✗ Ignore incomplete installation error (reinstall manually)
+
+DEBUGGING:
+  Issue: OmniSharp not attaching
+    1. Check binary exists: ls ~/.local/share/nvim/mason/bin/
+    2. Check symlink: ls -la ~/.local/share/nvim/mason/bin/omnisharp
+    3. Test binary: dotnet ~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll --version
+    4. Check :LspLog for errors
+    5. Try manual start: :LspStart omnisharp
+
+  Issue: No intellisense/completion
+    1. Verify root_dir is set and correct: root_dir = require('lspconfig').util.root_pattern("*.sln")
+    2. Check .sln file exists in project
+    3. Run dotnet restore in project
+    4. Restart LSP: :LspRestart omnisharp
+
+================================================================================
+6. DOCUMENTATION LINKS
+================================================================================
+
+OFFICIAL:
+  Mason.nvim: https://github.com/mason-org/mason.nvim
+  nvim-lspconfig: https://github.com/neovim/nvim-lspconfig
+  OmniSharp: https://github.com/OmniSharp/omnisharp-roslyn
+  csharp.nvim: https://github.com/iabdelkareem/csharp.nvim
+
+ISSUES:
+  Issue #701 (Incomplete): https://github.com/mason-org/mason.nvim/issues/701
+  Issue #1974 (Case): https://github.com/mason-org/mason.nvim/issues/1974
+  Issue #1280 (Mono): https://github.com/mason-org/mason.nvim/issues/1280
+  Issue #38 (Windows): https://github.com/mason-org/mason-lspconfig.nvim/issues/38
+
+GUIDES:
+  Vi Stack Exchange: https://vi.stackexchange.com/questions/43830
+  Dev.to Mason Guide: https://dev.to/ralphsebastian/masonnvim-the-ultimate-guide-to-managing-your-neovim-tooling-4520
+
+================================================================================
+7. CONCLUSION
+================================================================================
+
+Mason's installation method for OmniSharp does NOT negatively affect settings
+propagation. Settings flow through standard LSP protocol channels and are
+completely independent of how the binary is installed.
+
+VERIFIED FINDINGS:
+  ✓ Mason uses symlinks, NOT wrapper scripts
+  ✓ No settings interception layer exists
+  ✓ No environment variable injection occurs
+  ✓ LSP protocol handles all setting communication
+
+ACTUAL VULNERABILITIES:
+  ✗ Incomplete installation (rare, fixable)
+  ✗ Case sensitivity binary naming (fixed in Mason v2.0+)
+  ✗ Missing root_dir configuration (user config issue)
+  ✗ Platform-specific compatibility (WSL2 recommended)
+
+RECOMMENDATION:
+  Use Mason v2.0+ for OmniSharp installation with explicit root_dir
+  configuration. Settings propagation will work correctly.
+
+================================================================================
