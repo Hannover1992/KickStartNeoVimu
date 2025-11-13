@@ -704,8 +704,10 @@ require('lazy').setup({
           cmd = {
             'dotnet',
             vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll',
-            '-s', vim.fn.expand('/mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src'),
-            '-loglevel', 'Information',
+            '-s',
+            vim.fn.expand('/mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src'),
+            '-loglevel',
+            'Information',
           },
           settings = {
             RoslynExtensionsOptions = {
@@ -747,18 +749,12 @@ require('lazy').setup({
       }
 
       -- Configure ALL servers from the servers table manually
-      -- v2.x: automatic_enable only enables servers with default configs, ignoring our custom configs
-      -- Solution: Disable automatic_enable and configure each server explicitly
+      -- Use nvim-lspconfig (compatible with Neovim 0.11+)
       for server_name, server_config in pairs(servers) do
         local config = vim.tbl_deep_extend('force', {}, server_config)
         config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, config.capabilities or {})
 
-        if server_name == 'omnisharp' then
-          vim.notify('[DEBUG] Setting up OmniSharp with custom config...', vim.log.levels.WARN)
-          vim.notify('[DEBUG] cmd = ' .. vim.inspect(config.cmd), vim.log.levels.WARN)
-          vim.notify('[DEBUG] settings = ' .. vim.inspect(config.settings), vim.log.levels.WARN)
-        end
-
+        -- Simple and reliable: use lspconfig.setup()
         require('lspconfig')[server_name].setup(config)
       end
     end,
