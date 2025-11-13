@@ -743,8 +743,8 @@ require('lazy').setup({
       require('mason-lspconfig').setup {
         ensure_installed = vim.tbl_keys(servers or {}), -- Ensure all servers in the servers table are configured
         automatic_installation = false,
-        automatic_enable = { exclude = { 'omnisharp' } }, -- CRITICAL: Exclude OmniSharp from auto-enable to use custom config
         handlers = {
+          -- Default handler for all servers
           function(server_name)
             local server = servers[server_name] or {}
             -- This handles overriding only values explicitly passed
@@ -752,6 +752,13 @@ require('lazy').setup({
             -- certain features of an LSP (for example, turning off formatting for ts_ls)
             server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
             require('lspconfig')[server_name].setup(server)
+          end,
+
+          -- Specific handler for OmniSharp (uses custom cmd and settings from servers.omnisharp)
+          omnisharp = function()
+            local server = vim.tbl_deep_extend('force', {}, servers.omnisharp or {})
+            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+            require('lspconfig').omnisharp.setup(server)
           end,
         },
       }
