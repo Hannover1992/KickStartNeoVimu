@@ -1,391 +1,333 @@
-# LSP OmniSharp C# Fix Documentation
+# ✅ OmniSharp StyleCop Warnings - WORKING SOLUTION
+
+**Date**: 2025-11-13
+**Status**: ✅ **VERIFIED WORKING**
+**Neovim Version**: v0.11.4
 
 ---
 
-## ✅ FINAL WORKING FIX (2025-11-13 - Latest)
+## Problem
 
-**Status**: ✅ **FIXED - Using nvim-lspconfig (compatible with Neovim 0.11.4)**
+StyleCop analyzer warnings (SA1505, SA1508, etc.) were not appearing in Neovim, despite:
+- OmniSharp LSP attached and functional
+- Warnings visible in `dotnet build` output
+- Go to Definition working
 
-**Date**: 2025-11-13 Evening (Final Session)
-**Neovim Version**: v0.11.4
-**Solution**: Reverted to simple `require('lspconfig').setup()` - no vim.lsp.config() needed!
+## Solution (3 Steps)
 
-### What Was Wrong
+### 1. Minimal init.lua Config
 
-We tried to use the **new Neovim 0.11 API** (`vim.lsp.config()` + `vim.lsp.enable()`), but this was **unnecessary**!
+**File**: `~/.config/nvim/init.lua` (or your init.lua location)
 
-The deprecation warning from Neovim 0.11 is about **lspconfig's internal implementation**, NOT our usage. **nvim-lspconfig is already fully compatible with Neovim 0.11** - we should just use it normally.
+In the `servers` table, add just an **empty table** for OmniSharp:
 
-### The Simple Fix
-
-**File**: `/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua`
-
-**Lines 753-761** - Simplified setup loop:
 ```lua
--- Configure ALL servers from the servers table manually
--- Use nvim-lspconfig (compatible with Neovim 0.11+)
-for server_name, server_config in pairs(servers) do
-  local config = vim.tbl_deep_extend('force', {}, server_config)
-  config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, config.capabilities or {})
+servers = {
+  -- ... other servers ...
 
-  -- Simple and reliable: use lspconfig.setup()
-  require('lspconfig')[server_name].setup(config)
-end
-```
-
-**Lines 702-723** - Clean OmniSharp config:
-```lua
-omnisharp = {
-  cmd = {
-    'dotnet',
-    vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll',
-    '-s',
-    vim.fn.expand('/mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src'),
-    '-loglevel',
-    'Information',
-  },
-  settings = {
-    RoslynExtensionsOptions = {
-      EnableAnalyzersSupport = true,
-      EnableImportCompletion = true,
-      AnalyzeOpenDocumentsOnly = false,
-    },
-    FormattingOptions = {
-      EnableEditorConfigSupport = true,
-      OrganizeImports = true,
-    },
-  },
-},
-```
-
-No `filetypes`, no `root_markers`, no manual autocmds - **lspconfig handles everything automatically**.
-
-### Testing Steps
-
-1. **Clear cache**: `rm -rf ~/.cache/nvim/luac/`
-2. **Kill OmniSharp**: `pkill -f omnisharp`
-3. **Restart Neovim**: `nvim /mnt/c/.../cencoco/src/Core/CenCoCo.Core.API/Program.cs`
-4. **Verify**: `:LspInfo` should show OmniSharp attached
-
-### Key Lessons
-
-1. **nvim-lspconfig already works with Neovim 0.11** - no migration needed
-2. **The deprecation warning is internal** - we can ignore it
-3. **Don't overcomplicate** - simple `lspconfig.setup()` is the right approach
-4. **Trust the defaults** - lspconfig knows the filetypes and root_dir patterns
-
----
-
-## 🎯 NEOVIM 0.11 COMPATIBILITY FIX (2025-11-13 Evening - PREVIOUS ATTEMPT)
-
-**Status**: ❌ **ABANDONED - vim.lsp.config() approach was overly complex**
-
-**Date**: 2025-11-13 16:00-17:00
-**Neovim Version**: v0.11.4
-**Research Method**: 10 Parallel Sonnet Agents + Deep Analysis
-
-### Executive Summary
-
-After comprehensive analysis by 10 parallel agents, we identified **THREE critical issues** preventing OmniSharp from attaching in Neovim 0.11:
-
-1. ❌ **Missing `filetypes` due to lspconfig lazy-loading bug** (lines 761-767)
-2. ❌ **Missing `root_markers` required by vim.lsp.config()** (line 713)
-3. ❌ **NuGet packages not restored** (702 errors in LSP log)
-
-### The Fix Applied
-
-**File**: `/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua`
-
-**Changes made (lines 712-713)**:
-```lua
-omnisharp = {
-  cmd = { ... },
-  filetypes = { 'cs', 'vb' },  -- ✅ ADDED: Fix lazy-loading bug
-  root_markers = { '*.sln', '*.csproj', '.git' },  -- ✅ ADDED: Required for vim.lsp.config
-  settings = { ... },
+  -- OmniSharp C# LSP - Use defaults (will be configured via omnisharp.json)
+  omnisharp = {},
 }
 ```
 
-**NuGet restore**:
+**That's it!** Just `omnisharp = {}` - no cmd, no settings, no overrides!
+
+### 2. Create omnisharp.json
+
+**File**: `~/.omnisharp/omnisharp.json`
+
 ```bash
-cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src
-dotnet restore CenCoCo.sln --force-evaluate --no-cache
-# ✅ SUCCESS: 49 projects restored
+mkdir -p ~/.omnisharp
 ```
 
-### Root Causes Explained
+Create the file with these contents:
 
-#### Issue 1: lspconfig Lazy-Loading Bug
-
-**Location**: Lines 761-767 in init.lua
-
-**Problem**:
-```lua
-local lspconfig_defaults = require('lspconfig.configs')[server_name]
--- ❌ Returns nil because omnisharp config hasn't been lazy-loaded yet
-if lspconfig_defaults and lspconfig_defaults.default_config then
-  config.filetypes = config.filetypes or lspconfig_defaults.default_config.filetypes
-  -- ❌ filetypes stays nil
-end
-```
-
-**Result**:
-- Without `filetypes`, the FileType autocmd (lines 774-780) is never created
-- Without autocmd, OmniSharp is never enabled when opening `.cs` files
-- Process never starts
-
-**Fix**: Explicitly set `filetypes = { 'cs', 'vb' }` in omnisharp config
-
-#### Issue 2: Missing root_markers
-
-**Problem**: `vim.lsp.config()` in Neovim 0.11 **requires** either:
-- `root_dir` function with **new signature**: `function(bufnr, on_dir) on_dir(path) end`
-- OR `root_markers` array (simpler)
-
-**Old signature** (Neovim 0.10):
-```lua
-root_dir = function(filename, bufnr) return path end
-```
-
-**New signature** (Neovim 0.11):
-```lua
-root_dir = function(bufnr, on_dir) on_dir(path) end
-```
-
-**What happened**:
-- Line 766 copied old `root_dir` function from lspconfig
-- Function has wrong signature for Neovim 0.11
-- Result: Silent failure, LSP doesn't start
-
-**Fix**: Use `root_markers = { '*.sln', '*.csproj', '.git' }` (simpler and works)
-
-#### Issue 3: NuGet Package Failures
-
-**Evidence from LSP log** (`~/.local/state/nvim/lsp.log`):
-- 702 occurrences of "Package ... was not found"
-- AWSSDK.S3, EntityFrameworkCore.Analyzers, xunit.analyzers, etc.
-- All 49 projects in CenCoCo solution failed to load
-
-**Cause**: WSL2 cross-filesystem NuGet cache issue
-
-**Fix**: Force restore with `--no-cache --force-evaluate`
-
-### Research Documentation Created
-
-**Total**: ~200+ KB, 46+ files
-
-**Key Documents**:
-1. **OMNISHARP_0.11_ROOT_CAUSE_ANALYSIS.md** - Complete technical deep-dive
-2. **NEOVIM_0.11_LSP_RESEARCH_REPORT.md** - vim.lsp.config API guide
-3. **MASON_LSPCONFIG_V2_AUTOMATIC_ENABLE_RESEARCH.md** - v2.x compatibility
-4. **OMNISHARP_ROOT_DIR_ANALYSIS.md** - root_dir detection issues
-5. **MINIMAL_OMNISHARP_ANALYSIS.md** - Minimal working config (30 lines)
-
-**Plus 40+ additional research documents**
-
-**Location**: `/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/`
-
-### Current Configuration Status
-
-**init.lua (lines 703-723)**:
-```lua
-omnisharp = {
-  cmd = {
-    'dotnet',
-    vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll',
-    '-s',
-    vim.fn.expand('/mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src'),
-    '-loglevel',
-    'Information',
+```json
+{
+  "RoslynExtensionsOptions": {
+    "EnableAnalyzersSupport": true,
+    "EnableImportCompletion": true,
+    "AnalyzeOpenDocumentsOnly": false
   },
-  filetypes = { 'cs', 'vb' },  -- ✅ FIX #1
-  root_markers = { '*.sln', '*.csproj', '.git' },  -- ✅ FIX #2
-  settings = {
-    RoslynExtensionsOptions = {
-      EnableAnalyzersSupport = true,
-      EnableImportCompletion = true,
-      AnalyzeOpenDocumentsOnly = false,
-    },
-    FormattingOptions = {
-      EnableEditorConfigSupport = true,
-      OrganizeImports = true,
-    },
-  },
-},
+  "FormattingOptions": {
+    "EnableEditorConfigSupport": true,
+    "OrganizeImports": true
+  }
+}
 ```
 
-**Setup loop (lines 754-785)**:
+### 3. Restart Neovim
+
+```bash
+# Kill any running OmniSharp processes
+pkill -f omnisharp
+
+# Start Neovim with a C# file
+nvim /path/to/your/project/Program.cs
+```
+
+**Done!** StyleCop warnings should now appear inline! ✅
+
+---
+
+## Why This Works
+
+### The Key Insight
+
+OmniSharp **automatically reads** `~/.omnisharp/omnisharp.json` on startup! This is OmniSharp's **native configuration file** - no Neovim LSP settings conversion needed.
+
+### What We Tried (and Why It Failed)
+
+❌ **Approach 1**: Custom `cmd` with pre-flattened settings
+- Problem: lspconfig's default cmd overrides our custom cmd
+
+❌ **Approach 2**: Settings in init.lua's `servers.omnisharp.settings`
+- Problem: nvim-lspconfig's `on_new_config` doesn't reliably flatten settings to CLI args
+
+❌ **Approach 3**: Neovim 0.11's new `vim.lsp.config()` API
+- Problem: Over-complicated, requires filetypes/root_markers, unnecessary
+
+✅ **Working Solution**: `omnisharp = {}` + `omnisharp.json`
+- OmniSharp reads its native config file automatically
+- nvim-lspconfig handles all defaults (filetypes, root_dir, cmd)
+- Zero complexity, maximum reliability
+
+---
+
+## Verification
+
+### Check OmniSharp is Attached
+
+```vim
+:LspInfo
+```
+
+Should show:
+```
+vim.lsp: Active Clients ~
+- Client: omnisharp (id: 1, bufnr: [1])
+  filetypes: cs, vb
+  root_dir: /path/to/your/project
+```
+
+### Check Running Process
+
+```bash
+ps aux | grep omnisharp | grep -v grep
+```
+
+Should show OmniSharp running with `dotnet OmniSharp.dll`.
+
+### Check StyleCop Warnings Appear
+
+Open a C# file with StyleCop violations. You should see inline warnings like:
+- SA1505: Opening braces should not be followed by blank line
+- SA1508: Closing braces should not be preceded by blank line
+- SA1116, SA1117: Parameter placement warnings
+
+---
+
+## Fresh Setup (New Machine)
+
+If starting from scratch:
+
+### 1. Install Neovim 0.11+
+
+```bash
+# Check version
+nvim --version  # Should be v0.11.0 or newer
+```
+
+### 2. Install kickstart.nvim
+
+```bash
+# Backup old config
+mv ~/.config/nvim ~/.config/nvim.backup
+
+# Clone kickstart.nvim
+git clone https://github.com/nvim-lua/kickstart.nvim.git ~/.config/nvim
+
+# Start Neovim (installs plugins automatically)
+nvim
+```
+
+Wait for Lazy.nvim to install all plugins (~1 minute).
+
+### 3. Add OmniSharp to init.lua
+
+Edit `~/.config/nvim/init.lua`, find the `servers = {` table (around line 680-700), and add:
+
 ```lua
-for server_name, server_config in pairs(servers) do
-  local config = vim.tbl_deep_extend('force', {}, server_config)
-  config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, config.capabilities or {})
+servers = {
+  -- ... existing servers like lua_ls, pyright, etc. ...
 
-  if vim.fn.has('nvim-0.11') == 1 then
-    -- Get filetypes from lspconfig as fallback (works now with explicit filetypes!)
-    local lspconfig_defaults = require('lspconfig.configs')[server_name]
-    if lspconfig_defaults and lspconfig_defaults.default_config then
-      config.filetypes = config.filetypes or lspconfig_defaults.default_config.filetypes
-      config.root_dir = config.root_dir or lspconfig_defaults.default_config.root_dir
-    end
-
-    -- Register with new API
-    vim.lsp.config(server_name, config)
-
-    -- Enable on matching filetypes (autocmd auto-created)
-    if config.filetypes then
-      vim.api.nvim_create_autocmd('FileType', {
-        pattern = config.filetypes,
-        callback = function(ev)
-          vim.lsp.enable(server_name, ev.buf)
-        end,
-      })
-    end
-  else
-    -- Fallback for older Neovim versions
-    require('lspconfig')[server_name].setup(config)
-  end
-end
+  -- OmniSharp C# LSP
+  omnisharp = {},
+}
 ```
 
-### Verification Steps
+### 4. Install OmniSharp via Mason
 
-**After applying fixes**:
+```vim
+:Mason
+```
 
-1. **Kill external OmniSharp processes**:
+Search for "omnisharp", press `i` to install.
+
+### 5. Create omnisharp.json
+
+```bash
+mkdir -p ~/.omnisharp
+cat > ~/.omnisharp/omnisharp.json << 'EOF'
+{
+  "RoslynExtensionsOptions": {
+    "EnableAnalyzersSupport": true,
+    "EnableImportCompletion": true,
+    "AnalyzeOpenDocumentsOnly": false
+  },
+  "FormattingOptions": {
+    "EnableEditorConfigSupport": true,
+    "OrganizeImports": true
+  }
+}
+EOF
+```
+
+### 6. Test with C# Project
+
+```bash
+cd /path/to/your/csharp/project
+dotnet restore --force-evaluate --no-cache  # Important for WSL2!
+nvim Program.cs
+```
+
+In Neovim:
+```vim
+:LspInfo   " Should show omnisharp attached
+```
+
+StyleCop warnings should appear inline! ✅
+
+---
+
+## Troubleshooting
+
+### No warnings appearing?
+
+1. **Check omnisharp.json exists and is valid**:
    ```bash
+   cat ~/.omnisharp/omnisharp.json
+   ```
+
+2. **Check StyleCop.Analyzers is installed in project**:
+   ```bash
+   grep -r "StyleCop.Analyzers" *.csproj
+   ```
+
+   If not installed, add to your .csproj:
+   ```xml
+   <ItemGroup>
+     <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" />
+   </ItemGroup>
+   ```
+
+3. **Restart OmniSharp**:
+   ```vim
+   :LspRestart
+   ```
+
+4. **Check LSP logs**:
+   ```bash
+   tail -100 ~/.local/state/nvim/lsp.log | grep -i "roslyn\|analyzer"
+   ```
+
+### WSL2 + Windows Cross-Filesystem Issue
+
+If working on `/mnt/c/...` (Windows filesystem from WSL2), and you compiled in Windows:
+
+```bash
+cd /mnt/c/path/to/project
+dotnet restore --force-evaluate --no-cache
+```
+
+This fixes NuGet package cache issues between Windows and WSL2.
+
+### OmniSharp Not Attaching
+
+1. **Check OmniSharp is installed via Mason**:
+   ```bash
+   ls ~/.local/share/nvim/mason/packages/omnisharp/
+   ```
+
+2. **Check init.lua has omnisharp = {}**:
+   ```bash
+   grep -A 2 "omnisharp" ~/.config/nvim/init.lua
+   ```
+
+3. **Clear cache and restart**:
+   ```bash
+   rm -rf ~/.cache/nvim/
    pkill -f omnisharp
+   nvim your-file.cs
    ```
-
-2. **Clear Neovim cache**:
-   ```bash
-   rm -rf ~/.cache/nvim/luac/
-   ```
-
-3. **Restart Neovim** with C# file:
-   ```bash
-   nvim /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src/Core/CenCoCo.Core.API/Program.cs
-   ```
-
-4. **Check `:LspInfo`**:
-   ```
-   vim.lsp: Active Clients ~
-   - Client: omnisharp (id: 1, bufnr: [1])
-     filetypes: cs, vb
-     root_dir: /mnt/c/.../src
-   ```
-
-5. **Verify process**:
-   ```bash
-   ps aux | grep omnisharp | grep -v grep
-   # Should show: -s /mnt/c/.../src
-   ```
-
-### Known Issue: Settings Not Flattened
-
-**IMPORTANT**: `vim.lsp.config()` does **NOT** automatically flatten settings to CLI args!
-
-**Current behavior**:
-- Settings stay as Lua table in config
-- Sent via LSP `workspace/configuration` protocol
-- OmniSharp **may or may not** respect them via this protocol
-
-**Expected behavior** (with nvim-lspconfig):
-- Settings flattened by `on_new_config` function
-- Appended to cmd as: `RoslynExtensionsOptions:EnableAnalyzersSupport=true`
-- OmniSharp receives as command-line arguments
-
-**If StyleCop warnings still don't appear**:
-- Settings might not be reaching OmniSharp correctly
-- May need to switch to `require('lspconfig').omnisharp.setup()` instead of `vim.lsp.config()`
-- See `MINIMAL_OMNISHARP_COMPLETE.lua` for pre-flattened approach
-
-### Next Steps
-
-1. ✅ **Fixes applied** - filetypes, root_markers, NuGet restore
-2. ⏳ **Test configuration** - Restart Neovim and verify attachment
-3. ⏳ **Check StyleCop warnings** - Verify Roslyn analyzers working
-4. ⏳ **If issues persist** - Consider switching to lspconfig.setup() for settings flattening
-
-### Key Learnings
-
-1. **Neovim 0.11 breaking changes**:
-   - `vim.lsp.config()` is new native API
-   - Requires `filetypes` and `root_markers` (or new `root_dir` signature)
-   - Does NOT call lspconfig's `on_new_config`
-   - Settings flattening is lspconfig feature, not core Neovim
-
-2. **lspconfig lazy-loading**:
-   - Accessing `require('lspconfig.configs')[name]` directly returns nil
-   - Must trigger lazy-load first via `require('lspconfig')[name]`
-   - Safer to explicitly define filetypes/root_markers
-
-3. **WSL2 + NuGet**:
-   - Cross-filesystem cache issues common
-   - Always use `--force-evaluate --no-cache` after Windows restores
-
-4. **OmniSharp specifics**:
-   - Settings must be CLI args, not LSP protocol
-   - Requires settings flattening (lspconfig's `on_new_config`)
-   - Complex server, prefer lspconfig.setup() over pure vim.lsp.config()
-
-### Files Modified
-
-- `/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua` - Lines 712-713 added
-- `/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/CLAUDE.md` - Updated (this file)
 
 ---
 
-## 📋 Previous Session History
+## Known Issues
 
-### 🔧 SETTINGS FLATTENING ISSUE DISCOVERED (2025-11-13 Afternoon)
+### Cursor Position Error (Non-Critical)
 
-**Status**: ⚠️ Partially addressed by adding explicit filetypes/root_markers
+When jumping to decompiled sources (e.g., .NET framework code), you might see:
 
-**Discovery**: init.lua uses `vim.lsp.config` which bypasses lspconfig's `on_new_config`. Settings might not flatten correctly.
+```
+Error executing vim.schedule lua callback:
+...lua/vim/lsp/util.lua:951: Cursor position outside buffer
+```
 
-**Research Documents Created**:
-- [SETTINGS_FLATTENING_INDEX.md](./SETTINGS_FLATTENING_INDEX.md)
-- [LSPCONFIG_SETTINGS_FLATTENING_DEEP_DIVE.md](./LSPCONFIG_SETTINGS_FLATTENING_DEEP_DIVE.md)
-- [OMNISHARP_FIX_QUICK_GUIDE.md](./OMNISHARP_FIX_QUICK_GUIDE.md)
+**This is harmless!** It's a known Telescope + OmniSharp + Neovim 0.11 interaction issue when jumping to generated/decompiled code. Core functionality (warnings, go to definition, etc.) works fine.
 
-### 🆕 FRESH START - Complete Neovim Reset (2025-11-13 Morning)
+### Deprecation Warning (Can Be Ignored)
 
-**Status**: ✅ Configuration added, updated for 0.11 compatibility
+```
+The `require('lspconfig')` "framework" is deprecated
+```
 
-After multiple failed attempts, performed complete reset:
-- Downloaded fresh kickstart.nvim (1016 lines)
-- Added minimal OmniSharp configuration
-- Configured for CenCoCo.sln project
-
-### Comprehensive Research Completed (Morning Session)
-
-**Research effort**: 10 Haiku agents (parallel) + 5 Sonnet agents (sequential)
-
-**Documentation created**: 46 files, ~4.2 MB total
+**You can ignore this!** The warning is about lspconfig's **internal implementation**, not your usage. nvim-lspconfig is fully compatible with Neovim 0.11 - you can continue using it normally.
 
 ---
 
-## 📊 Summary
+## Key Lessons Learned
 
-**Current Status**: Configuration updated for Neovim 0.11, ready for testing
-
-**Changes Applied**:
-1. ✅ Added `filetypes = { 'cs', 'vb' }` to fix lazy-loading bug
-2. ✅ Added `root_markers` for vim.lsp.config() compatibility
-3. ✅ Restored NuGet packages (49 projects)
-4. ✅ Cleared cache and killed external processes
-
-**To Test**:
-1. Restart Neovim
-2. Open C# file
-3. Check `:LspInfo` for active client
-4. Verify StyleCop warnings appear
-
-**If Issues Persist**:
-- Check comprehensive research docs in repo
-- Consider switching to `require('lspconfig').omnisharp.setup()`
-- See `MINIMAL_OMNISHARP_COMPLETE.lua` for alternative approach
+1. **Don't fight the defaults** - Empty `omnisharp = {}` works better than any custom override
+2. **Use native config files** - `omnisharp.json` is more reliable than LSP settings
+3. **Keep it simple** - The simplest solution is often the best
+4. **Trust nvim-lspconfig** - It knows the correct filetypes, root_dir, and cmd
+5. **WSL2 caveat** - Always `dotnet restore --force-evaluate --no-cache` after Windows builds
 
 ---
 
-**Last Updated**: 2025-11-13 17:00 (Evening Session - Neovim 0.11 Compatibility Fix)
+## Success Criteria
+
+- [x] StyleCop warnings appear inline in Neovim
+- [x] Go to definition works (`gd`)
+- [x] LSP client attaches automatically to .cs files
+- [x] No custom cmd/settings needed in init.lua
+- [x] Works with Neovim 0.11.4
+- [x] Configuration is simple and maintainable
+
+---
+
+## Files in This Repository
+
+- **init.lua** - Fresh kickstart.nvim with minimal OmniSharp config
+- **omnisharp.json** - OmniSharp settings (copy to `~/.omnisharp/`)
+- **Claude.md** - This documentation (working solution only)
+- **SETUP_COMPLETE.md** - Detailed verification documentation
+
+---
+
+**This is the working solution! 🎉**
+
+Last verified: 2025-11-13
+Neovim version: v0.11.4
+OmniSharp version: 1.39.14
