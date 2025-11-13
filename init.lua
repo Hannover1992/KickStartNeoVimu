@@ -741,27 +741,25 @@ require('lazy').setup({
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
-        ensure_installed = vim.tbl_keys(servers or {}), -- Ensure all servers in the servers table are configured
+        ensure_installed = vim.tbl_keys(servers or {}), -- Ensure all servers in the servers table are installed
         automatic_installation = false,
-        handlers = {
-          -- Default handler for all servers
-          function(server_name)
-            local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-
-          -- Specific handler for OmniSharp (uses custom cmd and settings from servers.omnisharp)
-          omnisharp = function()
-            local server = vim.tbl_deep_extend('force', {}, servers.omnisharp or {})
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig').omnisharp.setup(server)
-          end,
-        },
+        automatic_enable = { exclude = { 'omnisharp' } }, -- v2.x: Exclude OmniSharp from auto-enable (will configure manually below)
       }
+
+      -- Configure all non-excluded servers automatically (using automatic_enable)
+      -- lua_ls and other servers are auto-enabled by mason-lspconfig with their default configs
+
+      -- Configure OmniSharp manually (excluded from automatic_enable above)
+      -- v2.x compatible: Direct lspconfig.setup() call after mason-lspconfig.setup()
+      if servers.omnisharp then
+        vim.notify('[DEBUG] Setting up OmniSharp manually...', vim.log.levels.WARN)
+        local omnisharp_config = vim.tbl_deep_extend('force', {}, servers.omnisharp)
+        omnisharp_config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, omnisharp_config.capabilities or {})
+        vim.notify('[DEBUG] OmniSharp cmd = ' .. vim.inspect(omnisharp_config.cmd), vim.log.levels.WARN)
+        vim.notify('[DEBUG] OmniSharp settings = ' .. vim.inspect(omnisharp_config.settings), vim.log.levels.WARN)
+        require('lspconfig').omnisharp.setup(omnisharp_config)
+        vim.notify('[DEBUG] OmniSharp setup completed!', vim.log.levels.WARN)
+      end
     end,
   },
 
