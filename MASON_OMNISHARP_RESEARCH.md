@@ -1,8 +1,8 @@
-# Mason + OmniSharp Installation Research
+# Mason & OmniSharp Configuration Research
 
 ## Executive Summary
 
-Mason.nvim's installation of OmniSharp does **NOT** negatively affect settings propagation directly, but several architectural and compatibility issues can prevent proper configuration from taking effect. Settings propagation itself works correctly through nvim-lspconfig, but the **installation and startup process** is fragile and prone to failure.
+This document details how Mason and mason-lspconfig handle OmniSharp installation and configuration, based on GitHub source code, issues, and documentation research (November 2025).
 
 ---
 

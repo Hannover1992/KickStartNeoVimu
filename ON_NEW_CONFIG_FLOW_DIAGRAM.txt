@@ -1,0 +1,361 @@
+================================================================================
+  NVIM-LSPCONFIG on_new_config FLOW DIAGRAM
+================================================================================
+
+SCENARIO 1: User Provides Custom cmd (CORRECT)
+================================================================================
+
+User Configuration (init.lua):
+┌─────────────────────────────────────────────────────────────────┐
+│ local servers = {                                               │
+│   omnisharp = {                                                │
+│     cmd = {                                                    │
+│       'dotnet',                                               │
+│       '/home/user/.../OmniSharp.dll',                         │
+│       '-s', '/path/to/Backend',                              │
+│       '-loglevel', 'Information',                            │
+│     },                                                         │
+│     settings = {                                              │
+│       RoslynExtensionsOptions = {                            │
+│         EnableAnalyzersSupport = true,                       │
+│       }                                                        │
+│     }                                                          │
+│   }                                                            │
+│ }                                                              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                  lspconfig reads this config
+                              ↓
+              Default config merged with user config
+              (user config WINS for cmd field)
+                              ↓
+        new_config.cmd = user's custom cmd (7 elements)
+        new_config.settings = user's settings (nested)
+                              ↓
+         ╔═══════════════════════════════════════════════╗
+         ║         on_new_config() CALLED                ║
+         ║  (when LSP attaches to C# file)              ║
+         ╚═══════════════════════════════════════════════╝
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 1: Copy cmd (ensure it's array) │
+         └──────────────────────────────────────┘
+         new_config.cmd = { unpack(new_config.cmd or {}) }
+
+         BEFORE: { 'dotnet', '/path/to/OmniSharp.dll', '-s', '/path/to/Backend',
+                   '-loglevel', 'Information' }
+         AFTER:  { 'dotnet', '/path/to/OmniSharp.dll', '-s', '/path/to/Backend',
+                   '-loglevel', 'Information' }  (same)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 2: Append hard-coded LSP args   │
+         └──────────────────────────────────────┘
+         table.insert(new_config.cmd, '-z')
+         vim.list_extend(new_config.cmd, { '--hostPID', tostring(12345) })
+         table.insert(new_config.cmd, 'DotNet:enablePackageRestore=false')
+         vim.list_extend(new_config.cmd, { '--encoding', 'utf-8' })
+         table.insert(new_config.cmd, '--languageserver')
+
+         RESULT:
+         { 'dotnet', '/path/to/OmniSharp.dll', '-s', '/path/to/Backend',
+           '-loglevel', 'Information', '-z', '--hostPID', '12345',
+           'DotNet:enablePackageRestore=false', '--encoding', 'utf-8',
+           '--languageserver' }  (12 elements now)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 3: Flatten settings to cmd      │
+         └──────────────────────────────────────┘
+         flatten(RoslynExtensionsOptions = { EnableAnalyzersSupport = true })
+         → produces: "RoslynExtensionsOptions:EnableAnalyzersSupport=true"
+
+         vim.list_extend(new_config.cmd, flattened_settings)
+
+         RESULT:
+         { 'dotnet', '/path/to/OmniSharp.dll', '-s', '/path/to/Backend',
+           '-loglevel', 'Information', '-z', '--hostPID', '12345',
+           'DotNet:enablePackageRestore=false', '--encoding', 'utf-8',
+           '--languageserver', 'RoslynExtensionsOptions:EnableAnalyzersSupport=true' }
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 4: Disable unsupported caps     │
+         └──────────────────────────────────────┘
+         new_config.capabilities.workspace.workspaceFolders = false
+                              ↓
+                  Final cmd array ready
+                              ↓
+                  vim.fn.jobstart(final_cmd)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │  OmniSharp Process Spawned With:     │
+         │  dotnet /path/to/OmniSharp.dll       │
+         │    -s /path/to/Backend               │
+         │    -loglevel Information             │
+         │    -z --hostPID 12345                │
+         │    DotNet:enablePackageRestore=false │
+         │    --encoding utf-8 --languageserver │
+         │    RoslynExtensionsOptions:...=true  │
+         └──────────────────────────────────────┘
+                              ✅
+                      All settings applied!
+
+
+SCENARIO 2: User Doesn't Provide cmd (DEFAULT - WRONG)
+================================================================================
+
+User Configuration (init.lua):
+┌─────────────────────────────────────────────────────────────────┐
+│ require('lspconfig').omnisharp.setup({                          │
+│   settings = {                                                  │
+│     RoslynExtensionsOptions = {                                │
+│       EnableAnalyzersSupport = true,                           │
+│     }                                                            │
+│   }                                                              │
+│   -- NO cmd specified!                                         │
+│ })                                                              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+              Default config loaded from omnisharp.lua
+              default_config.cmd = { "OmniSharp" }
+                              ↓
+        User config merged with default
+        (user didn't provide cmd, so default used)
+                              ↓
+        new_config.cmd = { "OmniSharp" }  (just the name!)
+        new_config.settings = user's settings
+                              ↓
+         ╔═══════════════════════════════════════════════╗
+         ║         on_new_config() CALLED                ║
+         ╚═══════════════════════════════════════════════╝
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 1: Copy cmd (ensure it's array) │
+         └──────────────────────────────────────┘
+         new_config.cmd = { unpack(new_config.cmd or {}) }
+
+         BEFORE: { "OmniSharp" }
+         AFTER:  { "OmniSharp" }  (same, just the binary name)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 2: Append hard-coded LSP args   │
+         └──────────────────────────────────────┘
+
+         RESULT:
+         { "OmniSharp", "-z", "--hostPID", "12345",
+           "DotNet:enablePackageRestore=false", "--encoding", "utf-8",
+           "--languageserver" }
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 3: Flatten settings to cmd      │
+         └──────────────────────────────────────┘
+
+         RESULT:
+         { "OmniSharp", "-z", "--hostPID", "12345",
+           "DotNet:enablePackageRestore=false", "--encoding", "utf-8",
+           "--languageserver", "RoslynExtensionsOptions:EnableAnalyzersSupport=true" }
+                              ↓
+                  vim.fn.jobstart(final_cmd)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │  Shell looks for "OmniSharp" in PATH │
+         │  Found via Mason: ~/.../mason/bin/   │
+         │  Symlinks to actual binary           │
+         └──────────────────────────────────────┘
+                              ↓
+         ┌──────────────────────────────────────┐
+         │  OmniSharp Process Spawned With:     │
+         │  OmniSharp -z --hostPID 12345        │
+         │    DotNet:enablePackageRestore=false │
+         │    --encoding utf-8--languageserver │
+         │    RoslynExtensionsOptions:...=true  │
+         │                                      │
+         │  PROBLEM: No solution path (-s)!     │
+         │  Might not find .sln file correctly! │
+         └──────────────────────────────────────┘
+                              ⚠️
+           Settings maybe applied, but LSP might
+           fail to load solution/projects
+
+
+SCENARIO 3: cmd is nil (WORST CASE)
+================================================================================
+
+(Hypothetically if something goes wrong and cmd becomes nil)
+
+User Configuration:
+new_config.cmd = nil  (somehow)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 1: Copy cmd (ensure it's array) │
+         └──────────────────────────────────────┘
+         new_config.cmd = { unpack(new_config.cmd or {}) }
+
+         Evaluation:
+         new_config.cmd is nil
+         nil or {} → evaluates to {}
+         unpack({}) → zero elements
+         { } → empty array
+
+         RESULT:
+         new_config.cmd = {}  (empty array, NOT nil)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 2: Append hard-coded LSP args   │
+         └──────────────────────────────────────┘
+
+         RESULT:
+         { "-z", "--hostPID", "12345",
+           "DotNet:enablePackageRestore=false", "--encoding", "utf-8",
+           "--languageserver" }
+                              ↓
+         ┌──────────────────────────────────────┐
+         │ STEP 3: Flatten settings to cmd      │
+         └──────────────────────────────────────┘
+
+         RESULT:
+         { "-z", "--hostPID", "12345",
+           "DotNet:enablePackageRestore=false", "--encoding", "utf-8",
+           "--languageserver", "RoslynExtensionsOptions:EnableAnalyzersSupport=true" }
+                              ↓
+                  vim.fn.jobstart(final_cmd)
+                              ↓
+         ┌──────────────────────────────────────┐
+         │  Shell tries to execute: "-z"        │
+         │                                      │
+         │  ERROR: "-z" is not a valid command! │
+         │  LSP process FAILS TO START          │
+         │  :LspInfo shows "Not Running"        │
+         └──────────────────────────────────────┘
+                              ❌
+              Settings completely broken!
+              No LSP at all!
+
+
+SCENARIO 4: Mason Installing OmniSharp (HOW IT FITS)
+================================================================================
+
+Mason Installation Process:
+┌─────────────────────────────────────────────────────────────┐
+│ 1. User runs: :Mason                                        │
+│ 2. Find "omnisharp" package                                │
+│ 3. Press 'i' to install                                    │
+│ 4. Mason downloads from GitHub releases                    │
+│ 5. Extracts to: ~/.local/share/nvim/mason/packages/omnisharp/
+│                                                             │
+│ Result directory structure:                                │
+│ ~/.local/share/nvim/mason/                                │
+│ ├── bin/                                                   │
+│ │   └── OmniSharp → ../packages/omnisharp/bin/OmniSharp   │
+│ └── packages/                                             │
+│     └── omnisharp/                                       │
+│         ├── libexec/OmniSharp.dll  ← Actual executable   │
+│         └── bin/OmniSharp           ← Wrapper script    │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+      Mason adds ~/.local/share/nvim/mason/bin/ to PATH
+                              ↓
+         Now "OmniSharp" is findable in PATH
+                              ↓
+         ╔═══════════════════════════════════════════════╗
+         ║   But Mason does NOT:                         ║
+         ║   - Override user's cmd configuration         ║
+         ║   - Inject wrapper scripts with settings      ║
+         ║   - Modify on_new_config function            ║
+         ║                                               ║
+         ║   Mason ONLY:                                 ║
+         ║   - Installs binary                           ║
+         ║   - Makes it findable in PATH                 ║
+         ╚═══════════════════════════════════════════════╝
+                              ↓
+      User Config Still Controls Everything
+      (cmd, settings, on_new_config behavior)
+
+
+CONFIG MERGE ORDER
+================================================================================
+
+Priority (highest to lowest):
+
+1. Explicit omnisharp.setup() call   ← User's explicit setup() has highest priority
+2. User-defined servers.omnisharp    ← If user provides config table
+3. mason-lspconfig handler           ← Default handler if omnisharp in servers
+4. default_config from omnisharp.lua ← Fallback default config
+
+Example:
+
+┌─────────────────────────────────────────────────────────────┐
+│ if servers.omnisharp then   ← Check this first           │
+│   -- Priority 2: Use this if present                       │
+│ else                                                        │
+│   -- Priority 3: Use handler default                       │
+│   -- Priority 4: Use omnisharp.lua default_config          │
+│ end                                                         │
+└─────────────────────────────────────────────────────────────┘
+
+
+CRITICAL ISSUE: SCOPE PROBLEM IN CLAUDE.md
+================================================================================
+
+The documented issue was:
+
+```lua
+local servers = {  ← Local scope starts here
+  omnisharp = { cmd = {...}, settings = {...} }
+}
+
+require('mason-lspconfig').setup {
+  handlers = {
+    function(server_name)
+      local server = servers[server_name]  ← servers IN SCOPE here ✅
+      require('lspconfig')[server_name].setup(server)
+    end,
+  },
+}
+                    ← Local scope ends here
+
+-- If omnisharp setup attempted outside local scope:
+if servers.omnisharp then  ← servers NOT IN SCOPE here ❌
+  -- This won't work!
+end
+```
+
+Solution: Perform omnisharp setup inside the local scope.
+
+
+KEY TAKEAWAY FLOWCHART
+================================================================================
+
+                         Start Neovim
+                              │
+                              ↓
+                    Does user provide cmd?
+                         /         \
+                       YES          NO
+                      /              \
+                     ↓                ↓
+            Use user's cmd       Use default
+                                { "OmniSharp" }
+                      \              /
+                       \            /
+                        ↓          ↓
+                    on_new_config runs
+                              │
+                              ↓
+            Appends hard-coded args + flattened settings
+                              │
+                              ↓
+                  Final command ready
+                              │
+                              ↓
+              vim.fn.jobstart(final_cmd)
+                              │
+                              ↓
+                    OmniSharp process starts
+                              │
+                              ↓
+                  Settings applied? → Depends on:
+                    - Binary found? (PATH, Mason)
+                    - cmd has proper args? (on_new_config)
+                    - Settings properly nested? (flatten())
+                    - Root directory detected? (root_dir)
+
+================================================================================

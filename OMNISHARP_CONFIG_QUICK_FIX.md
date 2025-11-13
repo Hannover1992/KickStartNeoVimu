@@ -1,250 +1,180 @@
-# OmniSharp Configuration Quick Fix
+# OmniSharp Configuration Quick Fix Guide
 
-## TL;DR - Copy-Paste Solution
+## TL;DR - The Problem
 
-Replace your current `omnisharp` configuration in `init.lua` with this:
+When you configure OmniSharp in the `servers` table and pass it to mason-lspconfig's default handler, **your configuration is ignored** because mason-lspconfig v2.0+ automatically calls `vim.lsp.enable()` which pre-configures the server with Mason's default wrapper cmd.
+
+## The Fix (One of Two Options)
+
+### Option 1: Skip OmniSharp in Default Handler (Recommended)
 
 ```lua
-omnisharp = {
-  cmd = {
-    'dotnet',
-    vim.fn.expand('~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll')
-  },
-  settings = {
-    RoslynExtensionsOptions = {
-      EnableAnalyzersSupport = true,
+local servers = {
+  omnisharp = {
+    cmd = {
+      'dotnet',
+      vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll',
+      '-s', vim.fn.expand('/path/to/your/solution'),
+      '-loglevel', 'Information',
+    },
+    settings = {
+      RoslynExtensionsOptions = {
+        EnableAnalyzersSupport = true,
+        EnableImportCompletion = true,
+        AnalyzeOpenDocumentsOnly = false,
+      },
+      FormattingOptions = {
+        EnableEditorConfigSupport = true,
+        OrganizeImports = true,
+      },
     },
   },
+  -- ... other servers
+}
+
+require('mason-lspconfig').setup {
   handlers = {
-    ['window/logMessage'] = function(err, result, ctx, config)
-      vim.notify('[OmniSharp] ' .. result.message, vim.log.levels.INFO)
+    -- Default handler for all servers EXCEPT omnisharp
+    function(server_name)
+      if server_name == 'omnisharp' then
+        return  -- Skip - we'll configure it manually
+      end
+      local server = servers[server_name] or {}
+      server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+      require('lspconfig')[server_name].setup(server)
     end,
   },
-},
+}
+
+-- Explicit OmniSharp setup AFTER mason-lspconfig
+if servers.omnisharp then
+  local omnisharp_config = vim.deepcopy(servers.omnisharp)
+  omnisharp_config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, omnisharp_config.capabilities or {})
+  require('lspconfig').omnisharp.setup(omnisharp_config)
+end
 ```
 
-## Why This Works
-
-### What Changed
-
-| Old (Wrong) | New (Correct) | Reason |
-|-------------|---------------|--------|
-| `cmd = { '~/.local/.../bin/OmniSharp' }` | `cmd = { 'dotnet', '~/.../OmniSharp.dll' }` | Direct invocation is cleaner |
-| `enable_roslyn_analyzers = true` | `settings = { RoslynExtensionsOptions = { EnableAnalyzersSupport = true } }` | Correct LSP setting name |
-| `organize_imports_on_format = true` | *(removed)* | Not an OmniSharp setting |
-| `enable_import_completion = true` | *(removed)* | Not an OmniSharp setting |
-| `handlers = { ... }` | `handlers = { ... }` | ✅ Kept (optional logging) |
-
-## Step-by-Step Fix
-
-### 1. Find Your OmniSharp Config
-Open `init.lua` and search for `omnisharp`:
-```vim
-/omnisharp
-```
-
-Should find something like this around line 1050-1060:
-```lua
-omnisharp = {
-  cmd = { vim.fn.expand('~/.local/share/nvim/mason/bin/OmniSharp') },
-  enable_roslyn_analyzers = true,
-  -- ... etc
-},
-```
-
-### 2. Replace Entire Block
-Delete the current `omnisharp = { ... },` block and paste the corrected version:
+### Option 2: Disable automatic_enable Globally
 
 ```lua
-omnisharp = {
-  cmd = {
-    'dotnet',
-    vim.fn.expand('~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll')
-  },
-  settings = {
-    RoslynExtensionsOptions = {
-      EnableAnalyzersSupport = true,
-    },
-  },
+require('mason-lspconfig').setup {
+  automatic_enable = false,  -- Disable vim.lsp.enable() for ALL servers
   handlers = {
-    ['window/logMessage'] = function(err, result, ctx, config)
-      vim.notify('[OmniSharp] ' .. result.message, vim.log.levels.INFO)
+    function(server_name)
+      local server = servers[server_name] or {}
+      server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+      require('lspconfig')[server_name].setup(server)
     end,
-  },
-},
-```
-
-### 3. Save and Restart
-```vim
-:w                  " Save init.lua
-:qa!                " Quit Neovim
-```
-
-### 4. Test in C# Project
-```bash
-cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend
-nvim VDEK.DCSP.WebHost/Controllers/UserController.cs
-```
-
-### 5. Verify LSP Attached
-```vim
-:LspInfo
-```
-
-Should show:
-```
-Client: omnisharp (id: 1, bufnr: [1])
-  root_dir: /mnt/c/.../DCSRE/Sources/Backend
-  ...
-```
-
-### 6. Test Features
-- `gd` on a method → Go to Definition ✅
-- `K` on a class → Hover Documentation ✅
-- `<leader>ca` → Code Actions ✅
-- `grr` on a symbol → Find References ✅
-
-## Troubleshooting
-
-### If OmniSharp Still Doesn't Attach
-
-**1. Kill existing processes:**
-```bash
-pkill -f omnisharp
-```
-
-**2. Clean NuGet cache (WSL2 cross-filesystem issue):**
-```bash
-cd /mnt/c/.../DCSRE/Sources/Backend
-dotnet restore --force-evaluate --no-cache
-```
-
-**3. Restart Neovim:**
-```bash
-nvim VDEK.DCSP.WebHost/Controllers/UserController.cs
-```
-
-**4. Check logs:**
-```vim
-:LspLog
-```
-
-### If DLL Path Doesn't Exist
-
-**Install OmniSharp via Mason:**
-```vim
-:Mason
-# Navigate to omnisharp
-# Press 'i' to install
-# Wait for installation
-# Restart Neovim
-```
-
-**Verify installation:**
-```bash
-ls ~/.local/share/nvim/mason/packages/omnisharp/libexec/OmniSharp.dll
-```
-
-### If dotnet Not Found
-
-**Install .NET SDK:**
-- Windows: https://dotnet.microsoft.com/download
-- WSL2: `sudo apt install dotnet-sdk-9.0`
-
-**Verify:**
-```bash
-dotnet --version
-```
-
-## What You Removed (and Why It's OK)
-
-### `enable_roslyn_analyzers = true`
-**Why removed:** This is NOT a valid OmniSharp LSP setting. The correct setting is:
-```lua
-settings = {
-  RoslynExtensionsOptions = {
-    EnableAnalyzersSupport = true,  -- This is the real setting
   },
 }
 ```
 
-### `organize_imports_on_format = true`
-**Why removed:** This is NOT an OmniSharp setting. Import organization is handled by:
-- EditorConfig rules in your project
-- StyleCop analyzers
-- Format-on-save (already configured with conform.nvim)
+**Trade-off:** This disables automatic enabling for ALL servers, so you must configure every server explicitly.
 
-### `enable_import_completion = true`
-**Why removed:** This is NOT an OmniSharp setting. Import completion is automatically provided by:
-- OmniSharp's built-in completion engine
-- nvim-cmp integration
+## Verification
 
-**Bottom line:** These settings did nothing. Removing them doesn't reduce functionality.
+### 1. Check `:LspInfo` in Neovim
 
-## What You Kept (and Why)
-
-### `handlers['window/logMessage']`
-**Kept because:** Optional but useful for debugging. Shows OmniSharp log messages in Neovim notifications.
-
-**Example output:**
+**Before fix:**
 ```
-[OmniSharp] Loaded project: VDEK.DCSP.WebHost
-[OmniSharp] Found 42 references
+Client: omnisharp (id: 1)
+  cmd: { "OmniSharp", "-z", "--hostPID", "12648", ... }
+  settings: {
+    RoslynExtensionsOptions = {}  ← EMPTY!
+  }
 ```
 
-**To disable:** Simply remove the `handlers` section.
+**After fix:**
+```
+Client: omnisharp (id: 1)
+  cmd: { "dotnet", "/home/.../.../OmniSharp.dll", "-s", "/mnt/c/.../Backend", "-loglevel", "Information", ... }
+  settings: {
+    RoslynExtensionsOptions = {
+      EnableAnalyzersSupport = true,
+      EnableImportCompletion = true,
+      AnalyzeOpenDocumentsOnly = false
+    }
+  }
+```
 
-## Expected Behavior After Fix
+### 2. Check Running Process
 
-### When Opening C# File
+```bash
+ps aux | grep omnisharp | grep -v grep
+```
 
-1. **Status line shows:** `OmniSharp` (LSP client name)
-2. **`:LspInfo` shows:** Client attached with correct root_dir
-3. **Diagnostics appear:** Red/yellow underlines for errors/warnings
-4. **Completion works:** Start typing → suggestions appear
-5. **Navigation works:** `gd`, `grr`, `K` all function correctly
+**Before fix:**
+```
+dotnet /.../OmniSharp.dll -z --hostPID 12648 ...
+```
+- ❌ No `-s` (solution path)
+- ❌ No `RoslynExtensionsOptions:EnableAnalyzersSupport=true`
 
-### First Load (May Take 10-30 Seconds)
+**After fix:**
+```
+dotnet /.../OmniSharp.dll -s /mnt/c/.../Backend -loglevel Information -z --hostPID 19758 ... RoslynExtensionsOptions:EnableAnalyzersSupport=true ...
+```
+- ✅ `-s /mnt/c/.../Backend` present
+- ✅ `RoslynExtensionsOptions:EnableAnalyzersSupport=true` present
 
-OmniSharp needs to:
-- Find solution file (`.sln`)
-- Load all projects
-- Restore NuGet packages (if needed)
-- Build Roslyn workspace
-- Enable analyzers
+## Common Pitfalls
 
-**Be patient!** Subsequent loads are much faster (cached).
+### 1. Lua Bytecode Cache
 
-## Verification Checklist
+**Problem:** Neovim caches compiled Lua files. Changes to init.lua may not apply.
 
-After applying the fix, verify:
+**Fix:**
+```bash
+rm -rf ~/.cache/nvim/luac/
+```
 
-- [ ] `:LspInfo` shows `omnisharp` attached
-- [ ] `gd` on a method jumps to definition
-- [ ] `K` on a class shows documentation
-- [ ] `<leader>ca` shows code actions
-- [ ] `grr` on a symbol finds references
-- [ ] Diagnostics appear (red/yellow underlines)
-- [ ] Auto-completion works (start typing)
-- [ ] Format on save works (`:w` formats code)
+### 2. Multiple OmniSharp Processes
 
-## Summary
+**Problem:** Old OmniSharp processes with old configuration still running.
 
-**Problem:** OmniSharp configuration used incorrect cmd format and invalid settings.
+**Fix:**
+```bash
+pkill -f omnisharp
+```
 
-**Solution:** Use direct `dotnet` + DLL invocation with correct LSP settings structure.
+### 3. Calling setup() Twice
 
-**Result:** OmniSharp attaches properly, all LSP features work.
+**Problem:** `lspconfig[server].setup()` can only be called once per server. Second calls are ignored.
 
-**Files:**
-- Configuration to apply: (copy-paste block above)
-- Test script: `test_omnisharp_config.lua`
-- Full explanation: `TEST_OMNISHARP_EXPLANATION.md`
-- Test results: `TEST_RESULTS.md`
-- Research details: `OMNISHARP_CMD_PARAMETER_ANALYSIS.md`
+**Fix:** Use the skip pattern (Option 1 above) to ensure setup is only called once.
 
-**Time to fix:** < 5 minutes (edit, save, restart, test)
+### 4. Settings with nil Values
 
----
+**Problem:** nvim-lspconfig's default_config has settings like `EnableAnalyzersSupport = nil`. nil values don't get flattened into command-line args.
 
-*Based on Phase 1 research findings and verified with minimal configuration test.*
+**Fix:** Explicitly set to `true` or `false` in your config:
+```lua
+settings = {
+  RoslynExtensionsOptions = {
+    EnableAnalyzersSupport = true,  -- NOT nil!
+  },
+}
+```
+
+## Why This Happens
+
+1. **mason-lspconfig v2.0+ (May 2025)** introduced `automatic_enable = true` by default
+2. **`vim.lsp.enable()`** pre-configures servers BEFORE your handler runs
+3. **OmniSharp gets default cmd** from Mason's wrapper: `~/.local/share/nvim/mason/bin/OmniSharp`
+4. **Your handler's setup() call is ignored** because server is already configured
+5. **Settings stay empty** because default_config uses `nil` values
+
+## When to Use Each Option
+
+| Scenario | Recommended Option |
+|----------|-------------------|
+| Only OmniSharp needs custom config | **Option 1** (Skip in handler) |
+| Multiple servers need custom config | **Option 1** (Skip those servers) |
+| All servers need custom config | **Option 2** (Disable automatic_enable) |
+| Using Neovim 0.11+ | Consider migrating to `vim.lsp.config()` |
+
+## Additional Resources
+
+- Full analysis: `MASON_LSPCONFIG_OMNISHARP_ANALYSIS.md`
+- Project documentation: `CLAUDE.md`
+- nvim-lspconfig omnisharp.lua: https://github.com/neovim/nvim-lspconfig/blob/master/lua/lspconfig/configs/omnisharp.lua
