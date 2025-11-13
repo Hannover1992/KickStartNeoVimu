@@ -741,9 +741,9 @@ require('lazy').setup({
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
-        ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
+        ensure_installed = vim.tbl_keys(servers or {}), -- Ensure all servers in the servers table are configured
         automatic_installation = false,
-        automatic_enable = false, -- CRITICAL: Disable auto-enable to allow custom handlers to configure servers
+        automatic_enable = { exclude = { 'omnisharp' } }, -- CRITICAL: Exclude OmniSharp from auto-enable to use custom config
         handlers = {
           function(server_name)
             local server = servers[server_name] or {}
