@@ -13,26 +13,50 @@ StyleCop analyzer warnings (SA1505, SA1508, etc.) were not appearing in Neovim, 
 - Warnings visible in `dotnet build` output
 - Go to Definition working
 
-## Solution (3 Steps)
+## Solution (4 Steps)
 
-### 1. Minimal init.lua Config
+### 1. Install omnisharp-extended Plugin
 
-**File**: `~/.config/nvim/init.lua` (or your init.lua location)
+**File**: `~/.config/nvim/init.lua` - Add to plugin list (around line 248):
 
-In the `servers` table, add just an **empty table** for OmniSharp:
+```lua
+require('lazy').setup({
+  -- ... other plugins ...
+
+  -- OmniSharp Extended - Handles metadata/decompiled source navigation
+  -- Fixes "Cursor position outside buffer" errors when using gd on framework symbols
+  {
+    'Hoffs/omnisharp-extended-lsp.nvim',
+    ft = 'cs', -- Load only for C# files
+  },
+
+  -- ... more plugins ...
+})
+```
+
+### 2. Configure OmniSharp with Extended Handlers
+
+**File**: `~/.config/nvim/init.lua` - In the `servers` table (around line 730):
 
 ```lua
 servers = {
   -- ... other servers ...
 
   -- OmniSharp C# LSP - Use defaults (will be configured via omnisharp.json)
-  omnisharp = {},
+  omnisharp = {
+    handlers = {
+      ['textDocument/definition'] = require('omnisharp_extended').definition_handler,
+      ['textDocument/typeDefinition'] = require('omnisharp_extended').type_definition_handler,
+      ['textDocument/references'] = require('omnisharp_extended').references_handler,
+      ['textDocument/implementation'] = require('omnisharp_extended').implementation_handler,
+    },
+  },
 }
 ```
 
-**That's it!** Just `omnisharp = {}` - no cmd, no settings, no overrides!
+**This fixes the "Cursor position outside buffer" error when using `gd` (go to definition) on .NET Framework symbols!**
 
-### 2. Create omnisharp.json
+### 3. Create omnisharp.json
 
 **File**: `~/.omnisharp/omnisharp.json`
 
@@ -56,7 +80,7 @@ Create the file with these contents:
 }
 ```
 
-### 3. Restart Neovim
+### 4. Restart Neovim
 
 ```bash
 # Kill any running OmniSharp processes
@@ -66,7 +90,7 @@ pkill -f omnisharp
 nvim /path/to/your/project/Program.cs
 ```
 
-**Done!** StyleCop warnings should now appear inline! ✅
+**Done!** StyleCop warnings should now appear inline AND Go to Definition works perfectly! ✅
 
 ---
 
@@ -275,16 +299,17 @@ This fixes NuGet package cache issues between Windows and WSL2.
 
 ## Known Issues
 
-### Cursor Position Error (Non-Critical)
+### ✅ Cursor Position Error - FIXED!
 
-When jumping to decompiled sources (e.g., .NET framework code), you might see:
+**This error is now FIXED** by using omnisharp-extended-lsp.nvim handlers (Step 1 in solution)!
 
+The error used to be:
 ```
 Error executing vim.schedule lua callback:
 ...lua/vim/lsp/util.lua:951: Cursor position outside buffer
 ```
 
-**This is harmless!** It's a known Telescope + OmniSharp + Neovim 0.11 interaction issue when jumping to generated/decompiled code. Core functionality (warnings, go to definition, etc.) works fine.
+**Solution**: The omnisharp-extended plugin properly handles decompiled .NET Framework sources and metadata files. Go to Definition (`gd`) now works perfectly without errors!
 
 ### Deprecation Warning (Can Be Ignored)
 
@@ -308,12 +333,12 @@ The `require('lspconfig')` "framework" is deprecated
 
 ## Success Criteria
 
-- [x] StyleCop warnings appear inline in Neovim
-- [x] Go to definition works (`gd`)
-- [x] LSP client attaches automatically to .cs files
-- [x] No custom cmd/settings needed in init.lua
-- [x] Works with Neovim 0.11.4
-- [x] Configuration is simple and maintainable
+- [x] StyleCop warnings appear inline in Neovim ✅
+- [x] Go to definition works (`gd`) - even to .NET Framework decompiled sources! ✅
+- [x] No "Cursor position outside buffer" errors ✅
+- [x] LSP client attaches automatically to .cs files ✅
+- [x] Works with Neovim 0.11.4 ✅
+- [x] Configuration is simple and maintainable ✅
 
 ---
 
