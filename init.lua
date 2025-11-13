@@ -249,6 +249,13 @@ require('lazy').setup({
   -- NOTE: Plugins can be added with a link (or for a github repo: 'owner/repo' link).
   'NMAC427/guess-indent.nvim', -- Detect tabstop and shiftwidth automatically
 
+  -- OmniSharp Extended - Handles metadata/decompiled source navigation
+  -- Fixes "Cursor position outside buffer" errors when using gd on framework symbols
+  {
+    'Hoffs/omnisharp-extended-lsp.nvim',
+    ft = 'cs', -- Load only for C# files
+  },
+
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
   -- keys can be used to configure plugin behavior/loading/etc.
@@ -572,6 +579,27 @@ require('lazy').setup({
           --  the definition of its *type*, not where it was *defined*.
           map('grt', require('telescope.builtin').lsp_type_definitions, '[G]oto [T]ype Definition')
 
+          -- OmniSharp-specific overrides for metadata decompilation support
+          -- These override the default LSP handlers when attached to a C# file
+          -- Fixes "Cursor position outside buffer" errors when navigating to framework symbols
+          if vim.lsp.get_client_by_id(event.data.client_id).name == 'omnisharp' then
+            map('grd', function()
+              require('omnisharp_extended').lsp_definition()
+            end, '[G]oto [D]efinition (OmniSharp Extended)')
+
+            map('grr', function()
+              require('omnisharp_extended').lsp_references()
+            end, '[G]oto [R]eferences (OmniSharp Extended)')
+
+            map('gri', function()
+              require('omnisharp_extended').lsp_implementation()
+            end, '[G]oto [I]mplementation (OmniSharp Extended)')
+
+            map('grt', function()
+              require('omnisharp_extended').lsp_type_definition()
+            end, '[G]oto [T]ype Definition (OmniSharp Extended)')
+          end
+
           -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
           ---@param method vim.lsp.protocol.Method
@@ -699,26 +727,13 @@ require('lazy').setup({
           },
         },
 
-        -- OmniSharp (C# LSP) - Minimal configuration for Roslyn analyzers
+        -- OmniSharp C# LSP - Use defaults (will be configured via omnisharp.json)
         omnisharp = {
-          cmd = {
-            'dotnet',
-            vim.fn.stdpath('data') .. '/mason/packages/omnisharp/libexec/OmniSharp.dll',
-            '-s',
-            vim.fn.expand('/mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/cencoco/src'),
-            '-loglevel',
-            'Information',
-          },
-          settings = {
-            RoslynExtensionsOptions = {
-              EnableAnalyzersSupport = true,
-              EnableImportCompletion = true,
-              AnalyzeOpenDocumentsOnly = false,
-            },
-            FormattingOptions = {
-              EnableEditorConfigSupport = true,
-              OrganizeImports = true,
-            },
+          handlers = {
+            ['textDocument/definition'] = require('omnisharp_extended').definition_handler,
+            ['textDocument/typeDefinition'] = require('omnisharp_extended').type_definition_handler,
+            ['textDocument/references'] = require('omnisharp_extended').references_handler,
+            ['textDocument/implementation'] = require('omnisharp_extended').implementation_handler,
           },
         },
       }
@@ -743,20 +758,19 @@ require('lazy').setup({
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
-        ensure_installed = vim.tbl_keys(servers or {}), -- Ensure all servers in the servers table are installed
+        ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
         automatic_installation = false,
-        automatic_enable = false, -- v2.x: Disable auto-enable, we'll configure servers manually to use custom configs
+        handlers = {
+          function(server_name)
+            local server = servers[server_name] or {}
+            -- This handles overriding only values explicitly passed
+            -- by the server configuration above. Useful when disabling
+            -- certain features of an LSP (for example, turning off formatting for ts_ls)
+            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+            require('lspconfig')[server_name].setup(server)
+          end,
+        },
       }
-
-      -- Configure ALL servers from the servers table manually
-      -- Use nvim-lspconfig (compatible with Neovim 0.11+)
-      for server_name, server_config in pairs(servers) do
-        local config = vim.tbl_deep_extend('force', {}, server_config)
-        config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, config.capabilities or {})
-
-        -- Simple and reliable: use lspconfig.setup()
-        require('lspconfig')[server_name].setup(config)
-      end
     end,
   },
 
