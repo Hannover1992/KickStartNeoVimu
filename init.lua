@@ -271,6 +271,44 @@ require('lazy').setup({
     opts = {},
   },
 
+  -- Toggleterm - Terminal that toggles
+  {
+    'akinsho/toggleterm.nvim',
+    version = '*',
+    opts = {
+      size = 20, -- Height of terminal when horizontal
+      open_mapping = [[<leader>t]], -- Toggle with <leader>t
+      direction = 'horizontal', -- Open at bottom
+      shade_terminals = true,
+      shading_factor = 2,
+      start_in_insert = true, -- Start in insert mode
+      persist_size = true,
+      close_on_exit = true, -- Close terminal when process exits
+    },
+  },
+
+  -- nvim-notify - Beautiful notifications with animations
+  {
+    'rcarriga/nvim-notify',
+    config = function()
+      local notify = require('notify')
+      notify.setup({
+        stages = 'fade_in_slide_out', -- Animation style
+        timeout = 3000, -- Display time (ms)
+        background_colour = '#000000',
+        icons = {
+          ERROR = '',
+          WARN = '',
+          INFO = '',
+          DEBUG = '',
+          TRACE = '✎',
+        },
+      })
+      -- Set as default notify
+      vim.notify = notify
+    end,
+  },
+
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
   -- keys can be used to configure plugin behavior/loading/etc.
@@ -1079,6 +1117,74 @@ require('lazy').setup({
     },
   },
 })
+
+-- Custom keybindings for project-specific tasks
+-- Run Backend: Start ASP.NET Core backend with environment variables
+vim.keymap.set('n', '<leader>br', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local backend = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost && ASPNETCORE_URLS="https://localhost:5443;http://localhost:5080" ASPNETCORE_ENVIRONMENT=Development dotnet run --no-restore',
+    direction = 'horizontal',
+    close_on_exit = false, -- Keep terminal open after exit
+  })
+  backend:toggle()
+end, { desc = '[B]ackend [R]un (ASP.NET)' })
+
+-- Quickfix: Show only warnings in quickfix list
+vim.keymap.set('n', '<leader>qw', function()
+  vim.diagnostic.setqflist({ severity = vim.diagnostic.severity.WARN })
+  vim.cmd('copen')
+end, { desc = '[Q]uickfix [W]arnings only' })
+
+-- Helper function for git diff quickfix
+local function git_diff_to_quickfix(base_ref, description)
+  local handle = io.popen('git diff --name-status ' .. base_ref .. '..HEAD 2>/dev/null')
+  if not handle then
+    vim.notify('Git command failed - are you in a git repo?', vim.log.levels.ERROR)
+    return
+  end
+  local result = handle:read('*a')
+  handle:close()
+
+  -- Parse files into quickfix format with git status
+  local qf_list = {}
+  local status_map = {
+    M = 'Modified',
+    A = 'Added',
+    D = 'Deleted',
+    R = 'Renamed',
+    C = 'Copied',
+    U = 'Unmerged',
+  }
+
+  for line in result:gmatch('[^\r\n]+') do
+    local status, file = line:match('^(%S+)%s+(.+)$')
+    if status and file then
+      local status_text = status_map[status] or status
+      table.insert(qf_list, { filename = file, lnum = 1, text = status_text })
+    end
+  end
+
+  if #qf_list == 0 then
+    vim.notify('No changed files found (' .. description .. ')', vim.log.levels.INFO)
+    return
+  end
+
+  -- Set quickfix list and open
+  vim.fn.setqflist(qf_list)
+  vim.cmd('copen')
+  vim.notify(string.format('Found %d changed files (%s)', #qf_list, description), vim.log.levels.INFO)
+end
+
+-- Quickfix: Show dirty files in current branch (vs upstream)
+vim.keymap.set('n', '<leader>qd', function()
+  git_diff_to_quickfix('@{upstream}', 'vs upstream')
+end, { desc = '[Q]uickfix [d]irty files (vs upstream)' })
+
+-- Quickfix: Show changed files vs origin/develop
+vim.keymap.set('n', '<leader>qD', function()
+  git_diff_to_quickfix('origin/develop', 'vs origin/develop')
+end, { desc = '[Q]uickfix vs [D]evelop' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
