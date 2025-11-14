@@ -98,6 +98,9 @@ vim.g.have_nerd_font = false
 -- NOTE: You can change these options as you wish!
 --  For more options, you can see `:help option-list`
 
+-- Enable 24-bit RGB colors (True Color) - CRITICAL for themes!
+vim.o.termguicolors = true
+
 -- Make line numbers default
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
@@ -198,6 +201,10 @@ vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left wind
 vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
+
+-- Quick close window/buffer
+vim.keymap.set('n', '<leader>q', '<cmd>q<cr>', { desc = '[Q]uit/Close window' })
+vim.keymap.set('n', '<leader>bd', '<cmd>bd<cr>', { desc = '[B]uffer [D]elete' })
 
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
@@ -587,6 +594,7 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
       vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
+      vim.keymap.set('n', '<leader>sc', builtin.colorscheme, { desc = '[S]earch [C]olorscheme (live preview)' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
       vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
       vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
@@ -1080,26 +1088,52 @@ require('lazy').setup({
     },
   },
 
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  -- Tokyonight colorscheme
+  {
     'folke/tokyonight.nvim',
-    priority = 1000, -- Make sure to load this before all the other start plugins.
+    priority = 1000,
     config = function()
-      ---@diagnostic disable-next-line: missing-fields
       require('tokyonight').setup {
+        style = 'night', -- night, storm, day, moon
         styles = {
-          comments = { italic = false }, -- Disable italics in comments
+          comments = { italic = false },
         },
       }
-
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+      -- Load tokyonight as default
       vim.cmd.colorscheme 'tokyonight-night'
     end,
+  },
+
+  { -- Catppuccin colorscheme - Beautiful pastel theme with great diff colors
+    'catppuccin/nvim',
+    name = 'catppuccin',
+    priority = 1000,
+    opts = {
+      flavour = 'mocha', -- latte, frappe, macchiato, mocha (mocha = darkest)
+      transparent_background = false,
+      styles = {
+        comments = { 'italic' },
+        conditionals = {},
+      },
+      integrations = {
+        neogit = true,
+        diffview = true,
+        aerial = true,
+        treesitter = true,
+        notify = true,
+        which_key = true,
+        telescope = { enabled = true },
+        native_lsp = {
+          enabled = true,
+          underlines = {
+            errors = { 'undercurl' },
+            hints = { 'undercurl' },
+            warnings = { 'undercurl' },
+            information = { 'undercurl' },
+          },
+        },
+      },
+    },
   },
 
   -- Highlight todo, notes, etc in comments
@@ -1290,6 +1324,20 @@ vim.keymap.set('n', '<leader>Y', function()
   vim.fn.setreg('+', filepath)
   vim.notify('Copied: ' .. filepath, vim.log.levels.INFO)
 end, { desc = '[Y]ank filepath (relative)' })
+
+-- Open commit in TFS browser (reads commit hash from clipboard)
+vim.keymap.set('n', '<leader>rc', function()
+  local commit_hash = vim.fn.getreg('+'):gsub('%s+', '') -- Get from clipboard, trim whitespace
+  if commit_hash == '' then
+    vim.notify('Clipboard is empty!', vim.log.levels.ERROR)
+    return
+  end
+  local url = string.format('https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s', commit_hash)
+  -- Open in Chrome (Windows) via PowerShell - runs in background, non-blocking
+  local cmd = string.format([[powershell.exe -Command "Start-Process 'chrome.exe' -ArgumentList '--new-window', '%s'"]], url)
+  vim.fn.jobstart(cmd, { detach = true }) -- Run async, non-blocking
+  vim.notify('Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
+end, { desc = '[R]un [C]ommit (open in TFS browser)' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
