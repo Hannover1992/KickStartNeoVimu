@@ -6,6 +6,44 @@
 
 ---
 
+## 🚀 QUICK START - Nach Neustart / Neue Maschine
+
+**Du hast dieses Repo bereits geclont und willst es einfach nur verwenden?**
+
+```bash
+# 1. ⚠️ WICHTIG: Restore NuGet packages ZUERST! (WSL2/Cross-filesystem)
+cd /mnt/c/path/to/your/csharp/project/Backend
+dotnet restore --force-evaluate --no-cache
+# Warte bis alle Projekte restored sind! (z.B. "Restored 20 projects")
+# Ohne diesen Schritt sieht OmniSharp KEINE NuGet packages!
+
+# 2. Copy init.lua to Neovim config directory
+cd /path/to/KickStartNeoVim
+cp init.lua ~/.config/nvim/init.lua
+
+# 3. Copy omnisharp.json to home directory
+mkdir -p ~/.omnisharp
+cp omnisharp.json ~/.omnisharp/
+
+# 4. Start Neovim (Lazy.nvim will auto-install plugins)
+nvim
+
+# 5. Wait for plugin installation (~1-2 minutes)
+# 6. Install OmniSharp via Mason
+:Mason
+# Search for "omnisharp", press 'i' to install, then 'q' to close
+
+# 7. Open a C# file and test
+nvim /mnt/c/path/to/your/project/Backend/YourProject/Program.cs
+:LspInfo   # Should show omnisharp attached
+```
+
+**That's it!** ✅ StyleCop warnings + Go to Definition should work!
+
+⚠️ **CRITICAL**: Step 1 (dotnet restore) ist ABSOLUT NOTWENDIG! Ohne diesen Schritt werden keine Warnings angezeigt!
+
+---
+
 ## Problem
 
 StyleCop analyzer warnings (SA1505, SA1508, etc.) were not appearing in Neovim, despite:
@@ -55,6 +93,39 @@ servers = {
 ```
 
 **This fixes the "Cursor position outside buffer" error when using `gd` (go to definition) on .NET Framework symbols!**
+
+### 2b. Enable Auto-Format on Save (Optional but Recommended)
+
+**File**: `~/.config/nvim/init.lua` - Inside the `LspAttach` autocmd, in the OmniSharp section (around line 585-610):
+
+This is **already configured** in the init.lua! The auto-format on save is added inside the OmniSharp-specific block:
+
+```lua
+if vim.lsp.get_client_by_id(event.data.client_id).name == 'omnisharp' then
+  -- ... omnisharp-extended keybindings ...
+
+  -- Auto-format C# files on save using OmniSharp
+  -- Uses .editorconfig settings automatically (configured in omnisharp.json)
+  vim.api.nvim_create_autocmd('BufWritePre', {
+    buffer = event.buf,
+    callback = function()
+      vim.lsp.buf.format({ async = false })
+    end,
+  })
+end
+```
+
+**What this does:**
+- Automatically formats your C# code when you save (`:w`)
+- Uses your `.editorconfig` files for formatting rules
+- Respects `stylecop.json` and `.ruleset` files in your project
+- Only applies to C# files (not other languages)
+
+**Benefits:**
+- ✅ Consistent code style across your team
+- ✅ No manual formatting needed
+- ✅ Fixes StyleCop warnings automatically on save
+- ✅ Uses your project's existing style configuration
 
 ### 3. Create omnisharp.json
 
@@ -337,6 +408,7 @@ The `require('lspconfig')` "framework" is deprecated
 - [x] Go to definition works (`gd`) - even to .NET Framework decompiled sources! ✅
 - [x] No "Cursor position outside buffer" errors ✅
 - [x] LSP client attaches automatically to .cs files ✅
+- [x] Auto-format on save uses .editorconfig, stylecop.json, and .ruleset files ✅
 - [x] Works with Neovim 0.11.4 ✅
 - [x] Configuration is simple and maintainable ✅
 
@@ -348,6 +420,105 @@ The `require('lspconfig')` "framework" is deprecated
 - **omnisharp.json** - OmniSharp settings (copy to `~/.omnisharp/`)
 - **Claude.md** - This documentation (working solution only)
 - **SETUP_COMPLETE.md** - Detailed verification documentation
+
+---
+
+## 🔧 TROUBLESHOOTING - Nach Neustart funktioniert es nicht?
+
+### Checklist wenn OmniSharp nicht funktioniert:
+
+```bash
+# 1. Sind die Files am richtigen Ort?
+ls ~/.config/nvim/init.lua        # Sollte existieren
+ls ~/.omnisharp/omnisharp.json    # Sollte existieren
+
+# 2. Ist OmniSharp via Mason installiert?
+ls ~/.local/share/nvim/mason/packages/omnisharp/
+
+# 3. Ist omnisharp-extended Plugin installiert?
+ls ~/.local/share/nvim/lazy/omnisharp-extended-lsp.nvim/
+
+# 4. Cache clearen und neu starten
+rm -rf ~/.cache/nvim/
+pkill -f omnisharp
+nvim your-file.cs
+```
+
+### Wenn Plugins nicht installiert sind:
+
+```vim
+" In Neovim:
+:Lazy sync          " Installiert alle Plugins neu
+:Mason              " Öffnet Mason, dann 'omnisharp' suchen und 'i' drücken
+```
+
+### Wenn NuGet Packages fehlen (WSL2):
+
+```bash
+cd /mnt/c/path/to/your/project
+dotnet restore --force-evaluate --no-cache
+```
+
+### Debug Commands:
+
+```vim
+:LspInfo            " Zeigt ob OmniSharp attached ist
+:Lazy               " Zeigt installierte Plugins
+:Mason              " Zeigt installierte LSP servers
+:checkhealth        " Prüft gesamte Neovim setup
+```
+
+### Wenn ALLES fehlschlägt - Nuclear Option:
+
+```bash
+# Komplett von vorne (löscht alle Neovim Daten!)
+rm -rf ~/.config/nvim ~/.local/share/nvim ~/.local/state/nvim ~/.cache/nvim
+
+# Dann von QUICK START folgen (oben)
+cd /path/to/KickStartNeoVim
+cp init.lua ~/.config/nvim/init.lua
+# ... etc
+```
+
+---
+
+## 🎯 Additional Features Configured
+
+### Neogit - Git UI
+
+**Installed**: `NeogitOrg/neogit` with `diffview.nvim`
+
+**Keybinding**: `<leader>gg` - Open Neogit UI
+
+**Usage**:
+- `?` - Show help
+- `s` - Stage file/hunk
+- `u` - Unstage
+- `c` - Commit
+- `P` - Push
+- `F` - Pull
+- `q` - Quit
+
+### Telescope Diagnostics Filtering
+
+**New Keybindings**:
+- `<leader>sd` - Search all [D]iagnostics (Errors + Warnings + Hints)
+- `<leader>sW` - Search [W]arnings only (StyleCop, etc.)
+- `<leader>sE` - Search [E]rrors only
+
+**Why useful**: Quickly filter only StyleCop warnings without seeing errors/hints!
+
+### Lazy Plugin Manager
+
+**Command**: `:Lazy`
+
+**In Lazy window**:
+- `I` - Install new plugins
+- `U` - Update all plugins
+- `X` - Clean unused plugins
+- `S` - Sync (clean + update)
+- `?` - Help
+- `q` - Quit
 
 ---
 

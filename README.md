@@ -1,176 +1,168 @@
-# Neovim Kickstart Configuration for DCSRE Project
+# OmniSharp + StyleCop Warnings in Neovim 0.11
 
-A customized Neovim configuration based on kickstart.nvim, optimized for full-stack development with Angular/TypeScript frontend and C#/.NET backend.
+✅ **VERIFIED WORKING** - StyleCop warnings + Go to Definition mit OmniSharp in Neovim 0.11.4
 
-## Tech Stack Support
-- **Frontend**: Angular 18.2.9, TypeScript 5.5.4, NgRx, Jest, Cypress
-- **Backend**: .NET 8.0.400, C#, xUnit
-- **Tools**: Docker, YAML, HTML, CSS, JSON
+---
 
-## Installation Steps
+## ⚡ Quick Start (3 Minuten)
 
-### 1. Install Neovim (0.10+ required)
 ```bash
-# Download latest Neovim
-wget https://github.com/neovim/neovim/releases/download/v0.11.4/nvim-linux64.tar.gz
-tar xf nvim-linux64.tar.gz
-sudo mv nvim-linux64 /opt/
-sudo ln -sf /opt/nvim-linux64/bin/nvim /usr/local/bin/nvim
-```
+# 1. ⚠️ KRITISCH: NuGet packages restoren! (OHNE DIESEN SCHRITT GEHT NICHTS!)
+cd /mnt/c/path/to/your/csharp/project/Backend
+dotnet restore --force-evaluate --no-cache
+# Warte bis ALLE Projekte restored sind!
 
-### 2. Install .NET SDK
-```bash
-# Download and install .NET SDK 8.0
-wget https://dot.net/v1/dotnet-install.sh
-chmod +x dotnet-install.sh
-./dotnet-install.sh --channel 8.0
+# 2. Config Files kopieren
+cd /path/to/KickStartNeoVim
+cp init.lua ~/.config/nvim/init.lua
+mkdir -p ~/.omnisharp
+cp omnisharp.json ~/.omnisharp/
 
-# Add to PATH in ~/.bashrc
-echo 'export PATH="$HOME/.dotnet:$PATH"' >> ~/.bashrc
-echo 'export DOTNET_ROOT="$HOME/.dotnet"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 3. Clone Configuration
-```bash
-cd ~/.config
-git clone https://github.com/yourusername/nvim-config nvim
-```
-
-### 4. First Launch
-```bash
-# Open Neovim - plugins will auto-install
+# 3. Neovim starten und OmniSharp installieren
 nvim
+:Mason  # 'omnisharp' suchen, 'i' drücken zum installieren
 
-# Wait for installation to complete
-# Restart Neovim when done
+# 4. C# File öffnen
+nvim /mnt/c/path/to/your/project/Program.cs
 ```
 
-### 5. Install LSP Servers
-Open Neovim and run:
-```vim
-:Mason
+**Fertig!** ✅ StyleCop warnings + Go to Definition funktionieren!
+
+---
+
+## 🚨 WICHTIG: `dotnet restore` ist ZWINGEND erforderlich!
+
+**Problem**: Wenn du in **WSL2** arbeitest und auf `/mnt/c/...` (Windows filesystem) zugreifst, hat OmniSharp **kein Zugriff auf NuGet packages** die in Windows restored wurden!
+
+**Lösung**: IMMER `dotnet restore --force-evaluate --no-cache` in WSL2 ausführen!
+
+**Wie du weißt dass es funktioniert hat:**
+```bash
+ps aux | grep dotnet
 ```
-Install the following servers:
-- `typescript-language-server`
-- `angular-language-server`
-- `omnisharp`
-- `html-lsp`
-- `css-lsp`
-- `json-lsp`
-- `yaml-language-server`
-- `dockerfile-language-server`
-- `docker-compose-language-service`
+Du solltest **mehrere** `dotnet` Prozesse sehen - einen für jedes Projekt in deiner Solution!
 
-## Key Features
+**Ohne diesen Schritt:**
+- ❌ Keine StyleCop warnings
+- ❌ OmniSharp kann Projekte nicht laden
+- ❌ Keine Roslyn analyzers
 
-### LSP Support
-- Full IntelliSense for C#, TypeScript, Angular
-- Go to Definition (`gd`)
-- Find References (`grr`)
-- Hover Documentation (`K`)
-- Code Actions (`<Space>ca`)
-- Rename Symbol (`<Space>rn`)
+**Mit diesem Schritt:**
+- ✅ StyleCop warnings erscheinen inline
+- ✅ Go to Definition funktioniert perfekt
+- ✅ OmniSharp attached automatisch
 
-### File Navigation
-- Find Files: `<Space>sf`
-- Search in Files: `<Space>sg`
-- Search Word: `<Space>sw`
-- File Explorer: `<Space>e`
+---
 
-### Code Refactoring
-- Format Document: `<Space>f`
-- Code Actions: `<Space>ca`
-- Rename: `<Space>rn`
-- Extract Method/Variable: via Code Actions
+## Was ist in diesem Repo?
 
-### Debugging
-- Debug Test: `<Space>dt`
-- Run Test: `<Space>tr`
-- Toggle Breakpoint: `<F5>`
-- Continue: `<F10>`
-- Step Over: `<F11>`
-- Step Into: `<F12>`
+### `init.lua`
+Fresh **kickstart.nvim** Setup mit:
+- OmniSharp LSP config (minimal - nur handlers!)
+- **omnisharp-extended-lsp.nvim** plugin (fixt "Cursor position outside buffer" errors)
+- Mason + Mason-LSPConfig für automatische Installation
 
-### Additional Plugins
-- **Telescope**: Fuzzy finder for files, grep, symbols
-- **Treesitter**: Advanced syntax highlighting
-- **DAP**: Debug Adapter Protocol for debugging
-- **Neotest**: Test runner integration
-- **Zen Mode**: Distraction-free coding
-- **Twilight**: Dims inactive code sections
-- **ToggleTerm**: Integrated terminal
+### `omnisharp.json`
+OmniSharp's **native config file** mit:
+- `EnableAnalyzersSupport = true` - **KRITISCH für StyleCop warnings!**
+- `EnableImportCompletion = true`
+- `AnalyzeOpenDocumentsOnly = false`
 
-## Project Structure
-```
-~/.config/nvim/
-├── init.lua          # Main configuration
-├── lua/
-│   └── custom/       # Custom configurations
-└── after/
-    └── plugin/       # Plugin-specific configs
-```
+Wird automatisch von OmniSharp gelesen aus `~/.omnisharp/omnisharp.json`
+
+### `Claude.md`
+Komplette Dokumentation:
+- Schritt-für-Schritt Anleitung
+- Erklärung warum es funktioniert
+- Troubleshooting Guide
+- Fresh Setup für neue Maschinen
+
+---
 
 ## Troubleshooting
 
-### OmniSharp Not Working
-1. Check installation: `:Mason` - ensure omnisharp is installed
-2. Kill stuck processes: `pkill -f omnisharp`
-3. Clear swap files: `rm ~/.local/state/nvim/swap/*.swp`
-4. Restart Neovim
+### Keine Warnings?
 
-### LSP Not Attaching
-1. Check LSP status: `:LspInfo`
-2. Restart LSP: `:LspRestart`
-3. Check logs: `:LspLog`
+1. **Hast du `dotnet restore` ausgeführt?** (Siehe oben!)
+2. **Ist OmniSharp attached?**
+   ```vim
+   :LspInfo
+   ```
+3. **Ist omnisharp-extended Plugin installiert?**
+   ```bash
+   ls ~/.local/share/nvim/lazy/omnisharp-extended-lsp.nvim/
+   ```
+4. **Cache clearen und neu starten:**
+   ```bash
+   rm -rf ~/.cache/nvim/
+   pkill -f omnisharp
+   nvim your-file.cs
+   ```
 
-### Performance Issues
-1. Disable unused plugins in init.lua
-2. Reduce Treesitter parsers
-3. Adjust completion settings
+### "Cursor position outside buffer" Error?
 
-## Keyboard Shortcuts Reference
+Das ist jetzt **GEFIXT** durch `omnisharp-extended-lsp.nvim` handlers! Wenn du den Error noch siehst:
 
-### General
-- Leader key: `<Space>`
-- Save: `<C-s>`
-- Quit: `:q`
-- Force Quit: `:q!`
+1. Check dass das Plugin installiert ist: `:Lazy`
+2. Check dass die handlers in `init.lua` konfiguriert sind (Zeile 732-737)
 
-### Navigation
-- File Explorer: `<Space>e`
-- Find Files: `<Space>sf`
-- Recent Files: `<Space>sr`
-- Buffers: `<Space>sb`
+### OmniSharp attached aber keine warnings?
 
-### Code Intelligence
-- Go to Definition: `gd`
-- Find References: `grr`
-- Hover: `K`
-- Code Actions: `<Space>ca`
-- Format: `<Space>f`
+**99% sicher: `dotnet restore` fehlt!**
 
-### Testing
-- Run Test: `<Space>tr`
-- Debug Test: `<Space>dt`
-- Run All Tests: `<Space>ta`
-
-## Working with DCSRE Project
-
-### Backend Development
 ```bash
-cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend
-nvim VDEK.DCSP.WebApi/Controllers/UserController.cs
+cd /mnt/c/path/to/your/project/Backend
+dotnet restore --force-evaluate --no-cache
 ```
 
-### Frontend Development
-```bash
-cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend
-nvim src/app/components/user/user.component.ts
+**Dann:**
+```vim
+:LspRestart
 ```
 
-## Contributing
-Feel free to customize the configuration to match your workflow!
+---
+
+## System Requirements
+
+- **Neovim**: v0.11.0 oder neuer
+- **.NET SDK**: 6.0 oder neuer
+- **OS**: Linux/WSL2 (tested on WSL2 Ubuntu)
+- **Mason**: Automatisch installiert via kickstart.nvim
+- **OmniSharp**: 1.39.14+ (installiert via Mason)
+
+---
+
+## Files in diesem Repo
+
+```
+.
+├── init.lua              # Neovim config (kickstart.nvim base)
+├── omnisharp.json        # OmniSharp settings (copy to ~/.omnisharp/)
+├── Claude.md             # Detaillierte Dokumentation
+├── README.md             # Diese Datei (Quick Start)
+└── SETUP_COMPLETE.md     # Verification log
+```
+
+---
+
+## Credits
+
+- **kickstart.nvim**: Base configuration
+- **OmniSharp**: C# Language Server
+- **omnisharp-extended-lsp.nvim**: Fixes decompiled source navigation
+- **Mason**: LSP installer
+- **nvim-lspconfig**: LSP configurations
+
+---
 
 ## License
-MIT
+
+Public Domain / Unlicense - Use freely!
+
+---
+
+**Last verified**: 2025-11-13
+**Neovim version**: v0.11.4
+**OmniSharp version**: 1.39.14
+
+✅ **100% WORKING** - StyleCop warnings + Go to Definition + No errors!
