@@ -287,6 +287,42 @@ require('lazy').setup({
     },
   },
 
+  -- undotree - Visualize undo history as a tree
+  {
+    'mbbill/undotree',
+    keys = {
+      { '<leader>u', '<cmd>UndotreeToggle<cr>', desc = '[U]ndo Tree' },
+    },
+  },
+
+  -- neo-tree - File explorer sidebar
+  {
+    'nvim-neo-tree/neo-tree.nvim',
+    branch = 'v3.x',
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'nvim-tree/nvim-web-devicons',
+      'MunifTanjim/nui.nvim',
+    },
+    cmd = 'Neotree',
+    keys = {
+      { '<leader>e', '<cmd>Neotree reveal<cr>', desc = '[E]xplorer Reveal (show current file)' },
+      { '<leader>E', '<cmd>Neotree toggle<cr>', desc = '[E]xplorer Toggle (on/off)' },
+    },
+    opts = {
+      filesystem = {
+        follow_current_file = {
+          enabled = true, -- Auto-reveal current file
+        },
+        hijack_netrw_behavior = 'open_current', -- Replace netrw
+      },
+      window = {
+        position = 'left',
+        width = 30,
+      },
+    },
+  },
+
   -- nvim-notify - Beautiful notifications with animations
   {
     'rcarriga/nvim-notify',
