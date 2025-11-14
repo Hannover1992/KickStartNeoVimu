@@ -267,6 +267,13 @@ require('lazy').setup({
     cmd = 'Neogit', -- lazy load on command
     keys = {
       { '<leader>gg', '<cmd>Neogit<cr>', desc = '[G]it Neogit UI' },
+      {
+        '<leader>gD',
+        function()
+          vim.cmd('DiffviewOpen origin/develop..HEAD')
+        end,
+        desc = '[G]it [D]iff vs develop',
+      },
     },
     opts = {},
   },
@@ -277,7 +284,7 @@ require('lazy').setup({
     version = '*',
     opts = {
       size = 20, -- Height of terminal when horizontal
-      open_mapping = [[<leader>t]], -- Toggle with <leader>t
+      open_mapping = [[<leader>T]], -- Toggle with <leader>T
       direction = 'horizontal', -- Open at bottom
       shade_terminals = true,
       shading_factor = 2,
@@ -319,6 +326,61 @@ require('lazy').setup({
       window = {
         position = 'left',
         width = 30,
+      },
+    },
+  },
+
+  -- aerial.nvim - Code outline sidebar (shows classes, methods, etc.)
+  {
+    'stevearc/aerial.nvim',
+    dependencies = {
+      'nvim-treesitter/nvim-treesitter',
+      'nvim-tree/nvim-web-devicons',
+    },
+    keys = {
+      { '<leader>o', '<cmd>AerialToggle<cr>', desc = '[O]utline Toggle (Code Structure)' },
+    },
+    opts = {
+      layout = {
+        default_direction = 'right',
+        min_width = 30,
+      },
+      on_attach = function(bufnr)
+        -- Jump forwards/backwards with '{' and '}'
+        vim.keymap.set('n', '{', '<cmd>AerialPrev<CR>', { buffer = bufnr })
+        vim.keymap.set('n', '}', '<cmd>AerialNext<CR>', { buffer = bufnr })
+      end,
+    },
+  },
+
+  -- twilight.nvim - Dims inactive portions of code
+  {
+    'folke/twilight.nvim',
+    opts = {
+      dimming = {
+        alpha = 0.25, -- Amount of dimming (higher = more dim)
+      },
+    },
+  },
+
+  -- zen-mode.nvim - Distraction-free coding (centers code, hides UI)
+  {
+    'folke/zen-mode.nvim',
+    keys = {
+      { '<leader>z', '<cmd>ZenMode<cr>', desc = '[Z]en Mode Toggle' },
+    },
+    opts = {
+      window = {
+        width = 120, -- Width of zen window
+        options = {
+          number = false, -- Hide line numbers
+          relativenumber = false,
+          signcolumn = 'no', -- Hide sign column
+          list = false, -- Hide whitespace chars
+        },
+      },
+      plugins = {
+        twilight = { enabled = true }, -- Enable twilight dimming
       },
     },
   },
@@ -1221,6 +1283,13 @@ end, { desc = '[Q]uickfix [d]irty files (vs upstream)' })
 vim.keymap.set('n', '<leader>qD', function()
   git_diff_to_quickfix('origin/develop', 'vs origin/develop')
 end, { desc = '[Q]uickfix vs [D]evelop' })
+
+-- Copy relative filepath to clipboard
+vim.keymap.set('n', '<leader>Y', function()
+  local filepath = vim.fn.expand('%')
+  vim.fn.setreg('+', filepath)
+  vim.notify('Copied: ' .. filepath, vim.log.levels.INFO)
+end, { desc = '[Y]ank filepath (relative)' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
