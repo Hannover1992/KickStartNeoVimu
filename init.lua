@@ -1388,6 +1388,13 @@ vim.keymap.set('n', '<leader>Y', function()
   vim.notify('Copied: ' .. filepath, vim.log.levels.INFO)
 end, { desc = '[Y]ank filepath (relative)' })
 
+-- Copy only filename (without path) to clipboard
+vim.keymap.set('n', '<leader>yn', function()
+  local filename = vim.fn.expand('%:t')
+  vim.fn.setreg('+', filename)
+  vim.notify('Copied filename: ' .. filename, vim.log.levels.INFO)
+end, { desc = '[Y]ank file[n]ame only' })
+
 -- Open commit in TFS browser (reads commit hash from clipboard)
 vim.keymap.set('n', '<leader>rc', function()
   local commit_hash = vim.fn.getreg('+'):gsub('%s+', '') -- Get from clipboard, trim whitespace
