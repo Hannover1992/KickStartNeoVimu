@@ -1382,11 +1382,11 @@ vim.keymap.set('n', '<leader>qM', function()
 end, { desc = '[Q]uickfix vs [M]ain (CENCOCD)' })
 
 -- Copy relative filepath to clipboard
-vim.keymap.set('n', '<leader>Y', function()
+vim.keymap.set('n', '<leader>yp', function()
   local filepath = vim.fn.expand('%')
   vim.fn.setreg('+', filepath)
-  vim.notify('Copied: ' .. filepath, vim.log.levels.INFO)
-end, { desc = '[Y]ank filepath (relative)' })
+  vim.notify('Copied path: ' .. filepath, vim.log.levels.INFO)
+end, { desc = '[Y]ank file[p]ath (relative)' })
 
 -- Copy only filename (without path) to clipboard
 vim.keymap.set('n', '<leader>yn', function()
