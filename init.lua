@@ -101,6 +101,9 @@ vim.g.have_nerd_font = false
 -- Enable 24-bit RGB colors (True Color) - CRITICAL for themes!
 vim.o.termguicolors = true
 
+-- Keep cursor centered vertically (8 lines from top/bottom)
+vim.o.scrolloff = 8
+
 -- Make line numbers default
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
@@ -213,6 +216,10 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 -- Quick close window/buffer
 vim.keymap.set('n', '<leader>q', '<cmd>q<cr>', { desc = '[Q]uit/Close window' })
 vim.keymap.set('n', '<leader>bd', '<cmd>bd<cr>', { desc = '[B]uffer [D]elete' })
+
+-- Center cursor after half-page jumps
+vim.keymap.set('n', '<C-d>', '<C-d>zz', { desc = 'Half page down + center' })
+vim.keymap.set('n', '<C-u>', '<C-u>zz', { desc = 'Half page up + center' })
 
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
