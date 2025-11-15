@@ -303,6 +303,7 @@ require('lazy').setup({
         end,
         desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
+      { '<leader>gdc', '<cmd>DiffviewClose<cr>', desc = '[G]it [D]iff [C]lose (all panels)' },
     },
     opts = {},
   },
