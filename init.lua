@@ -287,7 +287,14 @@ require('lazy').setup({
         function()
           vim.cmd('DiffviewOpen origin/develop..HEAD')
         end,
-        desc = '[G]it [D]iff vs develop',
+        desc = '[G]it [D]iff vs develop (DCSRE)',
+      },
+      {
+        '<leader>gM',
+        function()
+          vim.cmd('DiffviewOpen origin/main..HEAD')
+        end,
+        desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
     },
     opts = {},
@@ -1356,10 +1363,15 @@ vim.keymap.set('n', '<leader>qd', function()
   git_diff_to_quickfix('@{upstream}', 'vs upstream')
 end, { desc = '[Q]uickfix [d]irty files (vs upstream)' })
 
--- Quickfix: Show changed files vs origin/develop
+-- Quickfix: Show changed files vs origin/develop (DCSRE)
 vim.keymap.set('n', '<leader>qD', function()
   git_diff_to_quickfix('origin/develop', 'vs origin/develop')
-end, { desc = '[Q]uickfix vs [D]evelop' })
+end, { desc = '[Q]uickfix vs [D]evelop (DCSRE)' })
+
+-- Quickfix: Show changed files vs origin/main (CENCOCD)
+vim.keymap.set('n', '<leader>qM', function()
+  git_diff_to_quickfix('origin/main', 'vs origin/main')
+end, { desc = '[Q]uickfix vs [M]ain (CENCOCD)' })
 
 -- Copy relative filepath to clipboard
 vim.keymap.set('n', '<leader>Y', function()
