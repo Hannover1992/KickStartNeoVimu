@@ -1409,5 +1409,29 @@ vim.keymap.set('n', '<leader>rc', function()
   vim.notify('Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
 end, { desc = '[R]un [C]ommit (open in TFS browser)' })
 
+-- Git Push to DCSRE (Windows PowerShell)
+vim.keymap.set('n', '<leader>rp', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local push = Terminal:new({
+    cmd = [[powershell.exe -Command "cd C:\Users\Administrator\Documents\Work\Code2\DCSRE; git push; pause"]],
+    direction = 'horizontal',
+    close_on_exit = false, -- Keep terminal open to see output
+  })
+  push:toggle()
+  vim.notify('Git Push to DCSRE started...', vim.log.levels.INFO)
+end, { desc = '[R]un [P]ush (DCSRE Windows)' })
+
+-- Git Pull from DCSRE (Windows PowerShell)
+vim.keymap.set('n', '<leader>rP', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local pull = Terminal:new({
+    cmd = [[powershell.exe -Command "cd C:\Users\Administrator\Documents\Work\Code2\DCSRE; git pull; pause"]],
+    direction = 'horizontal',
+    close_on_exit = false, -- Keep terminal open to see output
+  })
+  pull:toggle()
+  vim.notify('Git Pull from DCSRE started...', vim.log.levels.INFO)
+end, { desc = '[R]un [P]ull (DCSRE Windows)' })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
