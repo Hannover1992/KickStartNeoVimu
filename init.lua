@@ -1309,16 +1309,29 @@ require('lazy').setup({
 })
 
 -- Custom keybindings for project-specific tasks
--- Run Backend: Start ASP.NET Core backend with environment variables
-vim.keymap.set('n', '<leader>br', function()
+-- Run Backend WebHost: Start ASP.NET Core backend (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rbw', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  local backend = Terminal:new({
+  local webhost = Terminal:new({
     cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost && ASPNETCORE_URLS="https://localhost:5443;http://localhost:5080" ASPNETCORE_ENVIRONMENT=Development dotnet run --no-restore',
     direction = 'horizontal',
     close_on_exit = false, -- Keep terminal open after exit
   })
-  backend:toggle()
-end, { desc = '[B]ackend [R]un (ASP.NET)' })
+  webhost:toggle()
+  vim.notify('Starting Backend WebHost (https://localhost:5443/swagger)...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [W]ebhost (DCSRE)' })
+
+-- Run Backend Setup: Execute FluentMigrator migrations (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rbs', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local setup = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend && dotnet run --project VDEK.DCSP.Setup',
+    direction = 'horizontal',
+    close_on_exit = false, -- Keep terminal open to see migration results
+  })
+  setup:toggle()
+  vim.notify('Running Backend Setup (Migrations)...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [S]etup (Migrations)' })
 
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
