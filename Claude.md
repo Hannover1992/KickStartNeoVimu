@@ -522,6 +522,198 @@ cp init.lua ~/.config/nvim/init.lua
 
 ---
 
+## 🎮 Keybindings Reference (DCSRE Project)
+
+### Backend Operations (Bash/WSL2)
+
+These commands run in WSL2/Bash for normal development workflow:
+
+**`<leader>rbw`** - **[R]un [B]ackend [W]ebhost**
+- Starts the ASP.NET Core WebHost API server
+- Runs on: `https://localhost:5443` (Swagger UI available at `/swagger`)
+- Project: `VDEK.DCSP.WebHost`
+- Environment: Development mode with auto-loaded environment variables
+- Uses: `dotnet run --no-restore`
+- Terminal: Opens in horizontal split via toggleterm
+
+**`<leader>rbs`** - **[R]un [B]ackend [S]etup (Migrations)**
+- Executes FluentMigrator database migrations
+- Creates/updates database schema
+- Project: `VDEK.DCSP.Setup`
+- Uses: `dotnet run --project VDEK.DCSP.Setup`
+- Terminal: Opens in horizontal split via toggleterm
+
+**Path**: `/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/`
+
+---
+
+### Frontend Operations (Bash/WSL2)
+
+These commands run in WSL2/Bash for frontend development:
+
+**`<leader>rfr`** - **[R]un [F]ront [R]un (dev server)**
+- Starts the Angular/NX development server
+- Runs on: `https://localhost:8443` (with SSL certificates)
+- Project: `app-standalone` (NX monorepo app)
+- Uses: `npm start` (which runs `nx serve app-standalone`)
+- Terminal: Opens in horizontal split via toggleterm
+
+**`<leader>rfb`** - **[R]un [F]ront [B]uild (production)**
+- Builds the Angular app for production
+- Creates optimized distribution in `dist/` folder
+- Project: `app-standalone`
+- Uses: `npm run build` (which runs `npx nx build app-standalone`)
+- Terminal: Opens in horizontal split via toggleterm
+
+**`<leader>rfi`** - **[R]un [F]ront [I]nstall (npm install)**
+- Installs/reinstalls all npm dependencies
+- Useful after git pulls or when package.json changes
+- Uses: `npm install`
+- Terminal: Opens in horizontal split via toggleterm
+
+**`<leader>rft`** - **[R]un [F]ront [T]est (jest)**
+- Executes Jest unit tests
+- Runs tests for all frontend apps and libraries
+- Uses: `npm test` (which runs `npx nx run-many --all --target=test`)
+- Terminal: Opens in horizontal split via toggleterm
+
+**Path**: `/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend/`
+
+---
+
+### Git Operations (PowerShell/Windows - VPN Access)
+
+**⚠️ IMPORTANT**: These commands run via PowerShell/Windows because VPN is **only accessible through the Windows system**. Git push/pull fail in WSL2/Linux due to network restrictions.
+
+**`<leader>rp`** - **[R]un [P]ush (DCSRE)**
+- Pushes commits to DCSRE remote repository
+- Uses: `powershell.exe -Command "git push"`
+- Path: `C:\Users\Administrator\Documents\Work\Code2\DCSRE`
+- Terminal: Opens in horizontal split with `pause` (keeps window open to see errors)
+
+**`<leader>rP`** - **[R]un [P]ull (DCSRE)**
+- Pulls latest changes from DCSRE remote repository
+- Uses: `powershell.exe -Command "git pull"`
+- Path: `C:\Users\Administrator\Documents\Work\Code2\DCSRE`
+- Terminal: Opens in horizontal split with `pause`
+
+**Why PowerShell?** The VPN connection required for DCSRE git operations is only available through the Windows network stack, not through WSL2. All other development tasks (building, running, testing) work normally in WSL2.
+
+---
+
+### TFS/Git Operations
+
+**`<leader>rc`** - **[R]un [C]ommit (open in TFS browser)**
+- Opens the commit hash from clipboard in Azure DevOps TFS browser
+- Pre-requisite: Copy commit hash to clipboard (e.g., via `yy` in Neogit commit view)
+- Opens in Chrome: `https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/{hash}`
+- Works in both WSL2 and Windows versions
+
+**`<leader>gg`** - **Open Neogit UI**
+- Interactive git interface for staging, committing, viewing diffs
+- See "Neogit - Git UI" section above for usage
+
+**`<leader>gf`** - **[G]it [F]ile history (diff)**
+- Opens Diffview with complete commit history for the current file
+- Shows all commits that modified this file with diffs
+- Navigate with `[c` / `]c` (previous/next commit)
+- Close with `<leader>gdc`
+
+**`<leader>gD`** - **[G]it [D]iff vs develop**
+- Opens Diffview comparing current branch with `origin/develop`
+- Shows all changed files in a diff panel
+- For DCSRE project workflow
+
+**`<leader>gM`** - **[G]it diff vs [M]ain**
+- Opens Diffview comparing current branch with `origin/main`
+- For CENCOCD project workflow
+
+**`<leader>gdc`** - **[G]it [D]iff [C]lose**
+- Closes all Diffview panels
+
+---
+
+### Clipboard Operations
+
+**`<leader>yp`** - **[Y]ank [P]ath (relative)**
+- Copies the relative file path from project root
+- Example: `Sources/Backend/VDEK.DCSP.WebHost/Program.cs`
+- Useful for sharing file locations in documentation or tickets
+
+**`<leader>yn`** - **[Y]ank [N]ame (filename only)**
+- Copies only the filename without path
+- Example: `Program.cs`
+- Useful for quick file references
+
+---
+
+### Dual Configuration (WSL2 vs Windows)
+
+This repository contains **two separate init.lua configurations**:
+
+1. **`init.lua`** (WSL2/Linux - Primary)
+   - Location: `~/.config/nvim/init.lua`
+   - Uses WSL2 paths: `/mnt/c/Users/...`
+   - Git operations via PowerShell (VPN requirement)
+   - Backend operations via Bash (normal dev workflow)
+
+2. **`init_windows.lua`** (Windows Native)
+   - Location: `%APPDATA%\nvim\init.lua` (Windows)
+   - Uses Windows paths: `C:\Users\...`
+   - All operations via PowerShell
+   - For use when running Neovim natively in Windows PowerShell/CMD
+
+**To use Windows version:**
+```powershell
+# Windows PowerShell
+cd C:\Users\Administrator\Documents\Projekt\KickStartNeoVim
+Copy-Item init_windows.lua $env:APPDATA\nvim\init.lua
+```
+
+**Why two configs?** Cross-filesystem operations between WSL2 and Windows can cause path resolution issues. Separate configs ensure reliable operation in each environment.
+
+---
+
+## 🔑 Quick Keybindings Cheat Sheet
+
+```
+Git & TFS
+---------
+<leader>gg   → Open Neogit UI
+<leader>gf   → Git File history (diff for current file)
+<leader>gD   → Git Diff vs develop
+<leader>gM   → Git diff vs Main
+<leader>gdc  → Git Diff Close (all panels)
+<leader>rc   → Open commit in TFS browser (from clipboard)
+<leader>rp   → Git Push (DCSRE - PowerShell/VPN)
+<leader>rP   → Git Pull (DCSRE - PowerShell/VPN)
+
+Backend (WSL2)
+--------------
+<leader>rbw  → Run Backend WebHost (https://localhost:5443/swagger)
+<leader>rbs  → Run Backend Setup (Migrations)
+
+Frontend (WSL2)
+---------------
+<leader>rfr  → Run Frontend dev server (https://localhost:8443)
+<leader>rfb  → Run Frontend Build (production)
+<leader>rfi  → Run Frontend Install (npm install)
+<leader>rft  → Run Frontend Test (jest)
+
+Clipboard
+---------
+<leader>yp   → Yank relative path
+<leader>yn   → Yank filename only
+
+Diagnostics
+-----------
+<leader>sd   → Search all Diagnostics
+<leader>sW   → Search Warnings only (StyleCop)
+<leader>sE   → Search Errors only
+```
+
+---
+
 **This is the working solution! 🎉**
 
 Last verified: 2025-11-13
