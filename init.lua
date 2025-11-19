@@ -278,6 +278,28 @@ require('lazy').setup({
     ft = 'cs', -- Load only for C# files
   },
 
+  -- DAP (Debug Adapter Protocol) - Debugging support
+  {
+    'mfussenegger/nvim-dap',
+    dependencies = {
+      -- UI for nvim-dap
+      'rcarriga/nvim-dap-ui',
+
+      -- Required dependency for nvim-dap-ui
+      'nvim-neotest/nvim-nio',
+
+      -- Installs debuggers via Mason
+      'williamboman/mason.nvim',
+      'jay-babu/mason-nvim-dap.nvim',
+
+      -- Virtual text showing variable values inline
+      'theHamsta/nvim-dap-virtual-text',
+
+      -- Helper for .NET debugging (auto DLL path, rebuild)
+      'Issafalcon/neotest-dotnet', -- Already installed, needed for debug adapter
+    },
+  },
+
   -- Neogit - Magit for Neovim (Git UI)
   {
     'NeogitOrg/neogit',
@@ -304,6 +326,39 @@ require('lazy').setup({
         desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
       { '<leader>gdc', '<cmd>DiffviewClose<cr>', desc = '[G]it [D]iff [C]lose (all panels)' },
+      {
+        '<leader>gf',
+        function()
+          local filepath = vim.fn.expand('%')
+          if filepath == '' then
+            vim.notify('No file in current buffer!', vim.log.levels.ERROR)
+            return
+          end
+          vim.cmd('DiffviewFileHistory ' .. filepath)
+          vim.notify('Opened diff history for: ' .. filepath, vim.log.levels.INFO)
+        end,
+        desc = '[G]it [F]ile history (diff)',
+      },
+      {
+        '<leader>gc',
+        function()
+          local clipboard = vim.fn.getreg('+'):gsub('^%s+', ''):gsub('%s+$', '')
+          if clipboard == '' then
+            vim.notify('Clipboard is empty!', vim.log.levels.ERROR)
+            return
+          end
+          -- Extract git hash (7-40 hex characters at the beginning)
+          local commit_hash = clipboard:match('^([0-9a-fA-F]+)')
+          if not commit_hash or #commit_hash < 7 or #commit_hash > 40 then
+            vim.notify('No valid git hash found in clipboard!', vim.log.levels.ERROR)
+            return
+          end
+          -- Show changes from this commit to HEAD (current branch)
+          vim.cmd('DiffviewOpen ' .. commit_hash .. '..HEAD')
+          vim.notify('Opened diff: ' .. commit_hash .. '..HEAD', vim.log.levels.INFO)
+        end,
+        desc = '[G]it [C]ommit diff (branch changes only, no merges)',
+      },
     },
     opts = {},
   },
@@ -314,7 +369,7 @@ require('lazy').setup({
     version = '*',
     opts = {
       size = 20, -- Height of terminal when horizontal
-      open_mapping = [[<leader>T]], -- Toggle with <leader>T
+      open_mapping = [[<C-_>]], -- Toggle with Ctrl+/ (C-_ is how terminals see Ctrl+/)
       direction = 'horizontal', -- Open at bottom
       shade_terminals = true,
       shading_factor = 2,
@@ -322,6 +377,77 @@ require('lazy').setup({
       persist_size = true,
       close_on_exit = true, -- Close terminal when process exits
     },
+  },
+
+  -- Neotest - Modern test runner for Neovim
+  {
+    'nvim-neotest/neotest',
+    dependencies = {
+      'nvim-neotest/nvim-nio',
+      'nvim-lua/plenary.nvim',
+      'antoinemadec/FixCursorHold.nvim',
+      'nvim-treesitter/nvim-treesitter',
+      -- Test adapters
+      'nvim-neotest/neotest-jest', -- For Frontend (Jest/Angular)
+      'Issafalcon/neotest-dotnet', -- For Backend (C#/.NET)
+    },
+    keys = {
+      { '<leader>tn', function() require('neotest').run.run() end, desc = '[T]est [N]earest' },
+      { '<leader>tf', function() require('neotest').run.run(vim.fn.expand('%')) end, desc = '[T]est [F]ile' },
+      { '<leader>td', function()
+        -- Ensure DAP UI is open
+        require('dapui').open()
+        -- Run test with DAP strategy
+        require('neotest').run.run({strategy = 'dap'})
+      end, desc = '[T]est [D]ebug' },
+      { '<leader>ts', function() require('neotest').run.stop() end, desc = '[T]est [S]top' },
+      { '<leader>to', function() require('neotest').output.open({ enter = true }) end, desc = '[T]est [O]utput' },
+      { '<leader>tO', function() require('neotest').output_panel.toggle() end, desc = '[T]est [O]utput Panel' },
+      { '<leader>tt', function() require('neotest').summary.toggle() end, desc = '[T]est [T]oggle Summary' },
+      { '[t', function() require('neotest').jump.prev({ status = 'failed' }) end, desc = 'Jump to previous failed test' },
+      { ']t', function() require('neotest').jump.next({ status = 'failed' }) end, desc = 'Jump to next failed test' },
+    },
+    config = function()
+      require('neotest').setup({
+        adapters = {
+          -- C#/.NET adapter - Simple configuration for WSL2 with Docker Desktop
+          require('neotest-dotnet')({
+            dap = {
+              justMyCode = false,
+            },
+            discovery_root = 'project',
+            dotnet_additional_args = {
+              "--logger", "console;verbosity=detailed",
+              "-c", "Debug" -- Always build/run in Debug mode (-c is short for --configuration)
+            },
+            custom_attributes = {
+              xunit = { "Fact", "Theory" },
+              nunit = { "Test" },
+              mstest = { "TestMethod" }
+            },
+          }),
+          -- Jest adapter for Frontend
+          require('neotest-jest')({
+            jestCommand = 'npm test --',
+            env = { CI = true },
+            cwd = function(path)
+              return vim.fn.getcwd()
+            end,
+          }),
+        },
+        status = {
+          virtual_text = true,
+          signs = true,
+        },
+        output = {
+          enabled = true,
+          open_on_run = false,
+        },
+        quickfix = {
+          enabled = false,
+        },
+      })
+    end,
   },
 
   -- undotree - Visualize undo history as a tree
@@ -357,6 +483,29 @@ require('lazy').setup({
         position = 'left',
         width = 30,
       },
+      default_component_configs = {
+        icon = {
+          folder_closed = "▶",
+          folder_open = "▼",
+          folder_empty = "▷",
+          default = "*",
+          highlight = "NeoTreeFileIcon"
+        },
+        git_status = {
+          symbols = {
+            added     = "+",
+            modified  = "M",
+            deleted   = "D",
+            renamed   = "R",
+            untracked = "?",
+            ignored   = "!",
+            unstaged  = "U",
+            staged    = "S",
+            conflict  = "C",
+          }
+        },
+      },
+      use_default_mappings = true,
     },
   },
 
@@ -1333,6 +1482,116 @@ vim.keymap.set('n', '<leader>rbs', function()
   vim.notify('Running Backend Setup (Migrations)...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [S]etup (Migrations)' })
 
+-- Run Backend Build: Compile the backend solution (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rbb', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local build = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend && dotnet build',
+    direction = 'horizontal',
+    close_on_exit = false, -- Keep terminal open to see build errors
+  })
+  build:toggle()
+  vim.notify('Building Backend...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [B]uild (dotnet build)' })
+
+-- Run Backend Tests via PowerShell (for Docker compatibility)
+vim.keymap.set('n', '<leader>rbt', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  -- Get current file name if it's a test file
+  local current_file = vim.fn.expand('%:t:r')
+  local is_test_file = current_file:match('Test') or current_file:match('Tests')
+
+  local cmd
+  if is_test_file then
+    -- Run tests for current test class
+    cmd = [[powershell.exe -Command "cd C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend; dotnet test --no-build --no-restore --filter 'FullyQualifiedName~]] .. current_file .. [['"]]
+  else
+    -- Run all tests
+    cmd = [[powershell.exe -Command "cd C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend; dotnet test --no-build --no-restore"]]
+  end
+
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  test:toggle()
+  vim.notify('Running Backend Tests via PowerShell (Docker compatible)...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [T]ests (PowerShell/Docker)' })
+
+-- Test Backend Integration: Run tests for current file via PowerShell (DCSRE)
+vim.keymap.set('n', '<leader>tbi', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+
+  -- Get current file name without extension
+  local current_file = vim.fn.expand('%:t:r')
+
+  -- Check if it's a test file
+  if not (current_file:match('Test') or current_file:match('Tests')) then
+    vim.notify('Not a test file!', vim.log.levels.ERROR)
+    return
+  end
+
+  -- Build PowerShell command with dotnet test filter
+  local cmd = [[powershell.exe -Command "cd C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend; dotnet test --filter 'FullyQualifiedName~]] .. current_file .. [['"]]
+
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  test:toggle()
+  vim.notify('Running Integration Tests for ' .. current_file .. ' via PowerShell...', vim.log.levels.INFO)
+end, { desc = '[T]est [B]ackend [I]ntegration (file via PowerShell)' })
+
+-- Run Frontend: Start dev server with NX (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rfr', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local frontend = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm start',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  frontend:toggle()
+  vim.notify('Starting Frontend dev server (https://localhost:8443)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [R]un (dev server)' })
+
+-- Run Frontend Build: Build production app (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rfb', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local build = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm run build',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  build:toggle()
+  vim.notify('Building Frontend (app-standalone)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [B]uild (production)' })
+
+-- Run Frontend Install: Install npm dependencies (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rfi', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local install = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm install',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  install:toggle()
+  vim.notify('Installing Frontend dependencies...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [I]nstall (npm install)' })
+
+-- Run Frontend Test: Execute jest tests (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rft', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm test',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  test:toggle()
+  vim.notify('Running Frontend tests (jest)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [T]est (jest)' })
+
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
   vim.diagnostic.setqflist({ severity = vim.diagnostic.severity.WARN })
@@ -1445,6 +1704,157 @@ vim.keymap.set('n', '<leader>rP', function()
   pull:toggle()
   vim.notify('Git Pull from DCSRE started...', vim.log.levels.INFO)
 end, { desc = '[R]un [P]ull (DCSRE Windows)' })
+
+-- ============================================================================
+-- DAP (Debug Adapter Protocol) Configuration
+-- ============================================================================
+
+local dap = require('dap')
+local dapui = require('dapui')
+
+-- Configure netcoredbg adapter for C#/.NET
+dap.adapters.coreclr = {
+  type = 'executable',
+  command = 'netcoredbg',
+  args = { '--interpreter=vscode' },
+}
+
+-- C# Launch Configuration
+dap.configurations.cs = {
+  {
+    type = 'coreclr',
+    name = 'launch - netcoredbg',
+    request = 'launch',
+    program = function()
+      -- Try to auto-find DLL based on current file
+      local cwd = vim.fn.getcwd()
+      local current_file = vim.fn.expand('%:p')
+
+      -- Search for .csproj file in parent directories
+      local current_dir = vim.fn.fnamemodify(current_file, ':h')
+      local project_file = nil
+      local max_depth = 5 -- Safety limit
+
+      for _ = 1, max_depth do
+        local csproj_files = vim.fn.glob(current_dir .. '/*.csproj', false, true)
+        if #csproj_files > 0 then
+          project_file = csproj_files[1]
+          break
+        end
+        local parent = vim.fn.fnamemodify(current_dir, ':h')
+        if parent == current_dir then break end -- Reached root
+        current_dir = parent
+      end
+
+      if project_file then
+        -- Extract project name from .csproj filename
+        -- E.g. /path/to/VDEK.DCSP.Application.UnitTests/VDEK.DCSP.Application.UnitTests.csproj
+        -- -> VDEK.DCSP.Application.UnitTests
+        local project_name = vim.fn.fnamemodify(project_file, ':t:r')
+        local project_dir = vim.fn.fnamemodify(project_file, ':h')
+
+        -- Try to find the DLL in bin/Debug/net8.0
+        local dll_path = project_dir .. '/bin/Debug/net8.0/' .. project_name .. '.dll'
+        if vim.fn.filereadable(dll_path) == 1 then
+          vim.notify('Auto-detected DLL: ' .. dll_path, vim.log.levels.INFO)
+          return dll_path
+        else
+          vim.notify('DLL not found at: ' .. dll_path .. '\nDid you build in Debug mode?', vim.log.levels.WARN)
+        end
+      end
+
+      -- Fallback: ask user
+      return vim.fn.input('Path to dll: ', cwd .. '/bin/Debug/net8.0/', 'file')
+    end,
+    cwd = vim.fn.getcwd(),
+  },
+}
+
+-- Setup DAP UI
+dapui.setup({
+  layouts = {
+    {
+      elements = {
+        { id = 'scopes', size = 0.25 },
+        { id = 'breakpoints', size = 0.25 },
+        { id = 'stacks', size = 0.25 },
+        { id = 'watches', size = 0.25 },
+      },
+      position = 'left',
+      size = 40,
+    },
+    {
+      elements = {
+        { id = 'repl', size = 0.5 },
+        { id = 'console', size = 0.5 },
+      },
+      position = 'bottom',
+      size = 10,
+    },
+  },
+})
+
+-- Auto-open/close DAP UI
+dap.listeners.after.event_initialized['dapui_config'] = function()
+  dapui.open()
+end
+dap.listeners.before.event_terminated['dapui_config'] = function()
+  dapui.close()
+end
+dap.listeners.before.event_exited['dapui_config'] = function()
+  dapui.close()
+end
+
+-- Setup virtual text (shows variable values inline)
+require('nvim-dap-virtual-text').setup()
+
+-- DAP Keybindings - All under <leader>d for Debug
+vim.keymap.set('n', '<leader>ds', function()
+  -- Auto-build in Debug mode before starting debugger
+  vim.notify('Building project in Debug mode...', vim.log.levels.INFO)
+  vim.cmd('!cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend && dotnet build -c Debug')
+  vim.notify('Build complete! Starting debugger...', vim.log.levels.INFO)
+  require('dap').continue()
+end, { desc = '[D]ebug: [S]tart/Continue (auto-build)' })
+
+vim.keymap.set('n', '<leader>dt', function()
+  require('dapui').toggle()
+end, { desc = '[D]ebug: [T]oggle UI' })
+
+vim.keymap.set('n', '<leader>dT', function()
+  require('dap').terminate()
+end, { desc = '[D]ebug: [T]erminate' })
+
+vim.keymap.set('n', '<leader>db', function()
+  require('dap').toggle_breakpoint()
+end, { desc = '[D]ebug: Toggle [B]reakpoint' })
+
+vim.keymap.set('n', '<leader>dB', function()
+  require('dap').set_breakpoint(vim.fn.input('Breakpoint condition: '))
+end, { desc = '[D]ebug: Conditional [B]reakpoint' })
+
+vim.keymap.set('n', '<leader>do', function()
+  require('dap').step_over()
+end, { desc = '[D]ebug: Step [O]ver' })
+
+vim.keymap.set('n', '<leader>di', function()
+  require('dap').step_into()
+end, { desc = '[D]ebug: Step [I]nto' })
+
+vim.keymap.set('n', '<leader>du', function()
+  require('dap').step_out()
+end, { desc = '[D]ebug: Step O[u]t' })
+
+-- Custom breakpoint icons
+vim.fn.sign_define('DapBreakpoint', { text = '🔴', texthl = '', linehl = '', numhl = '' })
+vim.fn.sign_define('DapBreakpointCondition', { text = '🟡', texthl = '', linehl = '', numhl = '' })
+vim.fn.sign_define('DapStopped', { text = '▶️', texthl = '', linehl = 'DapStoppedLine', numhl = '' })
+
+-- Mason-nvim-dap setup (installs netcoredbg automatically)
+require('mason-nvim-dap').setup({
+  ensure_installed = { 'netcoredbg' },
+  automatic_installation = true,
+})
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
