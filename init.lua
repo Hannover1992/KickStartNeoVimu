@@ -278,28 +278,6 @@ require('lazy').setup({
     ft = 'cs', -- Load only for C# files
   },
 
-  -- DAP (Debug Adapter Protocol) - Debugging support
-  {
-    'mfussenegger/nvim-dap',
-    dependencies = {
-      -- UI for nvim-dap
-      'rcarriga/nvim-dap-ui',
-
-      -- Required dependency for nvim-dap-ui
-      'nvim-neotest/nvim-nio',
-
-      -- Installs debuggers via Mason
-      'williamboman/mason.nvim',
-      'jay-babu/mason-nvim-dap.nvim',
-
-      -- Virtual text showing variable values inline
-      'theHamsta/nvim-dap-virtual-text',
-
-      -- Helper for .NET debugging (auto DLL path, rebuild)
-      'Issafalcon/neotest-dotnet', -- Already installed, needed for debug adapter
-    },
-  },
-
   -- Neogit - Magit for Neovim (Git UI)
   {
     'NeogitOrg/neogit',
@@ -394,12 +372,6 @@ require('lazy').setup({
     keys = {
       { '<leader>tn', function() require('neotest').run.run() end, desc = '[T]est [N]earest' },
       { '<leader>tf', function() require('neotest').run.run(vim.fn.expand('%')) end, desc = '[T]est [F]ile' },
-      { '<leader>td', function()
-        -- Ensure DAP UI is open
-        require('dapui').open()
-        -- Run test with DAP strategy
-        require('neotest').run.run({strategy = 'dap'})
-      end, desc = '[T]est [D]ebug' },
       { '<leader>ts', function() require('neotest').run.stop() end, desc = '[T]est [S]top' },
       { '<leader>to', function() require('neotest').output.open({ enter = true }) end, desc = '[T]est [O]utput' },
       { '<leader>tO', function() require('neotest').output_panel.toggle() end, desc = '[T]est [O]utput Panel' },
@@ -412,13 +384,9 @@ require('lazy').setup({
         adapters = {
           -- C#/.NET adapter - Simple configuration for WSL2 with Docker Desktop
           require('neotest-dotnet')({
-            dap = {
-              justMyCode = false,
-            },
             discovery_root = 'project',
             dotnet_additional_args = {
               "--logger", "console;verbosity=detailed",
-              "-c", "Debug" -- Always build/run in Debug mode (-c is short for --configuration)
             },
             custom_attributes = {
               xunit = { "Fact", "Theory" },
@@ -744,12 +712,33 @@ require('lazy').setup({
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
         --
-        -- defaults = {
-        --   mappings = {
-        --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-        --   },
-        -- },
-        -- pickers = {}
+        defaults = {
+          -- Respect .gitignore files (don't show ignored files)
+          file_ignore_patterns = { 'node_modules', '.git/' },
+          vimgrep_arguments = {
+            'rg',
+            '--color=never',
+            '--no-heading',
+            '--with-filename',
+            '--line-number',
+            '--column',
+            '--smart-case',
+            '--hidden',         -- Search hidden files
+            '--glob', '!.git/', -- But not .git directory
+          },
+        },
+        pickers = {
+          find_files = {
+            -- Use 'git ls-files' when in a git repo (respects .gitignore)
+            find_command = { 'rg', '--files', '--hidden', '--glob', '!.git/' },
+            hidden = true,  -- Show hidden files (but still respects .gitignore)
+          },
+          live_grep = {
+            additional_args = function()
+              return { '--hidden' }
+            end,
+          },
+        },
         extensions = {
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
@@ -765,11 +754,17 @@ require('lazy').setup({
       local builtin = require 'telescope.builtin'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
+      vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles (respects .gitignore)' })
+      vim.keymap.set('n', '<leader>sF', function()
+        builtin.find_files({ no_ignore = true, hidden = true })
+      end, { desc = '[S]earch [F]iles (ALL, including ignored)' })
       vim.keymap.set('n', '<leader>sc', builtin.colorscheme, { desc = '[S]earch [C]olorscheme (live preview)' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
       vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
+      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep (respects .gitignore)' })
+      vim.keymap.set('n', '<leader>sG', function()
+        builtin.live_grep({ additional_args = { '--no-ignore', '--hidden' } })
+      end, { desc = '[S]earch by [G]rep (ALL, including ignored)' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
       vim.keymap.set('n', '<leader>sW', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.WARN })
@@ -1667,6 +1662,49 @@ vim.keymap.set('n', '<leader>yn', function()
   vim.notify('Copied filename: ' .. filename, vim.log.levels.INFO)
 end, { desc = '[Y]ank file[n]ame only' })
 
+-- Remap Visual Block mode (Ctrl+v conflicts with Windows paste)
+vim.keymap.set('n', '<leader>v', '<C-v>', { desc = '[V]isual Block Mode' })
+
+-- Create temporary markdown buffer (scratch)
+vim.keymap.set('n', '<leader>mt', function()
+  -- Create new buffer
+  vim.cmd('enew')
+
+  -- Set it as markdown
+  vim.bo.filetype = 'markdown'
+
+  -- Make it a scratch buffer (won't ask to save)
+  vim.bo.buftype = 'nofile'
+  vim.bo.bufhidden = 'hide'
+  vim.bo.swapfile = false
+
+  -- Optional: Add a nice title
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, {
+    '# Temporary Notes',
+    '',
+    '---',
+    '',
+    ''
+  })
+
+  -- Move cursor to line 5 (after the header)
+  vim.cmd('normal! 5G')
+
+  vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
+end, { desc = '[M]arkdown [T]emporary buffer' })
+
+-- Copy Windows path to clipboard
+vim.keymap.set('n', '<leader>yw', function()
+  local current_file = vim.fn.expand('%:p')
+
+  -- Convert WSL path to Windows path
+  local windows_path = current_file:gsub('/mnt/c/', 'C:\\'):gsub('/', '\\')
+
+  -- Copy to clipboard
+  vim.fn.setreg('+', windows_path)
+  vim.notify('Copied Windows path: ' .. windows_path, vim.log.levels.INFO)
+end, { desc = '[Y]ank [W]indows path' })
+
 -- Open commit in TFS browser (reads commit hash from clipboard)
 vim.keymap.set('n', '<leader>rc', function()
   local commit_hash = vim.fn.getreg('+'):gsub('%s+', '') -- Get from clipboard, trim whitespace
@@ -1704,157 +1742,6 @@ vim.keymap.set('n', '<leader>rP', function()
   pull:toggle()
   vim.notify('Git Pull from DCSRE started...', vim.log.levels.INFO)
 end, { desc = '[R]un [P]ull (DCSRE Windows)' })
-
--- ============================================================================
--- DAP (Debug Adapter Protocol) Configuration
--- ============================================================================
-
-local dap = require('dap')
-local dapui = require('dapui')
-
--- Configure netcoredbg adapter for C#/.NET
-dap.adapters.coreclr = {
-  type = 'executable',
-  command = 'netcoredbg',
-  args = { '--interpreter=vscode' },
-}
-
--- C# Launch Configuration
-dap.configurations.cs = {
-  {
-    type = 'coreclr',
-    name = 'launch - netcoredbg',
-    request = 'launch',
-    program = function()
-      -- Try to auto-find DLL based on current file
-      local cwd = vim.fn.getcwd()
-      local current_file = vim.fn.expand('%:p')
-
-      -- Search for .csproj file in parent directories
-      local current_dir = vim.fn.fnamemodify(current_file, ':h')
-      local project_file = nil
-      local max_depth = 5 -- Safety limit
-
-      for _ = 1, max_depth do
-        local csproj_files = vim.fn.glob(current_dir .. '/*.csproj', false, true)
-        if #csproj_files > 0 then
-          project_file = csproj_files[1]
-          break
-        end
-        local parent = vim.fn.fnamemodify(current_dir, ':h')
-        if parent == current_dir then break end -- Reached root
-        current_dir = parent
-      end
-
-      if project_file then
-        -- Extract project name from .csproj filename
-        -- E.g. /path/to/VDEK.DCSP.Application.UnitTests/VDEK.DCSP.Application.UnitTests.csproj
-        -- -> VDEK.DCSP.Application.UnitTests
-        local project_name = vim.fn.fnamemodify(project_file, ':t:r')
-        local project_dir = vim.fn.fnamemodify(project_file, ':h')
-
-        -- Try to find the DLL in bin/Debug/net8.0
-        local dll_path = project_dir .. '/bin/Debug/net8.0/' .. project_name .. '.dll'
-        if vim.fn.filereadable(dll_path) == 1 then
-          vim.notify('Auto-detected DLL: ' .. dll_path, vim.log.levels.INFO)
-          return dll_path
-        else
-          vim.notify('DLL not found at: ' .. dll_path .. '\nDid you build in Debug mode?', vim.log.levels.WARN)
-        end
-      end
-
-      -- Fallback: ask user
-      return vim.fn.input('Path to dll: ', cwd .. '/bin/Debug/net8.0/', 'file')
-    end,
-    cwd = vim.fn.getcwd(),
-  },
-}
-
--- Setup DAP UI
-dapui.setup({
-  layouts = {
-    {
-      elements = {
-        { id = 'scopes', size = 0.25 },
-        { id = 'breakpoints', size = 0.25 },
-        { id = 'stacks', size = 0.25 },
-        { id = 'watches', size = 0.25 },
-      },
-      position = 'left',
-      size = 40,
-    },
-    {
-      elements = {
-        { id = 'repl', size = 0.5 },
-        { id = 'console', size = 0.5 },
-      },
-      position = 'bottom',
-      size = 10,
-    },
-  },
-})
-
--- Auto-open/close DAP UI
-dap.listeners.after.event_initialized['dapui_config'] = function()
-  dapui.open()
-end
-dap.listeners.before.event_terminated['dapui_config'] = function()
-  dapui.close()
-end
-dap.listeners.before.event_exited['dapui_config'] = function()
-  dapui.close()
-end
-
--- Setup virtual text (shows variable values inline)
-require('nvim-dap-virtual-text').setup()
-
--- DAP Keybindings - All under <leader>d for Debug
-vim.keymap.set('n', '<leader>ds', function()
-  -- Auto-build in Debug mode before starting debugger
-  vim.notify('Building project in Debug mode...', vim.log.levels.INFO)
-  vim.cmd('!cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend && dotnet build -c Debug')
-  vim.notify('Build complete! Starting debugger...', vim.log.levels.INFO)
-  require('dap').continue()
-end, { desc = '[D]ebug: [S]tart/Continue (auto-build)' })
-
-vim.keymap.set('n', '<leader>dt', function()
-  require('dapui').toggle()
-end, { desc = '[D]ebug: [T]oggle UI' })
-
-vim.keymap.set('n', '<leader>dT', function()
-  require('dap').terminate()
-end, { desc = '[D]ebug: [T]erminate' })
-
-vim.keymap.set('n', '<leader>db', function()
-  require('dap').toggle_breakpoint()
-end, { desc = '[D]ebug: Toggle [B]reakpoint' })
-
-vim.keymap.set('n', '<leader>dB', function()
-  require('dap').set_breakpoint(vim.fn.input('Breakpoint condition: '))
-end, { desc = '[D]ebug: Conditional [B]reakpoint' })
-
-vim.keymap.set('n', '<leader>do', function()
-  require('dap').step_over()
-end, { desc = '[D]ebug: Step [O]ver' })
-
-vim.keymap.set('n', '<leader>di', function()
-  require('dap').step_into()
-end, { desc = '[D]ebug: Step [I]nto' })
-
-vim.keymap.set('n', '<leader>du', function()
-  require('dap').step_out()
-end, { desc = '[D]ebug: Step O[u]t' })
-
--- Custom breakpoint icons
-vim.fn.sign_define('DapBreakpoint', { text = '🔴', texthl = '', linehl = '', numhl = '' })
-vim.fn.sign_define('DapBreakpointCondition', { text = '🟡', texthl = '', linehl = '', numhl = '' })
-vim.fn.sign_define('DapStopped', { text = '▶️', texthl = '', linehl = 'DapStoppedLine', numhl = '' })
-
--- Mason-nvim-dap setup (installs netcoredbg automatically)
-require('mason-nvim-dap').setup({
-  ensure_installed = { 'netcoredbg' },
-  automatic_installation = true,
-})
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
