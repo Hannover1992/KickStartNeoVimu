@@ -6,6 +6,35 @@
 
 ---
 
+## ⚠️ WICHTIGE REGEL FÜR CLAUDE
+
+**NIEMALS AUTOMATISCH COMMITTEN!**
+
+Workflow:
+1. ✅ Änderungen machen (Edit, Write, etc.)
+2. ✅ User testen lassen
+3. ❌ **NICHT** automatisch committen!
+4. ⏳ Warten auf User-Feedback ("ok commit", "alles klar commit", "gut so")
+5. ✅ **NUR DANN** committen
+
+**Begründung**: Claude kann nicht wissen ob die Änderungen funktionieren! Der User muss zuerst in Neovim testen, bevor ein Commit gemacht wird.
+
+**Beispiel FALSCH:**
+```
+Claude: *macht Änderung*
+Claude: *committed automatisch* ❌ FALSCH!
+```
+
+**Beispiel RICHTIG:**
+```
+Claude: *macht Änderung*
+Claude: "Fertig! Teste bitte ob es funktioniert."
+User: "ok alles gut commit"
+Claude: *committed* ✅ RICHTIG!
+```
+
+---
+
 ## 🚀 QUICK START - Nach Neustart / Neue Maschine
 
 **Du hast dieses Repo bereits geclont und willst es einfach nur verwenden?**
@@ -520,6 +549,34 @@ cp init.lua ~/.config/nvim/init.lua
 - `?` - Help
 - `q` - Quit
 
+### Markdown Preview with Mermaid Support
+
+**Installed**: `iamcco/markdown-preview.nvim` (7,540+ GitHub stars, industry standard)
+
+**Keybinding**: `<leader>mp` - Toggle Markdown Preview
+
+**Features**:
+- ✅ Browser-based live preview with synchronized scrolling
+- ✅ **Full Mermaid diagram support** (flowcharts, sequence, Gantt, etc.)
+- ✅ PlantUML, Chart.js, Graphviz DOT diagrams
+- ✅ KaTeX math equations
+- ✅ GitHub-flavored markdown rendering
+- ✅ Auto-updates on file changes
+- ✅ Dark/light theme support
+
+**Usage**:
+1. Open any `.md` file
+2. Press `<leader>mp` to toggle preview
+3. Browser opens with live preview
+4. Edit file - preview updates automatically
+5. Press `<leader>mp` again to close
+
+**Requirements**:
+- Node.js and npm (install: `sudo apt install nodejs npm`)
+- First-time setup: `cd ~/.local/share/nvim/lazy/markdown-preview.nvim/app && npm install`
+
+**Why this plugin**: Most popular markdown preview solution in the Neovim ecosystem, default in LazyVim, NvChad, and AstroNvim distributions.
+
 ---
 
 ## 🎮 Keybindings Reference (DCSRE Project)
@@ -710,6 +767,10 @@ Diagnostics
 <leader>sd   → Search all Diagnostics
 <leader>sW   → Search Warnings only (StyleCop)
 <leader>sE   → Search Errors only
+
+Markdown
+--------
+<leader>mp   → Markdown Preview (Browser with Mermaid support)
 ```
 
 ---

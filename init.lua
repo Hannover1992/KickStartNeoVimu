@@ -341,6 +341,26 @@ require('lazy').setup({
     opts = {},
   },
 
+  -- Markdown Preview mit Mermaid Support (Browser-based)
+  -- Industry standard: 7,540+ GitHub stars
+  {
+    'iamcco/markdown-preview.nvim',
+    cmd = { 'MarkdownPreviewToggle', 'MarkdownPreview', 'MarkdownPreviewStop' },
+    ft = { 'markdown' },
+    build = 'cd app && npm install',
+    init = function()
+      vim.g.mkdp_filetypes = { 'markdown' }
+      -- Auto-close preview when switching buffers (0 = keep open, 1 = auto-close)
+      vim.g.mkdp_auto_close = 0
+      -- Theme: 'dark' oder 'light'
+      vim.g.mkdp_theme = 'dark'
+      -- Mermaid, PlantUML, Chart.js support included by default
+    end,
+    keys = {
+      { '<leader>mp', '<cmd>MarkdownPreviewToggle<cr>', desc = '[M]arkdown [P]review' },
+    },
+  },
+
   -- Toggleterm - Terminal that toggles
   {
     'akinsho/toggleterm.nvim',
