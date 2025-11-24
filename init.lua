@@ -292,9 +292,9 @@ require('lazy').setup({
       {
         '<leader>gD',
         function()
-          vim.cmd('DiffviewOpen origin/develop..HEAD')
+          vim.cmd('DiffviewOpen develop..HEAD')
         end,
-        desc = '[G]it [D]iff vs develop (DCSRE)',
+        desc = '[G]it [D]iff vs develop (local)',
       },
       {
         '<leader>gM',
@@ -338,7 +338,29 @@ require('lazy').setup({
         desc = '[G]it [C]ommit diff (branch changes only, no merges)',
       },
     },
-    opts = {},
+    opts = {
+      -- Performance optimizations for large repos
+      disable_insert_on_commit = true, -- Don't enter insert mode on commit (faster)
+
+      -- Limit what's loaded on startup
+      status = {
+        recent_commit_count = 10, -- Only show last 10 commits (default: 10, reduce if still slow)
+      },
+
+      -- Graph style (unicode is faster than ascii art)
+      graph_style = "unicode",
+
+      -- Commit editor settings
+      commit_editor = {
+        kind = "tab", -- Open commit editor in tab (cleaner)
+      },
+
+      -- Integrations (keep what we use)
+      integrations = {
+        diffview = true, -- Keep diffview.nvim
+        telescope = true, -- Keep telescope
+      },
+    },
   },
 
   -- Markdown Preview mit Mermaid Support (Browser-based)
@@ -1738,6 +1760,33 @@ vim.keymap.set('n', '<leader>rc', function()
   vim.fn.jobstart(cmd, { detach = true }) -- Run async, non-blocking
   vim.notify('Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
 end, { desc = '[R]un [C]ommit (open in TFS browser)' })
+
+-- Open file in PR on TFS browser (reads PR number from register P)
+vim.keymap.set('n', '<leader>rC', function()
+  local pr_number = vim.fn.getreg('P'):gsub('%s+', '') -- Get from register P, trim whitespace
+  if pr_number == '' or not pr_number:match('^%d+$') then
+    vim.notify('PR-Nummer fehlt! Bitte zuerst in Register P kopieren ("Py auf die Nummer)', vim.log.levels.ERROR)
+    return
+  end
+
+  local file_path = vim.fn.expand('%:p') -- Get full path of current file
+  local dcsre_base = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE'
+
+  -- Check if file is in DCSRE project
+  if not file_path:find(dcsre_base, 1, true) then
+    vim.notify('Datei ist nicht im DCSRE Projekt!', vim.log.levels.ERROR)
+    return
+  end
+
+  -- Get relative path from DCSRE root
+  local relative_path = file_path:sub(#dcsre_base + 1) -- Remove DCSRE base path
+
+  -- Call PowerShell script
+  local script_path = 'C:\\Users\\Administrator\\Documents\\Projekt\\KickStartNeoVim\\open-pr-file.ps1'
+  local cmd = string.format([[powershell.exe -File "%s" -PrNumber %s -FilePath "%s"]], script_path, pr_number, relative_path)
+  vim.fn.jobstart(cmd, { detach = true })
+  vim.notify('Opening PR #' .. pr_number .. ' at file: ' .. relative_path, vim.log.levels.INFO)
+end, { desc = '[R]un file in PR (TFS browser, PR# from register P)' })
 
 -- Git Push to DCSRE (Windows PowerShell)
 vim.keymap.set('n', '<leader>rp', function()
