@@ -93,6 +93,9 @@ vim.g.maplocalleader = ' '
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = false
 
+-- Reduce LSP log spam (OmniSharp sends many warnings during startup)
+vim.lsp.set_log_level('ERROR')
+
 -- [[ Setting options ]]
 -- See `:help vim.o`
 -- NOTE: You can change these options as you wish!
@@ -278,6 +281,27 @@ require('lazy').setup({
     ft = 'cs', -- Load only for C# files
   },
 
+  -- SonarQube - Code quality analysis for C#
+  -- Set SONAR_QUBE_ENABLED=1 in .bashrc to enable
+  {
+    'iamkarasik/sonarqube.nvim',
+    ft = 'cs',
+    enabled = vim.env.SONAR_QUBE_ENABLED == '1',
+    dependencies = { 'neovim/nvim-lspconfig' },
+    config = function()
+      require('sonarqube').setup({
+        server = {
+          url = 'https://sonar.itsg.de',
+          token = vim.env.SONAR_QUBE,
+        },
+        csharp = {
+          enabled = true,
+          omnisharpDirectory = vim.fn.expand('~/.local/share/nvim/mason/packages/omnisharp/'),
+        },
+      })
+    end,
+  },
+
   -- Neogit - Magit for Neovim (Git UI)
   {
     'NeogitOrg/neogit',
@@ -339,26 +363,52 @@ require('lazy').setup({
       },
     },
     opts = {
-      -- Performance optimizations for large repos
-      disable_insert_on_commit = true, -- Don't enter insert mode on commit (faster)
+      -- Performance optimizations for large repos (especially WSL2 + /mnt/c/)
+      disable_insert_on_commit = true, -- Don't enter insert mode on commit
+      disable_signs = true, -- Don't show signs in gutter (faster)
+      disable_hint = true, -- Don't show hints (faster)
+      disable_context_highlighting = true, -- Don't highlight context (faster)
+      disable_commit_confirmation = true, -- Skip confirmation dialog
+      fetch_after_checkout = false, -- Don't auto-fetch after checkout
+      auto_refresh = true, -- Keep auto-refresh but limit what it loads
+      auto_show_console = false, -- Don't show console (faster startup)
 
       -- Limit what's loaded on startup
       status = {
-        recent_commit_count = 10, -- Only show last 10 commits (default: 10, reduce if still slow)
+        recent_commit_count = 5, -- Reduced from 10 to 5 (faster)
+        show_head_commit_hash = false, -- Don't show hash (faster)
       },
 
       -- Graph style (unicode is faster than ascii art)
       graph_style = "unicode",
 
+      -- Git settings
+      git_services = {}, -- Disable git service integrations (faster)
+
       -- Commit editor settings
       commit_editor = {
-        kind = "tab", -- Open commit editor in tab (cleaner)
+        kind = "tab", -- Open commit editor in tab
+        staged_diff_split_kind = "auto", -- Auto split for staged diff
       },
 
-      -- Integrations (keep what we use)
+      -- Sections to show (disable what you don't need)
+      sections = {
+        untracked = { folded = true }, -- Fold untracked by default
+        unstaged = { folded = false },
+        staged = { folded = false },
+        stashes = { folded = true }, -- Fold stashes (you have 33!)
+        unpulled_upstream = { folded = true },
+        unmerged_upstream = { folded = true },
+        unpulled_pushRemote = { folded = true },
+        unmerged_pushRemote = { folded = true },
+        recent = { folded = true }, -- Fold recent commits
+        rebase = { folded = true },
+      },
+
+      -- Integrations (keep minimal)
       integrations = {
-        diffview = true, -- Keep diffview.nvim
-        telescope = true, -- Keep telescope
+        diffview = true,
+        telescope = false, -- Disable telescope integration (faster)
       },
     },
   },
@@ -1629,6 +1679,56 @@ vim.keymap.set('n', '<leader>rft', function()
   vim.notify('Running Frontend tests (jest)...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [T]est (jest)' })
 
+-- Kluger Project: Build Frontend with Docker
+vim.keymap.set('n', '<leader>rfF', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local build = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/36-Anmelden/src && docker compose build frontend',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  build:toggle()
+  vim.notify('Building Kluger Frontend (docker compose)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront build [F] (Kluger docker)' })
+
+-- Kluger Project: Start Frontend with Docker
+vim.keymap.set('n', '<leader>rff', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local start = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/36-Anmelden/src && docker compose up frontend',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 11, -- Separate terminal ID for frontend
+  })
+  start:toggle()
+  vim.notify('Starting Kluger Frontend (docker compose up)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [f]rontend (Kluger docker up)' })
+
+-- Kluger Project: Build Backend with Docker
+vim.keymap.set('n', '<leader>rfB', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local build = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/36-Anmelden/src && docker compose build backend',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  build:toggle()
+  vim.notify('Building Kluger Backend (docker compose)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [B]ackend build (Kluger docker)' })
+
+-- Kluger Project: Start Backend (dotnet run)
+vim.keymap.set('n', '<leader>rfb', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local start = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/36-Anmelden/src/Core/CenCoCo.Core.API && dotnet run',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 10, -- Separate terminal ID for backend
+  })
+  start:toggle()
+  vim.notify('Starting Kluger Backend (dotnet run)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [b]ackend (Kluger dotnet)' })
+
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
   vim.diagnostic.setqflist({ severity = vim.diagnostic.severity.WARN })
@@ -1697,6 +1797,13 @@ vim.keymap.set('n', '<leader>yp', function()
   vim.notify('Copied path: ' .. filepath, vim.log.levels.INFO)
 end, { desc = '[Y]ank file[p]ath (relative)' })
 
+-- Copy absolute WSL path to clipboard
+vim.keymap.set('n', '<leader>yP', function()
+  local filepath = vim.fn.expand('%:p')
+  vim.fn.setreg('+', filepath)
+  vim.notify('Copied absolute path: ' .. filepath, vim.log.levels.INFO)
+end, { desc = '[Y]ank file[P]ath (absolute WSL)' })
+
 -- Copy only filename (without path) to clipboard
 vim.keymap.set('n', '<leader>yn', function()
   local filename = vim.fn.expand('%:t')
@@ -1704,11 +1811,23 @@ vim.keymap.set('n', '<leader>yn', function()
   vim.notify('Copied filename: ' .. filename, vim.log.levels.INFO)
 end, { desc = '[Y]ank file[n]ame only' })
 
+-- Copy diagnostic message under cursor to clipboard
+vim.keymap.set('n', '<leader>dy', function()
+  local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1 })
+  if #diagnostics > 0 then
+    local msg = diagnostics[1].message
+    vim.fn.setreg('+', msg)
+    vim.notify('Copied: ' .. msg:sub(1, 50) .. (msg:len() > 50 and '...' or ''), vim.log.levels.INFO)
+  else
+    vim.notify('No diagnostic on this line', vim.log.levels.WARN)
+  end
+end, { desc = '[D]iagnostic [Y]ank to clipboard' })
+
 -- Remap Visual Block mode (Ctrl+v conflicts with Windows paste)
 vim.keymap.set('n', '<leader>v', '<C-v>', { desc = '[V]isual Block Mode' })
 
--- Create temporary markdown buffer (scratch)
-vim.keymap.set('n', '<leader>mt', function()
+-- Create temporary markdown buffer (scratch) - won't be saved!
+vim.keymap.set('n', '<leader>mf', function()
   -- Create new buffer
   vim.cmd('enew')
 
@@ -1733,7 +1852,7 @@ vim.keymap.set('n', '<leader>mt', function()
   vim.cmd('normal! 5G')
 
   vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
-end, { desc = '[M]arkdown [T]emporary buffer' })
+end, { desc = '[M]arkdown [F]oo scratch (temp)' })
 
 -- Copy Windows path to clipboard
 vim.keymap.set('n', '<leader>yw', function()
