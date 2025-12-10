@@ -182,6 +182,15 @@ vim.o.confirm = true
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
+-- Navigate to next/previous warning (like ]d but only for warnings)
+vim.keymap.set('n', ']w', function()
+  vim.diagnostic.goto_next({ severity = vim.diagnostic.severity.WARN })
+end, { desc = 'Next [W]arning' })
+
+vim.keymap.set('n', '[w', function()
+  vim.diagnostic.goto_prev({ severity = vim.diagnostic.severity.WARN })
+end, { desc = 'Previous [W]arning' })
+
 -- Auto-save when leaving insert mode
 vim.api.nvim_create_autocmd('InsertLeave', {
   pattern = '*',
@@ -1545,6 +1554,31 @@ require('lazy').setup({
 })
 
 -- Custom keybindings for project-specific tasks
+
+-- Watch Backend: Backend with hot reload (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>wb', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local watch = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost && dotnet watch run --launch-profile WebHost',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  watch:toggle()
+  vim.notify('Starting Backend with hot reload (dotnet watch run)...', vim.log.levels.INFO)
+end, { desc = '[W]atch [B]ackend (hot reload)' })
+
+-- Watch Test: Tests with hot reload (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>bt', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local watch = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost && dotnet watch test',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  watch:toggle()
+  vim.notify('Starting Tests with hot reload (dotnet watch test)...', vim.log.levels.INFO)
+end, { desc = '[B]ackend [T]est (watch hot reload)' })
+
 -- Run Backend WebHost: Start ASP.NET Core backend (DCSRE - Bash/WSL2)
 vim.keymap.set('n', '<leader>rbw', function()
   local Terminal = require('toggleterm.terminal').Terminal
@@ -1606,6 +1640,18 @@ vim.keymap.set('n', '<leader>rbt', function()
   vim.notify('Running Backend Tests via PowerShell (Docker compatible)...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [T]ests (PowerShell/Docker)' })
 
+-- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker (DCSRE - Bash/WSL2)
+vim.keymap.set('n', '<leader>rbu', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend && dotnet test --filter "(Category!=Database) & (Category!=Storage) & (Category!=Docker)"',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  test:toggle()
+  vim.notify('Running Unit Tests (excluding Database/Storage/Docker)...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [U]nit tests (no DB/Storage/Docker)' })
+
 -- Test Backend Integration: Run tests for current file via PowerShell (DCSRE)
 vim.keymap.set('n', '<leader>tbi', function()
   local Terminal = require('toggleterm.terminal').Terminal
@@ -1632,7 +1678,7 @@ vim.keymap.set('n', '<leader>tbi', function()
 end, { desc = '[T]est [B]ackend [I]ntegration (file via PowerShell)' })
 
 -- Run Frontend: Start dev server with NX (DCSRE - Bash/WSL2)
-vim.keymap.set('n', '<leader>rfr', function()
+vim.keymap.set('n', '<leader>rff', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local frontend = Terminal:new({
     cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm start',
@@ -1641,7 +1687,7 @@ vim.keymap.set('n', '<leader>rfr', function()
   })
   frontend:toggle()
   vim.notify('Starting Frontend dev server (https://localhost:8443)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [R]un (dev server)' })
+end, { desc = '[R]un [F]ront [F]ront (dev server)' })
 
 -- Run Frontend Build: Build production app (DCSRE - Bash/WSL2)
 vim.keymap.set('n', '<leader>rfb', function()
@@ -1654,18 +1700,6 @@ vim.keymap.set('n', '<leader>rfb', function()
   build:toggle()
   vim.notify('Building Frontend (app-standalone)...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [B]uild (production)' })
-
--- Run Frontend Install: Install npm dependencies (DCSRE - Bash/WSL2)
-vim.keymap.set('n', '<leader>rfi', function()
-  local Terminal = require('toggleterm.terminal').Terminal
-  local install = Terminal:new({
-    cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend && npm install',
-    direction = 'horizontal',
-    close_on_exit = false,
-  })
-  install:toggle()
-  vim.notify('Installing Frontend dependencies...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [I]nstall (npm install)' })
 
 -- Run Frontend Test: Execute jest tests (DCSRE - Bash/WSL2)
 vim.keymap.set('n', '<leader>rft', function()
@@ -1692,7 +1726,7 @@ vim.keymap.set('n', '<leader>rfF', function()
 end, { desc = '[R]un [F]ront build [F] (Kluger docker)' })
 
 -- Kluger Project: Start Frontend with Docker
-vim.keymap.set('n', '<leader>rff', function()
+vim.keymap.set('n', '<leader>rkf', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local start = Terminal:new({
     cmd = 'cd /mnt/c/Users/Administrator/Documents/Work/Code2/Kluger/code/36-Anmelden/src && docker compose up frontend',
@@ -1702,7 +1736,7 @@ vim.keymap.set('n', '<leader>rff', function()
   })
   start:toggle()
   vim.notify('Starting Kluger Frontend (docker compose up)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [f]rontend (Kluger docker up)' })
+end, { desc = '[R]un [K]luger [f]rontend (docker up)' })
 
 -- Kluger Project: Build Backend with Docker
 vim.keymap.set('n', '<leader>rfB', function()
@@ -1791,18 +1825,18 @@ vim.keymap.set('n', '<leader>qM', function()
 end, { desc = '[Q]uickfix vs [M]ain (CENCOCD)' })
 
 -- Copy relative filepath to clipboard
-vim.keymap.set('n', '<leader>yp', function()
+vim.keymap.set('n', '<leader>ypp', function()
   local filepath = vim.fn.expand('%')
   vim.fn.setreg('+', filepath)
   vim.notify('Copied path: ' .. filepath, vim.log.levels.INFO)
-end, { desc = '[Y]ank file[p]ath (relative)' })
+end, { desc = '[Y]ank [P]ath [p]ath (relative)' })
 
 -- Copy absolute WSL path to clipboard
-vim.keymap.set('n', '<leader>yP', function()
+vim.keymap.set('n', '<leader>ypP', function()
   local filepath = vim.fn.expand('%:p')
   vim.fn.setreg('+', filepath)
   vim.notify('Copied absolute path: ' .. filepath, vim.log.levels.INFO)
-end, { desc = '[Y]ank file[P]ath (absolute WSL)' })
+end, { desc = '[Y]ank [P]ath [P]ath absolute (WSL)' })
 
 -- Copy only filename (without path) to clipboard
 vim.keymap.set('n', '<leader>yn', function()
@@ -1811,7 +1845,7 @@ vim.keymap.set('n', '<leader>yn', function()
   vim.notify('Copied filename: ' .. filename, vim.log.levels.INFO)
 end, { desc = '[Y]ank file[n]ame only' })
 
--- Copy diagnostic message under cursor to clipboard
+-- Copy diagnostic message under cursor to clipboard (legacy - use yd instead)
 vim.keymap.set('n', '<leader>dy', function()
   local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1 })
   if #diagnostics > 0 then
@@ -1822,6 +1856,76 @@ vim.keymap.set('n', '<leader>dy', function()
     vim.notify('No diagnostic on this line', vim.log.levels.WARN)
   end
 end, { desc = '[D]iagnostic [Y]ank to clipboard' })
+
+-- Yank Diagnostic: Copy full path + line number + diagnostic to clipboard
+vim.keymap.set('n', '<leader>yd', function()
+  local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1 })
+  if #diagnostics > 0 then
+    local filepath = vim.fn.expand('%:p')
+    local line = vim.fn.line('.')
+    local msg = diagnostics[1].message
+    local full = filepath .. ':' .. line .. ' ' .. msg
+    vim.fn.setreg('+', full)
+    vim.notify('Yanked diagnostic: ' .. filepath:match('[^/\\]+$') .. ':' .. line, vim.log.levels.INFO)
+  else
+    vim.notify('No diagnostic on this line', vim.log.levels.WARN)
+  end
+end, { desc = '[Y]ank [D]iagnostic (path:line msg)' })
+
+-- Yank Diagnostic Append: Append full path + line number + diagnostic to clipboard
+vim.keymap.set('n', '<leader>yD', function()
+  local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1 })
+  if #diagnostics > 0 then
+    local filepath = vim.fn.expand('%:p')
+    local line = vim.fn.line('.')
+    local msg = diagnostics[1].message
+    local full = filepath .. ':' .. line .. ' ' .. msg
+    local current = vim.fn.getreg('+')
+    if current ~= '' then
+      vim.fn.setreg('+', current .. '\n' .. full)
+    else
+      vim.fn.setreg('+', full)
+    end
+    vim.notify('Appended diagnostic: ' .. filepath:match('[^/\\]+$') .. ':' .. line, vim.log.levels.INFO)
+  else
+    vim.notify('No diagnostic on this line', vim.log.levels.WARN)
+  end
+end, { desc = '[Y]ank [D]iagnostic append (path:line msg)' })
+
+-- Yank Warning: Copy warning (WARN severity only) to clipboard
+vim.keymap.set('n', '<leader>yww', function()
+  local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1, severity = vim.diagnostic.severity.WARN })
+  if #diagnostics > 0 then
+    local filepath = vim.fn.expand('%:p')
+    local line = vim.fn.line('.')
+    local msg = diagnostics[1].message
+    local full = filepath .. ':' .. line .. ' ' .. msg
+    vim.fn.setreg('+', full)
+    vim.notify('Yanked warning: ' .. filepath:match('[^/\\]+$') .. ':' .. line, vim.log.levels.INFO)
+  else
+    vim.notify('No warning on this line', vim.log.levels.WARN)
+  end
+end, { desc = '[Y]ank [W]arning [w] (path:line msg)' })
+
+-- Yank Warning Append: Append warning to clipboard
+vim.keymap.set('n', '<leader>ywW', function()
+  local diagnostics = vim.diagnostic.get(0, { lnum = vim.fn.line('.') - 1, severity = vim.diagnostic.severity.WARN })
+  if #diagnostics > 0 then
+    local filepath = vim.fn.expand('%:p')
+    local line = vim.fn.line('.')
+    local msg = diagnostics[1].message
+    local full = filepath .. ':' .. line .. ' ' .. msg
+    local current = vim.fn.getreg('+')
+    if current ~= '' then
+      vim.fn.setreg('+', current .. '\n' .. full)
+    else
+      vim.fn.setreg('+', full)
+    end
+    vim.notify('Appended warning: ' .. filepath:match('[^/\\]+$') .. ':' .. line, vim.log.levels.INFO)
+  else
+    vim.notify('No warning on this line', vim.log.levels.WARN)
+  end
+end, { desc = '[Y]ank [W]arning append [W] (path:line msg)' })
 
 -- Remap Visual Block mode (Ctrl+v conflicts with Windows paste)
 vim.keymap.set('n', '<leader>v', '<C-v>', { desc = '[V]isual Block Mode' })
@@ -1855,7 +1959,7 @@ vim.keymap.set('n', '<leader>mf', function()
 end, { desc = '[M]arkdown [F]oo scratch (temp)' })
 
 -- Copy Windows path to clipboard
-vim.keymap.set('n', '<leader>yw', function()
+vim.keymap.set('n', '<leader>ypw', function()
   local current_file = vim.fn.expand('%:p')
 
   -- Convert WSL path to Windows path
@@ -1864,7 +1968,7 @@ vim.keymap.set('n', '<leader>yw', function()
   -- Copy to clipboard
   vim.fn.setreg('+', windows_path)
   vim.notify('Copied Windows path: ' .. windows_path, vim.log.levels.INFO)
-end, { desc = '[Y]ank [W]indows path' })
+end, { desc = '[Y]ank [P]ath [w]indows' })
 
 -- Open commit in TFS browser (reads commit hash from clipboard)
 vim.keymap.set('n', '<leader>rc', function()
