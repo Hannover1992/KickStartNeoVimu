@@ -96,6 +96,48 @@ vim.g.have_nerd_font = false
 -- Reduce LSP log spam (OmniSharp sends many warnings during startup)
 vim.lsp.set_log_level('ERROR')
 
+-- [[ Project Detection ]]
+-- Automatically detect which project we're in based on current working directory
+-- This enables project-specific keybindings and settings
+local cwd = vim.fn.getcwd()
+-- Normalize path for matching (convert backslashes to forward slashes)
+local cwd_normalized = cwd:gsub('\\', '/')
+
+-- Default values (DCSRE)
+vim.g.project_name = 'DCSRE'
+vim.g.project_backend = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Backend'
+vim.g.project_frontend = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Frontend'
+vim.g.project_webhost = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Backend\\VDEK.DCSP.WebHost'
+vim.g.project_git_base = 'origin/develop'
+vim.g.project_launch_profile = 'WebHost'
+-- Windows paths for git operations
+vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE'
+-- TFS URL template for commits
+vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
+
+-- Detect project from path (works with worktrees too)
+if cwd_normalized:match('Kluger') or cwd_normalized:match('CENCOCD') or cwd_normalized:match('CenCoCo') or cwd_normalized:match('cencoco') then
+  vim.g.project_name = 'CENCOCD'
+  vim.g.project_backend = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src\\Core\\CenCoCo.Core.API'
+  vim.g.project_frontend = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src\\Core\\CenCoCo.Core.Blazor'
+  vim.g.project_webhost = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src\\Core\\CenCoCo.Core.API'
+  vim.g.project_docker_root = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src'
+  vim.g.project_git_base = 'origin/main'
+  vim.g.project_launch_profile = 'https' -- CENCOCD uses dotnet run --launch-profile https
+  vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
+  vim.g.project_tfs_commit_url = nil -- CENCOCD uses GitLab
+elseif cwd_normalized:match('DCSRE') then
+  -- Already set as default, but explicit for clarity
+  vim.g.project_name = 'DCSRE'
+end
+
+-- Welcome message showing which project was detected
+vim.api.nvim_create_autocmd('VimEnter', {
+  callback = function()
+    vim.notify('Welcome to ' .. vim.g.project_name .. '!', vim.log.levels.INFO)
+  end,
+})
+
 -- [[ Setting options ]]
 -- See `:help vim.o`
 -- NOTE: You can change these options as you wish!
@@ -1598,67 +1640,81 @@ require('lazy').setup({
 
 -- Custom keybindings for project-specific tasks
 
--- Watch Backend: Backend with hot reload (DCSRE - PowerShell)
+-- Watch Backend: Backend with hot reload (PowerShell)
 vim.keymap.set('n', '<leader>wb', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell -Command "cd \'' .. vim.g.project_webhost .. '\'; dotnet watch run'
+  if vim.g.project_launch_profile then
+    cmd = cmd .. ' --launch-profile ' .. vim.g.project_launch_profile
+  end
+  cmd = cmd .. '"'
   local watch = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend\VDEK.DCSP.WebHost'; dotnet watch run --launch-profile WebHost"]],
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
   watch:toggle()
-  vim.notify('Starting Backend with hot reload (dotnet watch run)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Starting Backend with hot reload...', vim.log.levels.INFO)
 end, { desc = '[W]atch [B]ackend (hot reload)' })
 
--- Watch Test: Tests with hot reload (DCSRE - PowerShell)
+-- Watch Test: Tests with hot reload (PowerShell)
 vim.keymap.set('n', '<leader>bt', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local watch = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend\VDEK.DCSP.WebHost'; dotnet watch test"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_webhost .. '\'; dotnet watch test"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   watch:toggle()
-  vim.notify('Starting Tests with hot reload (dotnet watch test)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Starting Tests with hot reload...', vim.log.levels.INFO)
 end, { desc = '[B]ackend [T]est (watch hot reload)' })
 
--- Run Backend WebHost: Start ASP.NET Core backend (DCSRE - Bash/Windows)
+-- Run Backend WebHost: Start ASP.NET Core backend (PowerShell)
 vim.keymap.set('n', '<leader>rbw', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'CENCOCD' then
+    -- CENCOCD: dotnet run --launch-profile https (API on https://localhost:7192)
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_webhost .. '\'; dotnet run --launch-profile https"'
+  else
+    -- DCSRE: Custom URLs (API on https://localhost:5443)
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_webhost .. '\'; $env:ASPNETCORE_URLS=\'https://localhost:5443;http://localhost:5080\'; $env:ASPNETCORE_ENVIRONMENT=\'Development\'; dotnet run --no-restore"'
+  end
   local webhost = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend\VDEK.DCSP.WebHost'; $env:ASPNETCORE_URLS='https://localhost:5443;http://localhost:5080'; $env:ASPNETCORE_ENVIRONMENT='Development'; dotnet run --no-restore"]],
+    cmd = cmd,
     direction = 'horizontal',
-    close_on_exit = false, -- Keep terminal open after exit
+    close_on_exit = false,
+    count = 20, -- Separate terminal ID for backend webhost
   })
   webhost:toggle()
-  vim.notify('Starting Backend WebHost (https://localhost:5443/swagger)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [W]ebhost (DCSRE)' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Backend WebHost...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [W]ebhost' })
 
--- Run Backend Setup: Execute FluentMigrator migrations (DCSRE - Bash/Windows)
+-- Run Backend Setup: Execute FluentMigrator migrations (PowerShell)
 vim.keymap.set('n', '<leader>rbs', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local setup = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet run --project VDEK.DCSP.Setup"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet run --project VDEK.DCSP.Setup"',
     direction = 'horizontal',
     close_on_exit = false, -- Keep terminal open to see migration results
   })
   setup:toggle()
-  vim.notify('Running Backend Setup (Migrations)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Running Backend Setup (Migrations)...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [S]etup (Migrations)' })
 
--- Run Backend Build: Compile the backend solution (DCSRE - Bash/Windows)
+-- Run Backend Build: Compile the backend solution (PowerShell)
 vim.keymap.set('n', '<leader>rbb', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local build = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet build"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet build"',
     direction = 'horizontal',
     close_on_exit = false, -- Keep terminal open to see build errors
   })
   build:toggle()
-  vim.notify('Building Backend...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Building Backend...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [B]uild (dotnet build)' })
 
--- Run Backend Tests via PowerShell (for Docker compatibility)
+-- Run Backend Tests via PowerShell
 vim.keymap.set('n', '<leader>rbt', function()
   local Terminal = require('toggleterm.terminal').Terminal
   -- Get current file name if it's a test file
@@ -1667,11 +1723,9 @@ vim.keymap.set('n', '<leader>rbt', function()
 
   local cmd
   if is_test_file then
-    -- Run tests for current test class
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet test --no-build --no-restore --filter 'FullyQualifiedName~]] .. current_file .. [['"]]
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet test --no-build --no-restore --filter \'FullyQualifiedName~' .. current_file .. '\'"'
   else
-    -- Run all tests
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet test --no-build --no-restore"]]
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet test --no-build --no-restore"'
   end
 
   local test = Terminal:new({
@@ -1680,22 +1734,22 @@ vim.keymap.set('n', '<leader>rbt', function()
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('Running Backend Tests via PowerShell (Docker compatible)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [T]ests (PowerShell/Docker)' })
+  vim.notify('[' .. vim.g.project_name .. '] Running Backend Tests...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [T]ests' })
 
--- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker (DCSRE - PowerShell)
+-- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker (PowerShell)
 vim.keymap.set('n', '<leader>rbu', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet test --filter '(Category!=Database) & (Category!=Storage) & (Category!=Docker)'"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet test --filter \'(Category!=Database) & (Category!=Storage) & (Category!=Docker)\'"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('Running Unit Tests (excluding Database/Storage/Docker)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests (no DB/Storage/Docker)...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [U]nit tests (no DB/Storage/Docker)' })
 
--- Test Backend Integration: Run tests for current file via PowerShell (DCSRE)
+-- Test Backend Integration: Run tests for current file via PowerShell
 vim.keymap.set('n', '<leader>tbi', function()
   local Terminal = require('toggleterm.terminal').Terminal
 
@@ -1708,8 +1762,7 @@ vim.keymap.set('n', '<leader>tbi', function()
     return
   end
 
-  -- Build PowerShell command with dotnet test filter
-  local cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend'; dotnet test --filter 'FullyQualifiedName~]] .. current_file .. [['"]]
+  local cmd = 'powershell -Command "cd \'' .. vim.g.project_backend .. '\'; dotnet test --filter \'FullyQualifiedName~' .. current_file .. '\'"'
 
   local test = Terminal:new({
     cmd = cmd,
@@ -1720,41 +1773,70 @@ vim.keymap.set('n', '<leader>tbi', function()
   vim.notify('Running Integration Tests for ' .. current_file .. ' via PowerShell...', vim.log.levels.INFO)
 end, { desc = '[T]est [B]ackend [I]ntegration (file via PowerShell)' })
 
--- Run Frontend: Start dev server with NX (DCSRE - PowerShell)
-vim.keymap.set('n', '<leader>rff', function()
+-- Run Frontend: Start dev server (PowerShell)
+vim.keymap.set('n', '<leader>rfw', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'CENCOCD' then
+    -- CENCOCD: Blazor on https://localhost:7094
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; dotnet run --launch-profile https"'
+  else
+    -- DCSRE: npm frontend
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; npm start"'
+  end
   local frontend = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Frontend'; npm start"]],
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
+    count = 21, -- Separate terminal ID for frontend
   })
   frontend:toggle()
-  vim.notify('Starting Frontend dev server (https://localhost:8443)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [F]ront (dev server)' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Frontend dev server...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]rontend [W]eb (dev server)' })
 
--- Run Frontend Build: Build production app (DCSRE - Bash/Windows)
+-- Run Frontend Build: Build production app (PowerShell)
 vim.keymap.set('n', '<leader>rfb', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'CENCOCD' then
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; docker compose build frontend"'
+  else
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; npm run build"'
+  end
   local build = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Frontend'; npm run build"]],
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
   build:toggle()
-  vim.notify('Building Frontend (app-standalone)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Building Frontend...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [B]uild (production)' })
 
--- Run Frontend Test: Execute jest tests (DCSRE - PowerShell)
+-- Run Frontend Test: Execute jest tests (PowerShell)
 vim.keymap.set('n', '<leader>rft', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Frontend'; npm test"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; npm test"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('Running Frontend tests (jest)...', vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Running Frontend tests (jest)...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [T]est (jest)' })
+
+-- Docker Infrastructure: Start all infrastructure services (postgres, mongodb, minio, smtp4dev)
+vim.keymap.set('n', '<leader>rDi', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local docker_root = vim.g.project_docker_root or vim.g.project_frontend
+  local infra = Terminal:new({
+    cmd = 'powershell -Command "cd \'' .. docker_root .. '\'; docker compose up -d"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 22, -- Separate terminal ID for docker infra
+  })
+  infra:toggle()
+  vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure (postgres, mongodb, minio, smtp4dev)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [I]nfrastructure (up -d)' })
 
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
@@ -1807,15 +1889,10 @@ vim.keymap.set('n', '<leader>qd', function()
   git_diff_to_quickfix('@{upstream}', 'vs upstream')
 end, { desc = '[Q]uickfix [d]irty files (vs upstream)' })
 
--- Quickfix: Show changed files vs origin/develop (DCSRE)
+-- Quickfix: Show changed files vs project base branch (auto-detects project)
 vim.keymap.set('n', '<leader>qD', function()
-  git_diff_to_quickfix('origin/develop', 'vs origin/develop')
-end, { desc = '[Q]uickfix vs [D]evelop (DCSRE)' })
-
--- Quickfix: Show changed files vs origin/main (CENCOCD)
-vim.keymap.set('n', '<leader>qM', function()
-  git_diff_to_quickfix('origin/main', 'vs origin/main')
-end, { desc = '[Q]uickfix vs [M]ain (CENCOCD)' })
+  git_diff_to_quickfix(vim.g.project_git_base, 'vs ' .. vim.g.project_git_base .. ' (' .. vim.g.project_name .. ')')
+end, { desc = '[Q]uickfix vs [D]evelop/Main (project base)' })
 
 -- Copy relative filepath to clipboard
 vim.keymap.set('n', '<leader>ypp', function()
@@ -1950,16 +2027,20 @@ end, { desc = '[Y]ank [W]indows path' })
 
 -- Open commit in TFS browser (reads commit hash from clipboard)
 vim.keymap.set('n', '<leader>rc', function()
+  if not vim.g.project_tfs_commit_url then
+    vim.notify('[' .. vim.g.project_name .. '] TFS commit URL not configured for this project', vim.log.levels.WARN)
+    return
+  end
   local commit_hash = vim.fn.getreg('+'):gsub('%s+', '') -- Get from clipboard, trim whitespace
   if commit_hash == '' then
     vim.notify('Clipboard is empty!', vim.log.levels.ERROR)
     return
   end
-  local url = string.format('https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s', commit_hash)
+  local url = string.format(vim.g.project_tfs_commit_url, commit_hash)
   -- Open in Chrome (Windows) via PowerShell - runs in background, non-blocking
   local cmd = string.format([[powershell -Command "Start-Process 'chrome.exe' -ArgumentList '--new-window', '%s'"]], url)
   vim.fn.jobstart(cmd, { detach = true }) -- Run async, non-blocking
-  vim.notify('Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
 end, { desc = '[R]un [C]ommit (open in TFS browser)' })
 
 -- Open file in PR on TFS browser (reads PR number from register P)
@@ -1971,97 +2052,97 @@ vim.keymap.set('n', '<leader>rC', function()
   end
 
   local file_path = vim.fn.expand('%:p') -- Get full path of current file
-  local dcsre_base = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE'
+  local project_base = vim.g.project_root_windows
 
-  -- Check if file is in DCSRE project
-  if not file_path:find(dcsre_base, 1, true) then
-    vim.notify('Datei ist nicht im DCSRE Projekt!', vim.log.levels.ERROR)
+  -- Check if file is in current project
+  if not file_path:find(project_base, 1, true) then
+    vim.notify('Datei ist nicht im ' .. vim.g.project_name .. ' Projekt!', vim.log.levels.ERROR)
     return
   end
 
-  -- Get relative path from DCSRE root
-  local relative_path = file_path:sub(#dcsre_base + 1) -- Remove DCSRE base path
+  -- Get relative path from project root
+  local relative_path = file_path:sub(#project_base + 1) -- Remove project base path
 
   -- Call PowerShell script
   local script_path = 'C:\\Users\\Administrator\\Documents\\Projekt\\KickStartNeoVim\\open-pr-file.ps1'
   local cmd = string.format([[powershell -File "%s" -PrNumber %s -FilePath "%s"]], script_path, pr_number, relative_path)
   vim.fn.jobstart(cmd, { detach = true })
-  vim.notify('Opening PR #' .. pr_number .. ' at file: ' .. relative_path, vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Opening PR #' .. pr_number .. ' at file: ' .. relative_path, vim.log.levels.INFO)
 end, { desc = '[R]un file in PR (TFS browser, PR# from register P)' })
 
--- Git Push to DCSRE (Windows PowerShell)
+-- Git Push (Windows PowerShell)
 vim.keymap.set('n', '<leader>rp', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local push = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE'; git push; pause"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_root_windows .. '\'; git push; pause"',
     direction = 'horizontal',
     close_on_exit = false, -- Keep terminal open to see output
   })
   push:toggle()
-  vim.notify('Git Push to DCSRE started...', vim.log.levels.INFO)
-end, { desc = '[R]un [P]ush (DCSRE Windows)' })
+  vim.notify('[' .. vim.g.project_name .. '] Git Push started...', vim.log.levels.INFO)
+end, { desc = '[R]un [P]ush (Windows)' })
 
--- Git Pull from DCSRE (Windows PowerShell)
+-- Git Pull (Windows PowerShell)
 vim.keymap.set('n', '<leader>rP', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local pull = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\DCSRE'; git pull; pause"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_root_windows .. '\'; git pull; pause"',
     direction = 'horizontal',
     close_on_exit = false, -- Keep terminal open to see output
   })
   pull:toggle()
-  vim.notify('Git Pull from DCSRE started...', vim.log.levels.INFO)
-end, { desc = '[R]un [P]ull (DCSRE Windows)' })
+  vim.notify('[' .. vim.g.project_name .. '] Git Pull started...', vim.log.levels.INFO)
+end, { desc = '[R]un [P]ull (Windows)' })
 
--- Kluger Project: Build Frontend with Docker
-vim.keymap.set('n', '<leader>rfF', function()
+-- Docker Build Frontend (for projects using docker)
+vim.keymap.set('n', '<leader>rdf', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local build = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\Kluger\code\36-Anmelden\src'; docker compose build frontend; pause"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; docker compose build frontend; pause"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   build:toggle()
-  vim.notify('Building Kluger Frontend (docker compose)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront build [F] (Kluger docker)' })
+  vim.notify('[' .. vim.g.project_name .. '] Building Frontend (docker)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [F]rontend build' })
 
--- Kluger Project: Start Frontend with Docker
-vim.keymap.set('n', '<leader>rkf', function()
+-- Docker Up Frontend (for projects using docker)
+vim.keymap.set('n', '<leader>rdF', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local start = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\Kluger\code\36-Anmelden\src'; docker compose up frontend"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; docker compose up frontend"',
     direction = 'horizontal',
     close_on_exit = false,
-    count = 11,
+    count = 11, -- Separate terminal ID for frontend
   })
   start:toggle()
-  vim.notify('Starting Kluger Frontend (docker compose up)...', vim.log.levels.INFO)
-end, { desc = '[R]un [K]luger [f]rontend (docker up)' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Frontend (docker up)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [F]rontend up' })
 
--- Kluger Project: Build Backend with Docker
-vim.keymap.set('n', '<leader>rfB', function()
+-- Docker Build Backend (for projects using docker)
+vim.keymap.set('n', '<leader>rdb', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local build = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\Kluger\code\36-Anmelden\src'; docker compose build backend; pause"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; docker compose build backend; pause"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   build:toggle()
-  vim.notify('Building Kluger Backend (docker compose)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [B]ackend build (Kluger docker)' })
+  vim.notify('[' .. vim.g.project_name .. '] Building Backend (docker)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [B]ackend build' })
 
--- Kluger Project: Start Backend (dotnet run)
-vim.keymap.set('n', '<leader>rfb', function()
+-- Docker Up Backend (for projects using docker)
+vim.keymap.set('n', '<leader>rdB', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local start = Terminal:new({
-    cmd = [[powershell -Command "cd 'C:\Users\Administrator\Documents\Work\Code2\Kluger\code\36-Anmelden\src\Core\CenCoCo.Core.API'; dotnet run"]],
+    cmd = 'powershell -Command "cd \'' .. vim.g.project_frontend .. '\'; docker compose up backend"',
     direction = 'horizontal',
     close_on_exit = false,
-    count = 10,
+    count = 10, -- Separate terminal ID for backend
   })
   start:toggle()
-  vim.notify('Starting Kluger Backend (dotnet run)...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [b]ackend (Kluger dotnet)' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Backend (docker up)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [B]ackend up' })
 
 -- Create temporary markdown buffer (scratch) - won't be saved!
 vim.keymap.set('n', '<leader>mf', function()
