@@ -380,6 +380,19 @@ require('lazy').setup({
       },
       { '<leader>gdc', '<cmd>DiffviewClose<cr>', desc = '[G]it [D]iff [C]lose (all panels)' },
       {
+        '<leader>gF',
+        function()
+          local filepath = vim.fn.expand('%')
+          if filepath == '' then
+            vim.notify('No file in current buffer!', vim.log.levels.ERROR)
+            return
+          end
+          vim.cmd('DiffviewOpen -- ' .. filepath)
+          vim.notify('Diff for: ' .. filepath, vim.log.levels.INFO)
+        end,
+        desc = '[G]it diff [F]ile (unstaged changes)',
+      },
+      {
         '<leader>gf',
         function()
           local filepath = vim.fn.expand('%')
@@ -1823,6 +1836,57 @@ vim.keymap.set('n', '<leader>rft', function()
   test:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Running Frontend tests (jest)...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [T]est (jest)' })
+
+-- E2E Gesamtsystemtest: Run full integration E2E tests (DCSRE only, headless)
+vim.keymap.set('n', '<leader>reg', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'powershell -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:run:gesamtsystemtest"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 30, -- Separate terminal ID for E2E tests
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running E2E Gesamtsystemtest (headless)...', vim.log.levels.INFO)
+end, { desc = '[R]un [E]2E [G]esamtsystemtest (full integration)' })
+
+-- E2E Systemtest: Run isolated system tests (DCSRE only, headless)
+vim.keymap.set('n', '<leader>res', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'powershell -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:run:systemtest"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 31, -- Separate terminal ID for E2E tests
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running E2E Systemtest (isolated)...', vim.log.levels.INFO)
+end, { desc = '[R]un [E]2E [S]ystemtest (isolated)' })
+
+-- E2E Open: Interactive Cypress UI (DCSRE only)
+vim.keymap.set('n', '<leader>reo', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'powershell -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:open:systemtest"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 32, -- Separate terminal ID for Cypress UI
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Opening Cypress UI...', vim.log.levels.INFO)
+end, { desc = '[R]un [E]2E [O]pen (interactive UI)' })
 
 -- Docker Infrastructure: Start all infrastructure services (postgres, mongodb, minio, smtp4dev)
 vim.keymap.set('n', '<leader>rDi', function()
