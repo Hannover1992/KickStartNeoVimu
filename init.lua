@@ -106,6 +106,8 @@ vim.g.project_name = 'DCSRE'
 vim.g.project_backend = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend'
 vim.g.project_frontend = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend'
 vim.g.project_webhost = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost'
+vim.g.project_docker_root = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources'
+vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources'
 vim.g.project_git_base = 'origin/develop'
 vim.g.project_launch_profile = 'WebHost'
 -- Windows paths for PowerShell operations (VPN requirement)
@@ -121,6 +123,7 @@ if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:ma
   vim.g.project_frontend = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor'
   vim.g.project_webhost = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
   vim.g.project_docker_root = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src'
+  vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src'
   vim.g.project_git_base = 'origin/main'
   vim.g.project_launch_profile = 'https' -- CENCOCD uses dotnet run --launch-profile https
   vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
@@ -490,10 +493,62 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
+      -- Open in new Chrome window (not tab) - WSL version
+      vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
+      vim.cmd([[
+        function OpenMarkdownPreview(url)
+          execute 'silent !/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe --new-window "' . a:url . '"'
+        endfunction
+      ]])
       -- Mermaid, PlantUML, Chart.js support included by default
     end,
     keys = {
       { '<leader>mp', '<cmd>MarkdownPreviewToggle<cr>', desc = '[M]arkdown [P]review' },
+    },
+  },
+
+  -- Obsidian.nvim - Write and navigate Obsidian vaults in Neovim
+  -- Community fork (actively maintained): https://github.com/obsidian-nvim/obsidian.nvim
+  {
+    'obsidian-nvim/obsidian.nvim',
+    version = '*',
+    lazy = false, -- Load immediately so :Obsidian commands work from startup
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+    },
+    init = function()
+      -- Set conceallevel for nicer wiki link display [[link]] → link
+      vim.opt.conceallevel = 2
+    end,
+    ---@module 'obsidian'
+    ---@type obsidian.config
+    opts = {
+      legacy_commands = false, -- Use new command style (will be removed in next major release)
+      workspaces = {
+        {
+          name = 'DCSRE',
+          path = '/mnt/c/Users/Administrator/Documents/DCS',
+        },
+        {
+          name = 'CenCoCo',
+          path = '/mnt/c/Users/Administrator/Documents/Obsydian/CenCoCo',
+        },
+        {
+          name = 'Brain',
+          path = '/mnt/c/Users/Administrator/Documents/Brain',
+        },
+      },
+    },
+    keys = {
+      { '<leader>on', '<cmd>Obsidian new<cr>', desc = '[O]bsidian [N]ew note' },
+      { '<leader>oo', '<cmd>Obsidian open<cr>', desc = '[O]bsidian [O]pen in app' },
+      { '<leader>os', '<cmd>Obsidian search<cr>', desc = '[O]bsidian [S]earch' },
+      { '<leader>oq', '<cmd>Obsidian quick_switch<cr>', desc = '[O]bsidian [Q]uick switch' },
+      { '<leader>ot', '<cmd>Obsidian today<cr>', desc = '[O]bsidian [T]oday' },
+      { '<leader>oy', '<cmd>Obsidian yesterday<cr>', desc = '[O]bsidian [Y]esterday' },
+      { '<leader>ob', '<cmd>Obsidian backlinks<cr>', desc = '[O]bsidian [B]acklinks' },
+      { '<leader>ol', '<cmd>Obsidian link<cr>', desc = '[O]bsidian [L]ink selection', mode = 'v' },
+      { '<leader>ow', '<cmd>Obsidian workspace<cr>', desc = '[O]bsidian [W]orkspace switch' },
     },
   },
 
@@ -596,41 +651,52 @@ require('lazy').setup({
       { '<leader>e', '<cmd>Neotree reveal<cr>', desc = '[E]xplorer Reveal (show current file)' },
       { '<leader>E', '<cmd>Neotree toggle<cr>', desc = '[E]xplorer Toggle (on/off)' },
     },
-    opts = {
-      filesystem = {
-        follow_current_file = {
-          enabled = true, -- Auto-reveal current file
+    config = function()
+      -- Enable relative line numbers in neo-tree window
+      vim.api.nvim_create_autocmd('FileType', {
+        pattern = 'neo-tree',
+        callback = function()
+          vim.wo.number = true
+          vim.wo.relativenumber = true
+        end,
+      })
+
+      require('neo-tree').setup({
+        filesystem = {
+          follow_current_file = {
+            enabled = true, -- Auto-reveal current file
+          },
+          hijack_netrw_behavior = 'open_current', -- Replace netrw
         },
-        hijack_netrw_behavior = 'open_current', -- Replace netrw
-      },
-      window = {
-        position = 'left',
-        width = 30,
-      },
-      default_component_configs = {
-        icon = {
-          folder_closed = "▶",
-          folder_open = "▼",
-          folder_empty = "▷",
-          default = "*",
-          highlight = "NeoTreeFileIcon"
+        window = {
+          position = 'left',
+          width = 30,
         },
-        git_status = {
-          symbols = {
-            added     = "+",
-            modified  = "M",
-            deleted   = "D",
-            renamed   = "R",
-            untracked = "?",
-            ignored   = "!",
-            unstaged  = "U",
-            staged    = "S",
-            conflict  = "C",
-          }
+        default_component_configs = {
+          icon = {
+            folder_closed = "▶",
+            folder_open = "▼",
+            folder_empty = "▷",
+            default = "*",
+            highlight = "NeoTreeFileIcon"
+          },
+          git_status = {
+            symbols = {
+              added     = "+",
+              modified  = "M",
+              deleted   = "D",
+              renamed   = "R",
+              untracked = "?",
+              ignored   = "!",
+              unstaged  = "U",
+              staged    = "S",
+              conflict  = "C",
+            }
+          },
         },
-      },
-      use_default_mappings = true,
-    },
+        use_default_mappings = true,
+      })
+    end,
   },
 
   -- aerial.nvim - Code outline sidebar (shows classes, methods, etc.)
@@ -767,6 +833,15 @@ require('lazy').setup({
             gitsigns.nav_hunk('prev')
           end
         end, { desc = 'Previous git [c]hange/hunk' })
+
+        -- Staged hunk navigation
+        map('n', ']C', function()
+          gitsigns.nav_hunk('next', { target = 'staged' })
+        end, { desc = 'Next staged [C]hange/hunk' })
+
+        map('n', '[C', function()
+          gitsigns.nav_hunk('prev', { target = 'staged' })
+        end, { desc = 'Previous staged [C]hange/hunk' })
 
         -- Actions
         map('n', '<leader>hs', gitsigns.stage_hunk, { desc = '[H]unk [S]tage' })
@@ -971,6 +1046,12 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sE', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.ERROR })
       end, { desc = '[S]earch [E]rrors only' })
+      vim.keymap.set('n', '<leader>sis', function()
+        builtin.diagnostics({ severity = vim.diagnostic.severity.INFO })
+      end, { desc = '[S]earch [I]ssues [S]uggestion (Info)' })
+      vim.keymap.set('n', '<leader>sih', function()
+        builtin.diagnostics({ severity = vim.diagnostic.severity.HINT })
+      end, { desc = '[S]earch [I]ssues [H]int' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
@@ -997,6 +1078,84 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sn', function()
         builtin.find_files { cwd = vim.fn.stdpath 'config' }
       end, { desc = '[S]earch [N]eovim files' })
+
+      -- Search Terminals - Telescope picker for toggleterm terminals
+      vim.keymap.set('n', '<leader>st', function()
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        -- Named terminals (ID → Name)
+        local terminal_names = {
+          [1] = 'Default',
+          [10] = 'Backend',
+          [11] = 'Frontend Dev',
+          [20] = 'Backend WebHost',
+          [21] = 'Frontend',
+          [22] = 'Docker Infra',
+          [30] = 'E2E Playwright',
+          [31] = 'E2E Headed',
+          [32] = 'Cypress UI',
+        }
+
+        -- Get all toggleterm terminals
+        local terms = require('toggleterm.terminal').get_all()
+        local results = {}
+
+        for _, term in ipairs(terms) do
+          local name = terminal_names[term.id] or ('Terminal #' .. term.id)
+          local status = term:is_open() and '●' or '○'
+          table.insert(results, {
+            id = term.id,
+            name = name,
+            display = string.format('%s %2d: %s', status, term.id, name),
+            term = term,
+          })
+        end
+
+        -- Sort by ID
+        table.sort(results, function(a, b) return a.id < b.id end)
+
+        if #results == 0 then
+          vim.notify('No terminals open', vim.log.levels.INFO)
+          return
+        end
+
+        pickers.new({}, {
+          prompt_title = 'Terminals (● open, ○ hidden)',
+          finder = finders.new_table({
+            results = results,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry.display,
+                ordinal = entry.display,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          attach_mappings = function(prompt_bufnr, map)
+            actions.select_default:replace(function()
+              actions.close(prompt_bufnr)
+              local selection = action_state.get_selected_entry()
+              if selection then
+                selection.value.term:toggle()
+              end
+            end)
+            -- 'd' to close/kill terminal
+            map('i', '<C-d>', function()
+              local selection = action_state.get_selected_entry()
+              if selection then
+                selection.value.term:shutdown()
+                vim.notify('Terminal #' .. selection.value.id .. ' closed', vim.log.levels.INFO)
+              end
+            end)
+            return true
+          end,
+        }):find()
+      end, { desc = '[S]earch [T]erminals' })
     end,
   },
 
@@ -1196,6 +1355,62 @@ require('lazy').setup({
 
       -- Diagnostic Config
       -- See :help vim.diagnostic.Opts
+
+      -- =======================================================================
+      -- DIAGNOSTIC FILTER - Persönliche Ignore-Liste
+      -- Füge hier Diagnostic-Codes hinzu die du ausblenden willst
+      -- =======================================================================
+      local ignored_diagnostics = {
+        -- Roslyn/OmniSharp Codes zum Ignorieren:
+        -- 'IDE0008',  -- Use explicit type instead of 'var'
+        -- 'IDE0058',  -- Expression value is never used
+        -- 'CA1707',   -- Identifiers should not contain underscores
+        -- 'CA1822',   -- Mark members as static
+        -- 'SA1600',   -- Elements should be documented
+      }
+
+      -- Convert to lookup table for O(1) access
+      local ignored_lookup = {}
+      for _, code in ipairs(ignored_diagnostics) do
+        ignored_lookup[code] = true
+      end
+
+      -- Custom filter function
+      local function filter_diagnostics(diagnostics)
+        return vim.tbl_filter(function(d)
+          if d.code and ignored_lookup[tostring(d.code)] then
+            return false
+          end
+          return true
+        end, diagnostics)
+      end
+
+      -- Override diagnostic handlers to apply filter
+      local orig_signs_handler = vim.diagnostic.handlers.signs
+      local orig_virtual_text_handler = vim.diagnostic.handlers.virtual_text
+      local orig_underline_handler = vim.diagnostic.handlers.underline
+
+      vim.diagnostic.handlers.signs = {
+        show = function(ns, bufnr, diagnostics, opts)
+          orig_signs_handler.show(ns, bufnr, filter_diagnostics(diagnostics), opts)
+        end,
+        hide = orig_signs_handler.hide,
+      }
+
+      vim.diagnostic.handlers.virtual_text = {
+        show = function(ns, bufnr, diagnostics, opts)
+          orig_virtual_text_handler.show(ns, bufnr, filter_diagnostics(diagnostics), opts)
+        end,
+        hide = orig_virtual_text_handler.hide,
+      }
+
+      vim.diagnostic.handlers.underline = {
+        show = function(ns, bufnr, diagnostics, opts)
+          orig_underline_handler.show(ns, bufnr, filter_diagnostics(diagnostics), opts)
+        end,
+        hide = orig_underline_handler.hide,
+      }
+
       vim.diagnostic.config {
         severity_sort = true,
         float = { border = 'rounded', source = 'if_many' },
@@ -1889,18 +2104,48 @@ vim.keymap.set('n', '<leader>reo', function()
 end, { desc = '[R]un [E]2E [O]pen (interactive UI)' })
 
 -- Docker Infrastructure: Start all infrastructure services (postgres, mongodb, minio, smtp4dev)
+-- DCSRE uses PowerShell script with specific parameters, CENCOCD uses simple docker compose
 vim.keymap.set('n', '<leader>rDi', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  local docker_root = vim.g.project_docker_root or vim.g.project_frontend
+  local cmd
+  if vim.g.project_name == 'DCSRE' then
+    -- DCSRE: Use PowerShell script (needs Windows paths, must run from Sources dir)
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests"'
+  else
+    -- CENCOCD: Simple docker compose
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose up -d'
+  end
   local infra = Terminal:new({
-    cmd = 'cd ' .. docker_root .. ' && docker compose up -d',
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
     count = 22, -- Separate terminal ID for docker infra
   })
   infra:toggle()
-  vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure (postgres, mongodb, minio, smtp4dev)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [I]nfrastructure (up -d)' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [I]nfrastructure (up)' })
+
+-- Docker Infrastructure Down: Stop all infrastructure services
+-- DCSRE uses project name 'dcsp', CENCOCD uses default
+vim.keymap.set('n', '<leader>rDI', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'DCSRE' then
+    -- DCSRE: Use project name 'dcsp' (from docker-up.ps1)
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose -p dcsp down -v'
+  else
+    -- CENCOCD: Simple docker compose down
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose down -v'
+  end
+  local infra = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 22, -- Same terminal ID as docker infra up
+  })
+  infra:toggle()
+  vim.notify('[' .. vim.g.project_name .. '] Stopping Docker Infrastructure...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [I]nfrastructure down (capital I)' })
 
 -- Docker Build Frontend (for projects using docker)
 vim.keymap.set('n', '<leader>rdf', function()
