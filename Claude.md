@@ -807,6 +807,114 @@ Copy-Item init_windows.lua $env:LOCALAPPDATA\nvim\init.lua
 
 ---
 
+## 📂 Diffview.nvim Referenz
+
+### Navigation
+| Key | Aktion |
+|-----|--------|
+| `<tab>` / `<s-tab>` | Nächste/Vorherige Datei |
+| `]c` / `[c` | Nächster/Vorheriger Hunk |
+| `]x` / `[x` | Nächster/Vorheriger Konflikt |
+| `g<C-x>` | Layout wechseln (2-way, 3-way, 4-way) |
+| `<leader>e` | Focus File Panel |
+| `<leader>b` | Toggle File Panel |
+
+### Merge Konflikte lösen
+| Key | Aktion |
+|-----|--------|
+| `<leader>co` | Choose **OURS** (dein Code) |
+| `<leader>ct` | Choose **THEIRS** (ihr Code) |
+| `<leader>cb` | Choose **BASE** (gemeinsamer Vorfahre) |
+| `<leader>ca` | Choose **ALL** (beides behalten) |
+| `dx` | Konflikt löschen |
+| `<leader>cO` | Alle Konflikte → OURS |
+| `<leader>cT` | Alle Konflikte → THEIRS |
+
+### Hunk-Operationen (diffget)
+| Key | Aktion |
+|-----|--------|
+| `2do` | Hunk von OURS (links) |
+| `3do` | Hunk von THEIRS (rechts) |
+| `do` | Standard Vim diffget |
+
+### File Panel Operationen
+| Key | Aktion |
+|-----|--------|
+| `-` | Stage/Unstage toggle |
+| `s` / `u` | Stage/Unstage |
+| `X` | Änderungen verwerfen (Restore) |
+| `r` / `R` | Refresh (einzeln/alle) |
+
+### Merge Workflow
+```
+1. :DiffviewOpen         (oder <leader>gD bei Konflikten)
+2. ]x                    → Zum Konflikt springen
+3. <leader>co oder ct    → OURS oder THEIRS wählen
+4. ]x                    → Nächster Konflikt
+5. <tab>                 → Nächste Datei (wenn mehrere)
+6. <leader>gdc           → Schließen wenn fertig
+```
+
+### Nützliche Commands
+```vim
+:DiffviewOpen              " Aktuelle Änderungen
+:DiffviewOpen HEAD~2       " Gegen 2 Commits zurück
+:DiffviewOpen main..HEAD   " Range zwischen Branches
+:DiffviewFileHistory       " File History
+:DiffviewFileHistory %     " History für aktuelle Datei
+:DiffviewClose             " Schließen
+```
+
+---
+
+## 🧪 Integration Tests (DCSRE)
+
+### Keybindings
+
+| Key | Beschreibung | Threads |
+|-----|--------------|---------|
+| `<leader>rim` | **Run Integration Mock** (DicMockServer) | 38 |
+| `<leader>rid` | **Run Integration DB** (alle außer Mock) | 8 |
+
+### Chirurgischer Ansatz
+
+Die Keybindings ändern automatisch `maxParallelThreads` in der `xunit.runner.json`:
+
+1. **Vor dem Test**: Threads auf 38 (Mock) oder 8 (DB) setzen
+2. **Test ausführen**: `dotnet test --filter ... --verbosity detailed`
+3. **Nach dem Test**: `notify 'erfolgreich/fehlgeschlagen'` (Desktop-Benachrichtigung)
+4. **Terminal schließen**: Threads auf 1 zurücksetzen (`on_exit` Callback)
+
+### Lua Helper-Funktion
+
+```lua
+-- In init.lua definiert
+local function set_xunit_threads(threads)
+  local xunit_file = vim.g.project_backend .. '\\VDEK.DCSP.IntegrationTests\\xunit.runner.json'
+  local file = io.open(xunit_file, 'r')
+  local content = file:read('*all')
+  file:close()
+  local new_content = content:gsub('"maxParallelThreads": %d+', '"maxParallelThreads": ' .. threads)
+  file = io.open(xunit_file, 'w')
+  file:write(new_content)
+  file:close()
+end
+```
+
+### Warum dieser Ansatz?
+
+- **Mock Tests (DB-agnostisch)**: Können mit vielen Threads parallel laufen (38)
+- **DB Tests**: Brauchen weniger Threads wegen DB-Konflikten (8)
+- **Reset auf 1**: Sicherer Default-Zustand nach Tests
+
+### xunit.runner.json Pfad
+
+```
+{project_backend}\VDEK.DCSP.IntegrationTests\xunit.runner.json
+```
+
+---
+
 ## 🔇 Diagnostic Filter (Personal)
 
 A personal diagnostic filter is configured in init.lua to hide specific Roslyn/OmniSharp warnings **only in Neovim** (doesn't affect team via .editorconfig).

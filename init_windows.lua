@@ -2044,6 +2044,77 @@ vim.keymap.set('n', '<leader>tbi', function()
   vim.notify('Running Integration Tests for ' .. current_file .. ' via PowerShell...', vim.log.levels.INFO)
 end, { desc = '[T]est [B]ackend [I]ntegration (file via PowerShell)' })
 
+-- Helper: Update maxParallelThreads in xunit.runner.json
+local function set_xunit_threads(threads)
+  local xunit_file = vim.g.project_backend .. '\\VDEK.DCSP.IntegrationTests\\xunit.runner.json'
+  local file = io.open(xunit_file, 'r')
+  if not file then return false end
+  local content = file:read('*all')
+  file:close()
+  local new_content = content:gsub('"maxParallelThreads": %d+', '"maxParallelThreads": ' .. threads)
+  file = io.open(xunit_file, 'w')
+  if not file then return false end
+  file:write(new_content)
+  file:close()
+  return true
+end
+
+-- Run Integration Mock: DicMockServer tests (DB-agnostic, 38 threads)
+vim.keymap.set('n', '<leader>rim', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  -- Set threads to 38
+  if set_xunit_threads(38) then
+    vim.notify('Set maxParallelThreads to 38', vim.log.levels.INFO)
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test_dir = vim.g.project_backend .. '\\VDEK.DCSP.IntegrationTests'
+  local cmd = 'powershell -NoExit -Command "cd \'' .. test_dir .. '\'; dotnet test --filter FullyQualifiedName~DicMockServerIntegrationTests --verbosity detailed; if ($LASTEXITCODE -eq 0) { notify \'Mock Tests erfolgreich\' } else { notify \'Mock Tests fehlgeschlagen\' }"'
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 33,
+    on_exit = function()
+      -- Reset threads to 1 when terminal closes
+      set_xunit_threads(1)
+      vim.notify('Reset maxParallelThreads to 1', vim.log.levels.INFO)
+    end,
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running Integration Mock Tests (38 threads)...', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [M]ock (DicMockServer, 38 threads)' })
+
+-- Run Integration DB: All other integration tests (DB-dependent, 8 threads)
+vim.keymap.set('n', '<leader>rid', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  -- Set threads to 8
+  if set_xunit_threads(8) then
+    vim.notify('Set maxParallelThreads to 8', vim.log.levels.INFO)
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test_dir = vim.g.project_backend .. '\\VDEK.DCSP.IntegrationTests'
+  local cmd = 'powershell -NoExit -Command "cd \'' .. test_dir .. '\'; dotnet test --filter FullyQualifiedName!~DicMockServerIntegrationTests --verbosity detailed; if ($LASTEXITCODE -eq 0) { notify \'DB Tests erfolgreich\' } else { notify \'DB Tests fehlgeschlagen\' }"'
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 34,
+    on_exit = function()
+      -- Reset threads to 1 when terminal closes
+      set_xunit_threads(1)
+      vim.notify('Reset maxParallelThreads to 1', vim.log.levels.INFO)
+    end,
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running Integration DB Tests (8 threads)...', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [D]B (all except Mock, 8 threads)' })
+
 -- Run Frontend: Start dev server (PowerShell)
 vim.keymap.set('n', '<leader>rfw', function()
   local Terminal = require('toggleterm.terminal').Terminal
