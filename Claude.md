@@ -715,7 +715,7 @@ This repository contains **two separate init.lua configurations**:
    - Backend operations via Bash (normal dev workflow)
 
 2. **`init_windows.lua`** (Windows Native)
-   - Location: `%APPDATA%\nvim\init.lua` (Windows)
+   - Location: `%LOCALAPPDATA%\nvim\init.lua` → `C:\Users\Administrator\AppData\Local\nvim\init.lua`
    - Uses Windows paths: `C:\Users\...`
    - All operations via PowerShell
    - For use when running Neovim natively in Windows PowerShell/CMD
@@ -724,10 +724,111 @@ This repository contains **two separate init.lua configurations**:
 ```powershell
 # Windows PowerShell
 cd C:\Users\Administrator\Documents\Projekt\KickStartNeoVim
-Copy-Item init_windows.lua $env:APPDATA\nvim\init.lua
+Copy-Item init_windows.lua $env:LOCALAPPDATA\nvim\init.lua
+```
+
+**Check config path in Neovim:**
+```vim
+:echo stdpath('config')
 ```
 
 **Why two configs?** Cross-filesystem operations between WSL2 and Windows can cause path resolution issues. Separate configs ensure reliable operation in each environment.
+
+---
+
+## 🎮 CENCOCD Project Keybindings
+
+**Auto-Detection**: Keybindings automatically adapt when working in the CENCOCD/Kluger project folder!
+
+### Backend (CENCOCD)
+
+**`<leader>rbw`** - **[R]un [B]ackend [W]ebhost**
+- Starts the ASP.NET Core API server with `https` launch profile
+- Project: `CenCoCo.Core.API`
+- Path: `/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API`
+
+### Frontend (CENCOCD - Blazor)
+
+**`<leader>rfw`** - **[R]un [F]rontend [W]eb (Blazor)**
+- Starts the Blazor WebAssembly frontend
+- Project: `CenCoCo.Core.Blazor`
+- Path: `/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor`
+
+### Docker Operations (Projekt-spezifisch!)
+
+**`<leader>rDi`** - **[R]un [D]ocker [I]nfrastructure UP** (capital D!)
+
+| Projekt | Befehl |
+|---------|--------|
+| DCSRE | `.\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests` |
+| CENCOCD | `docker compose up -d` |
+
+**`<leader>rDa`** - **[R]un [D]ocker [A]ll** (DCSRE only!)
+
+| Projekt | Befehl |
+|---------|--------|
+| DCSRE | `.\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests` |
+
+**`<leader>rDI`** - **[R]un [D]ocker [I]nfrastructure DOWN** (capital D and I!)
+
+| Projekt | Befehl |
+|---------|--------|
+| DCSRE | `docker compose -p dcsp down -v` |
+| CENCOCD | `docker compose down -v` |
+
+**Pfade:**
+- DCSRE: `C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources`
+- CENCOCD: `C:\Users\Administrator\Documents\Work\Kluger\cencoco\src`
+
+**⚠️ Note**: The `D` is capital to avoid conflict with `<leader>rd` (diagnostics).
+
+---
+
+## 🔍 Search Terminals Feature
+
+**`<leader>st`** - **[S]earch [T]erminals**
+- Opens Telescope picker with all named terminals
+- Shows terminal status: ● (open/visible) or ○ (hidden/background)
+- Press `<Enter>` to toggle/open terminal
+- Press `<C-d>` to close/kill terminal
+
+**Named Terminals**:
+| ID | Name | Description |
+|----|------|-------------|
+| 1 | Default | Standard terminal |
+| 10 | Backend | Generic backend work |
+| 11 | Frontend Dev | Generic frontend work |
+| 20 | Backend WebHost | DCSRE/CENCOCD API server |
+| 21 | Frontend | DCSRE Angular/NX server |
+| 22 | Docker Infra | CENCOCD Docker services |
+| 30 | E2E Playwright | Playwright tests |
+| 31 | E2E Headed | Headed browser tests |
+| 32 | Cypress UI | Cypress test runner |
+
+---
+
+## 🔇 Diagnostic Filter (Personal)
+
+A personal diagnostic filter is configured in init.lua to hide specific Roslyn/OmniSharp warnings **only in Neovim** (doesn't affect team via .editorconfig).
+
+**Location**: init.lua, search for `ignored_diagnostics`
+
+**How to use**:
+```lua
+local ignored_diagnostics = {
+  -- Uncomment any code you want to hide:
+  -- 'IDE0008',  -- Use explicit type instead of 'var'
+  -- 'IDE0058',  -- Expression value is never used
+  -- 'CA1707',   -- Identifiers should not contain underscores
+  -- 'CA1822',   -- Mark members as static
+  -- 'SA1600',   -- Elements should be documented
+}
+```
+
+**Benefits**:
+- Personal preference, doesn't affect colleagues
+- Team still sees all warnings in Rider/VS
+- Can be different per machine (WSL vs Windows)
 
 ---
 
@@ -750,12 +851,26 @@ Backend (WSL2)
 <leader>rbw  → Run Backend WebHost (https://localhost:5443/swagger)
 <leader>rbs  → Run Backend Setup (Migrations)
 
-Frontend (WSL2)
----------------
-<leader>rfr  → Run Frontend dev server (https://localhost:8443)
+Frontend (WSL2 - DCSRE)
+-----------------------
+<leader>rfr  → Run Frontend dev server (Angular/NX - https://localhost:8443)
 <leader>rfb  → Run Frontend Build (production)
 <leader>rfi  → Run Frontend Install (npm install)
 <leader>rft  → Run Frontend Test (jest)
+
+Frontend (WSL2 - CENCOCD)
+-------------------------
+<leader>rfw  → Run Frontend Web (Blazor)
+
+Docker (Projekt-spezifisch!)
+---------------------------
+<leader>rDi  → Docker UP (DCSRE: -Profile dev-backend, CENCOCD: docker compose up)
+<leader>rDa  → Docker ALL (DCSRE only: -Profile all)
+<leader>rDI  → Docker DOWN (DCSRE: -p dcsp down -v, CENCOCD: down -v)
+
+Terminals
+---------
+<leader>st   → Search Terminals (Telescope picker)
 
 Clipboard
 ---------
@@ -777,6 +892,6 @@ Markdown
 
 **This is the working solution! 🎉**
 
-Last verified: 2025-11-13
+Last verified: 2025-12-12
 Neovim version: v0.11.4
 OmniSharp version: 1.39.14

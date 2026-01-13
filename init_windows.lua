@@ -2168,6 +2168,24 @@ vim.keymap.set('n', '<leader>rDi', function()
   vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [I]nfrastructure (up)' })
 
+-- Docker All: Start ALL services (Profile=all) - DCSRE only
+vim.keymap.set('n', '<leader>rDa', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Docker All is only for DCSRE project', vim.log.levels.WARN)
+    return
+  end
+  local cmd = 'powershell -Command "cd \'' .. vim.g.project_docker_root .. '\'; .\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests"'
+  local infra = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 24, -- Separate terminal ID for docker all
+  })
+  infra:toggle()
+  vim.notify('[DCSRE] Starting Docker ALL (full environment)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [A]ll (Profile=all, DCSRE)' })
+
 -- Docker Detail: Start with logs visible (no -d flag) - CENCOCD only
 vim.keymap.set('n', '<leader>rDd', function()
   local Terminal = require('toggleterm.terminal').Terminal
