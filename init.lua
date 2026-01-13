@@ -2110,10 +2110,10 @@ vim.keymap.set('n', '<leader>rDi', function()
   local cmd
   if vim.g.project_name == 'DCSRE' then
     -- DCSRE: Use PowerShell script (needs Windows paths, must run from Sources dir)
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests"'
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests; if ($?) { notify \'Docker Infra erfolgreich\' } else { notify \'Docker Infra fehlgeschlagen\' }"'
   else
     -- CENCOCD: Simple docker compose
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose up -d'
+    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose up -d && notify \'Docker erfolgreich\' || notify \'Docker fehlgeschlagen\''
   end
   local infra = Terminal:new({
     cmd = cmd,
@@ -2132,7 +2132,7 @@ vim.keymap.set('n', '<leader>rDa', function()
     vim.notify('Docker All is only for DCSRE project', vim.log.levels.WARN)
     return
   end
-  local cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests"'
+  local cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
   local infra = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
