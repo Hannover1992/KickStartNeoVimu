@@ -381,7 +381,7 @@ require('lazy').setup({
         end,
         desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
-      { '<leader>gq', '<cmd>DiffviewClose<cr>', desc = '[G]it [Q]uit diff (close all panels)' },
+      { '<leader>g.', '<cmd>DiffviewClose<cr>', desc = '[G]it [.] close diff (done)' },
       {
         '<leader>gF',
         function()
@@ -409,7 +409,27 @@ require('lazy').setup({
         desc = '[G]it [F]ile history (diff)',
       },
       { '<leader>gd', '<cmd>DiffviewOpen<cr>', desc = '[G]it [D]iff (uncommitted changes)' },
+      { '<leader>gl', '<cmd>Neogit log kind=current<cr>', desc = '[G]it [L]og (current branch)' },
       { '<leader>gc', '<cmd>Neogit commit<cr>', desc = '[G]it [C]ommit' },
+      {
+        '<leader>gh',
+        function()
+          local clipboard = vim.fn.getreg('+'):gsub('^%s+', ''):gsub('%s+$', '')
+          if clipboard == '' then
+            vim.notify('Clipboard is empty!', vim.log.levels.ERROR)
+            return
+          end
+          local commit_hash = clipboard:match('^([0-9a-fA-F]+)')
+          if not commit_hash or #commit_hash < 7 or #commit_hash > 40 then
+            vim.notify('No valid git hash found in clipboard!', vim.log.levels.ERROR)
+            return
+          end
+          -- Show only this single commit's changes
+          vim.cmd('DiffviewOpen ' .. commit_hash .. '^..' .. commit_hash)
+          vim.notify('Showing commit: ' .. commit_hash, vim.log.levels.INFO)
+        end,
+        desc = '[G]it [H]ash show (single commit from clipboard)',
+      },
       {
         '<leader>gC',
         function()
@@ -2112,7 +2132,7 @@ vim.keymap.set('n', '<leader>rDi', function()
   local cmd
   if vim.g.project_name == 'DCSRE' then
     -- DCSRE: Use PowerShell script (needs Windows paths, must run from Sources dir)
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests; if ($?) { notify \'Docker Infra erfolgreich\' } else { notify \'Docker Infra fehlgeschlagen\' }"'
+    cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests; if ($?) { notify \'Docker Infra erfolgreich\' } else { notify \'Docker Infra fehlgeschlagen\' }"'
   else
     -- CENCOCD: Simple docker compose
     cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose up -d && notify \'Docker erfolgreich\' || notify \'Docker fehlgeschlagen\''
@@ -2134,7 +2154,7 @@ vim.keymap.set('n', '<leader>rDa', function()
     vim.notify('Docker All is only for DCSRE project', vim.log.levels.WARN)
     return
   end
-  local cmd = 'cd ' .. vim.g.project_docker_root .. ' && powershell.exe -ExecutionPolicy Bypass -Command ".\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
+  local cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
   local infra = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
