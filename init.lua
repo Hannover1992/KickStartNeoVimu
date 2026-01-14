@@ -410,7 +410,7 @@ require('lazy').setup({
       },
       { '<leader>gd', '<cmd>DiffviewOpen<cr>', desc = '[G]it [D]iff (uncommitted changes)' },
       { '<leader>gl', '<cmd>Neogit log kind=current<cr>', desc = '[G]it [L]og (current branch)' },
-      { '<leader>gc', '<cmd>Neogit commit<cr>', desc = '[G]it [C]ommit' },
+      { '<leader>gc', '<cmd>Neogit commit kind=commit<cr>', desc = '[G]it [C]ommit' },
       {
         '<leader>gh',
         function()
@@ -515,13 +515,19 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
-      -- Open in new Chrome window (not tab) - WSL version
-      vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
-      vim.cmd([[
-        function OpenMarkdownPreview(url)
-          execute 'silent !/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe --new-window "' . a:url . '"'
-        endfunction
-      ]])
+      -- Open in browser - platform specific
+      if vim.fn.has('win32') == 1 then
+        -- Windows: Use default browser via start command
+        vim.g.mkdp_browser = ''
+      else
+        -- WSL: Use Chrome via Windows path
+        vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
+        vim.cmd([[
+          function OpenMarkdownPreview(url)
+            execute 'silent !/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe --new-window "' . a:url . '"'
+          endfunction
+        ]])
+      end
       -- Mermaid, PlantUML, Chart.js support included by default
     end,
     keys = {
