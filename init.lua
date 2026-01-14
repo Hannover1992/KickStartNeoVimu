@@ -381,7 +381,7 @@ require('lazy').setup({
         end,
         desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
-      { '<leader>gdc', '<cmd>DiffviewClose<cr>', desc = '[G]it [D]iff [C]lose (all panels)' },
+      { '<leader>gq', '<cmd>DiffviewClose<cr>', desc = '[G]it [Q]uit diff (close all panels)' },
       {
         '<leader>gF',
         function()
@@ -408,8 +408,10 @@ require('lazy').setup({
         end,
         desc = '[G]it [F]ile history (diff)',
       },
+      { '<leader>gd', '<cmd>DiffviewOpen<cr>', desc = '[G]it [D]iff (uncommitted changes)' },
+      { '<leader>gc', '<cmd>Neogit commit<cr>', desc = '[G]it [C]ommit' },
       {
-        '<leader>gc',
+        '<leader>gC',
         function()
           local clipboard = vim.fn.getreg('+'):gsub('^%s+', ''):gsub('%s+$', '')
           if clipboard == '' then
@@ -426,7 +428,7 @@ require('lazy').setup({
           vim.cmd('DiffviewOpen ' .. commit_hash .. '..HEAD')
           vim.notify('Opened diff: ' .. commit_hash .. '..HEAD', vim.log.levels.INFO)
         end,
-        desc = '[G]it [C]ommit diff (branch changes only, no merges)',
+        desc = '[G]it [C]lipboard hash diff (branch changes only)',
       },
     },
     opts = {
@@ -527,15 +529,15 @@ require('lazy').setup({
       workspaces = {
         {
           name = 'DCSRE',
-          path = '/mnt/c/Users/Administrator/Documents/DCS',
+          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/DCS' or '/mnt/c/Users/Administrator/Documents/DCS',
         },
         {
           name = 'CenCoCo',
-          path = '/mnt/c/Users/Administrator/Documents/Obsydian/CenCoCo',
+          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/Obsydian/CenCoCo' or '/mnt/c/Users/Administrator/Documents/Obsydian/CenCoCo',
         },
         {
           name = 'Brain',
-          path = '/mnt/c/Users/Administrator/Documents/Brain',
+          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/Brain' or '/mnt/c/Users/Administrator/Documents/Brain',
         },
       },
     },
