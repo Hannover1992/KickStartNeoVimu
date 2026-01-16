@@ -101,37 +101,63 @@ vim.lsp.set_log_level('ERROR')
 -- This enables project-specific keybindings and settings
 local cwd = vim.fn.getcwd()
 
--- Default values (DCSRE)
-vim.g.project_name = 'DCSRE'
-vim.g.project_backend = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend'
-vim.g.project_frontend = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Frontend'
-vim.g.project_webhost = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources/Backend/VDEK.DCSP.WebHost'
-vim.g.project_docker_root = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE/Sources'
-vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources'
-vim.g.project_git_base = 'origin/develop'
-vim.g.project_launch_profile = 'WebHost'
--- Windows paths for PowerShell operations (VPN requirement)
-vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE'
-vim.g.project_root_wsl = '/mnt/c/Users/Administrator/Documents/Work/Code2/DCSRE'
--- TFS URL template for commits
-vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
+-- Platform detection helper
+local is_windows = vim.fn.has('win32') == 1
 
--- Detect project from path (works with worktrees too)
+-- Helper: Find DCSRE root dynamically (looks for folder containing "Sources")
+local function find_dcsre_root(path)
+  -- Normalize path separators
+  path = path:gsub('\\', '/')
+  -- Look for pattern: .../DCSRE.../Sources/... or .../DCSRE...
+  -- Extract everything up to and including the DCSRE-containing folder
+  local root = path:match('(.*/DCSRE[^/]*)/Sources') or path:match('(.*/DCSRE[^/]*)/')
+  if root then
+    return root
+  end
+  -- Fallback: search upward for Sources folder
+  local check_path = path
+  while check_path and #check_path > 3 do
+    if vim.fn.isdirectory(check_path .. '/Sources') == 1 then
+      return check_path
+    end
+    check_path = check_path:match('(.+)/[^/]+$')
+  end
+  return nil
+end
+
+-- Detect project and set paths dynamically
+vim.g.project_name = 'UNKNOWN'
+
 if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:match('cencoco') then
+  -- CENCOCD project
   vim.g.project_name = 'CENCOCD'
-  vim.g.project_backend = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
-  vim.g.project_frontend = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor'
-  vim.g.project_webhost = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
-  vim.g.project_docker_root = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src'
+  vim.g.project_backend = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
+  vim.g.project_frontend = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor'
+  vim.g.project_webhost = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
+  vim.g.project_docker_root = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src'
   vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src'
   vim.g.project_git_base = 'origin/main'
-  vim.g.project_launch_profile = 'https' -- CENCOCD uses dotnet run --launch-profile https
+  vim.g.project_launch_profile = 'https'
   vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
   vim.g.project_root_wsl = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco'
-  vim.g.project_tfs_commit_url = nil -- CENCOCD uses GitLab
+  vim.g.project_tfs_commit_url = nil
 elseif cwd:match('DCSRE') then
-  -- Already set as default, but explicit for clarity
-  vim.g.project_name = 'DCSRE'
+  -- DCSRE project - find root dynamically (works with DCSRE, DCSRE_Azure, worktrees, etc.)
+  local dcsre_root = find_dcsre_root(cwd)
+  if dcsre_root then
+    vim.g.project_name = 'DCSRE'
+    vim.g.project_backend = dcsre_root .. '/Sources/Backend'
+    vim.g.project_backend_windows = dcsre_root:gsub('/', '\\') .. '\\Sources\\Backend'
+    vim.g.project_frontend = dcsre_root .. '/Sources/Frontend'
+    vim.g.project_webhost = dcsre_root .. '/Sources/Backend/VDEK.DCSP.WebHost'
+    vim.g.project_docker_root = dcsre_root .. '/Sources'
+    vim.g.project_docker_root_windows = dcsre_root:gsub('/', '\\') .. '\\Sources'
+    vim.g.project_git_base = 'origin/develop'
+    vim.g.project_launch_profile = 'WebHost'
+    vim.g.project_root_windows = dcsre_root:gsub('/', '\\')
+    vim.g.project_root_wsl = dcsre_root:gsub('C:', '/mnt/c')
+    vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
+  end
 end
 
 -- Welcome message showing which project was detected
@@ -515,13 +541,17 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
-      -- Open in browser - platform specific
+      -- Open in browser - ALWAYS open in NEW Chrome window
+      vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
       if vim.fn.has('win32') == 1 then
-        -- Windows: Use default browser via start command
-        vim.g.mkdp_browser = ''
+        -- Windows: Chrome mit --new-window Flag
+        vim.cmd([[
+          function OpenMarkdownPreview(url)
+            execute 'silent !start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "' . a:url . '"'
+          endfunction
+        ]])
       else
-        -- WSL: Use Chrome via Windows path
-        vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
+        -- WSL: Chrome via Windows path mit --new-window
         vim.cmd([[
           function OpenMarkdownPreview(url)
             execute 'silent !/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe --new-window "' . a:url . '"'
@@ -545,13 +575,20 @@ require('lazy').setup({
       'nvim-lua/plenary.nvim',
     },
     init = function()
-      -- Set conceallevel for nicer wiki link display [[link]] → link
-      vim.opt.conceallevel = 2
+      -- Set conceallevel for Markdown files (Obsidian wiki links [[link]] → link)
+      -- Autocmd ist robuster als globale Einstellung (wird nicht überschrieben)
+      vim.api.nvim_create_autocmd('FileType', {
+        pattern = { 'markdown' },
+        callback = function()
+          vim.opt_local.conceallevel = 2
+        end,
+      })
     end,
     ---@module 'obsidian'
     ---@type obsidian.config
     opts = {
       legacy_commands = false, -- Use new command style (will be removed in next major release)
+
       workspaces = {
         {
           name = 'DCSRE',
@@ -566,17 +603,135 @@ require('lazy').setup({
           path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/Brain' or '/mnt/c/Users/Administrator/Documents/Brain',
         },
       },
+
+      -- FIX: Neue Notizen im Vault-Root erstellen, nicht im "current_dir"
+      -- Das war der Bug! Default war "current_dir" -> Notizen landeten im falschen Ordner
+      new_notes_location = 'current_dir',
+
+      -- Note ID: Verwende den Titel als Dateiname (nicht Zettelkasten-ID)
+      -- So heißt die Datei "Meine Notiz.md" statt "1705123456.md"
+      note_id_func = function(title)
+        if title ~= nil then
+          -- Titel als Dateiname verwenden (Leerzeichen durch Bindestriche ersetzen)
+          return title:gsub(' ', '-'):gsub('[^A-Za-z0-9%-äöüÄÖÜß]', '')
+        else
+          -- Fallback: Zeitstempel wenn kein Titel
+          return tostring(os.time())
+        end
+      end,
+
+      -- Daily Notes: Konfiguration für :Obsidian today/yesterday
+      daily_notes = {
+        folder = 'Daily', -- Unterordner für tägliche Notizen
+        date_format = '%Y-%m-%d', -- Format: 2025-01-16
+        default_tags = { 'daily' }, -- Automatische Tags
+      },
+
+      -- Attachments: Wo Bilder gespeichert werden (für später - Image-Support)
+      attachments = {
+        folder = 'attachments',
+        confirm_img_paste = true,
+      },
+
+      -- Completion deaktiviert (kein nvim-cmp installiert, blink.cmp wird verwendet)
+      completion = {
+        nvim_cmp = false,
+        blink = false,
+      },
     },
     keys = {
+      -- Notizen erstellen/öffnen
       { '<leader>on', '<cmd>Obsidian new<cr>', desc = '[O]bsidian [N]ew note' },
       { '<leader>oo', '<cmd>Obsidian open<cr>', desc = '[O]bsidian [O]pen in app' },
       { '<leader>os', '<cmd>Obsidian search<cr>', desc = '[O]bsidian [S]earch' },
       { '<leader>oq', '<cmd>Obsidian quick_switch<cr>', desc = '[O]bsidian [Q]uick switch' },
+
+      -- Daily Notes
       { '<leader>ot', '<cmd>Obsidian today<cr>', desc = '[O]bsidian [T]oday' },
       { '<leader>oy', '<cmd>Obsidian yesterday<cr>', desc = '[O]bsidian [Y]esterday' },
+      { '<leader>od', '<cmd>Obsidian dailies<cr>', desc = '[O]bsidian [D]ailies list' },
+
+      -- Links & Navigation
       { '<leader>ob', '<cmd>Obsidian backlinks<cr>', desc = '[O]bsidian [B]acklinks' },
       { '<leader>ol', '<cmd>Obsidian link<cr>', desc = '[O]bsidian [L]ink selection', mode = 'v' },
+      { '<leader>of', '<cmd>Obsidian follow_link<cr>', desc = '[O]bsidian [F]ollow link' },
+
+      -- Workspace (Vault wechseln)
       { '<leader>ow', '<cmd>Obsidian workspace<cr>', desc = '[O]bsidian [W]orkspace switch' },
+
+      -- Image paste: Wird von img-clip.nvim übernommen (siehe unten)
+    },
+  },
+
+  -- img-clip.nvim - Screenshot/Image paste für Obsidian Vaults
+  -- Besser als obsidian.nvim paste_img: Native Windows Support!
+  {
+    'HakonHarnes/img-clip.nvim',
+    event = 'VeryLazy',
+    opts = function()
+      -- Helper: Finde Obsidian Vault-Root (sucht nach .obsidian/ Ordner)
+      local function find_vault_root()
+        local current = vim.fn.expand('%:p:h') -- Verzeichnis der aktuellen Datei
+        local root = current
+
+        -- Suche nach oben bis .obsidian/ gefunden wird
+        while root ~= '' and root ~= '/' and root ~= 'C:\\' do
+          if vim.fn.isdirectory(root .. '/.obsidian') == 1 or vim.fn.isdirectory(root .. '\\.obsidian') == 1 then
+            return root
+          end
+          -- Ein Verzeichnis nach oben
+          root = vim.fn.fnamemodify(root, ':h')
+        end
+
+        -- Fallback: Aktuelles Verzeichnis wenn kein Vault gefunden
+        return current
+      end
+
+      return {
+        -- Standard-Einstellungen für alle Dateitypen
+        default = {
+          -- Dynamischer Pfad: Vault-Root/attachments/
+          -- Findet automatisch den Obsidian Vault-Root via .obsidian/ Marker
+          dir_path = function()
+            return find_vault_root() .. '/attachments'
+          end,
+
+          -- Absoluter Pfad für dir_path (wir berechnen ihn selbst)
+          relative_to_current_file = false,
+
+          -- Relativer Pfad im Link (Obsidian-kompatibel)
+          use_absolute_path = false,
+
+          -- Dateiname mit Timestamp: Pasted-20250116-143052.png
+          file_name = 'Pasted-%Y%m%d-%H%M%S',
+
+          -- PNG Format (Standard für Screenshots)
+          extension = 'png',
+
+          -- Keine Bestätigung - direkt einfügen
+          prompt_for_file_name = false,
+
+          -- Drag & Drop aktivieren
+          drag_and_drop = {
+            enabled = true,
+            insert_mode = true,
+          },
+        },
+
+        -- Markdown-spezifische Einstellungen (Obsidian Wiki-Link Format)
+        filetypes = {
+          markdown = {
+            -- Wiki-Link Format für Obsidian: ![[Pasted-20250116-143052.png]]
+            -- $FILE_NAME = nur Dateiname (ohne Pfad), Obsidian findet es im Vault
+            template = '![[$FILE_NAME]]',
+            url_encode_path = false,
+          },
+        },
+      }
+    end,
+    keys = {
+      -- <leader>oi - Image aus Clipboard einfügen
+      { '<leader>oi', '<cmd>PasteImage<cr>', desc = '[O]bsidian [I]mage paste' },
     },
   },
 
@@ -1900,10 +2055,8 @@ require('lazy').setup({
 -- Watch Backend: Backend with hot reload
 vim.keymap.set('n', '<leader>wb', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  local cmd = 'cd ' .. vim.g.project_webhost .. ' && dotnet watch run'
-  if vim.g.project_launch_profile then
-    cmd = cmd .. ' --launch-profile ' .. vim.g.project_launch_profile
-  end
+  local profile_arg = vim.g.project_launch_profile and (' --launch-profile ' .. vim.g.project_launch_profile) or ''
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost .. '\'; dotnet watch run' .. profile_arg .. '"'
   local watch = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
@@ -1916,8 +2069,9 @@ end, { desc = '[W]atch [B]ackend (hot reload)' })
 -- Watch Test: Tests with hot reload
 vim.keymap.set('n', '<leader>bt', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost .. '\'; dotnet watch test"'
   local watch = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_webhost .. ' && dotnet watch test',
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -1930,11 +2084,18 @@ vim.keymap.set('n', '<leader>rbw', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local cmd
   if vim.g.project_name == 'CENCOCD' then
-    -- CENCOCD: dotnet run --launch-profile https (API on https://localhost:7192)
-    cmd = 'cd ' .. vim.g.project_webhost .. ' && dotnet run --launch-profile https'
+    if is_windows then
+      cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost .. '\'; dotnet run --launch-profile https"'
+    else
+      cmd = 'cd ' .. vim.g.project_webhost .. ' && dotnet run --launch-profile https'
+    end
   else
     -- DCSRE: Custom URLs (API on https://localhost:5443)
-    cmd = 'cd ' .. vim.g.project_webhost .. ' && ASPNETCORE_URLS="https://localhost:5443;http://localhost:5080" ASPNETCORE_ENVIRONMENT=Development dotnet run --no-restore'
+    if is_windows then
+      cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost .. '\'; $env:ASPNETCORE_URLS=\'https://localhost:5443;http://localhost:5080\'; $env:ASPNETCORE_ENVIRONMENT=\'Development\'; dotnet run --no-restore"'
+    else
+      cmd = 'cd ' .. vim.g.project_webhost .. ' && ASPNETCORE_URLS="https://localhost:5443;http://localhost:5080" ASPNETCORE_ENVIRONMENT=Development dotnet run --no-restore'
+    end
   end
   local webhost = Terminal:new({
     cmd = cmd,
@@ -1953,8 +2114,9 @@ vim.keymap.set('n', '<leader>rbs', function()
     return
   end
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet run --project VDEK.DCSP.Setup"'
   local setup = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_backend .. ' && dotnet run --project VDEK.DCSP.Setup',
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -1965,8 +2127,9 @@ end, { desc = '[R]un [B]ackend [S]etup (Migrations)' })
 -- Run Backend Build: Compile the backend solution
 vim.keymap.set('n', '<leader>rbb', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet build"'
   local build = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_backend .. ' && dotnet build',
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -1982,9 +2145,9 @@ vim.keymap.set('n', '<leader>rbt', function()
 
   local cmd
   if is_test_file then
-    cmd = 'cd ' .. vim.g.project_backend .. " && dotnet test --no-build --no-restore --filter 'FullyQualifiedName~" .. current_file .. "'"
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet test --no-build --no-restore --filter \'FullyQualifiedName~' .. current_file .. '\'"'
   else
-    cmd = 'cd ' .. vim.g.project_backend .. ' && dotnet test --no-build --no-restore'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet test --no-build --no-restore"'
   end
 
   local test = Terminal:new({
@@ -1999,8 +2162,9 @@ end, { desc = '[R]un [B]ackend [T]ests' })
 -- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker
 vim.keymap.set('n', '<leader>rbu', function()
   local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet test --filter \\"(Category!=Database) & (Category!=Storage) & (Category!=Docker)\\""'
   local test = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_backend .. ' && dotnet test --filter "(Category!=Database) & (Category!=Storage) & (Category!=Docker)"',
+    cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -2018,7 +2182,7 @@ vim.keymap.set('n', '<leader>tbi', function()
     return
   end
 
-  local cmd = 'cd ' .. vim.g.project_backend .. " && dotnet test --filter 'FullyQualifiedName~" .. current_file .. "'"
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet test --filter \'FullyQualifiedName~' .. current_file .. '\'"'
 
   local test = Terminal:new({
     cmd = cmd,
@@ -2034,11 +2198,9 @@ vim.keymap.set('n', '<leader>rfw', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local cmd
   if vim.g.project_name == 'CENCOCD' then
-    -- CENCOCD: Blazor on https://localhost:7094
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && dotnet run --launch-profile https'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; dotnet run --launch-profile https"'
   else
-    -- DCSRE: npm frontend
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && npm start'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; npm start"'
   end
   local frontend = Terminal:new({
     cmd = cmd,
@@ -2055,9 +2217,9 @@ vim.keymap.set('n', '<leader>rfb', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local cmd
   if vim.g.project_name == 'CENCOCD' then
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && docker compose build frontend'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; docker compose build frontend"'
   else
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && npm run build'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; npm run build"'
   end
   local build = Terminal:new({
     cmd = cmd,
@@ -2072,7 +2234,7 @@ end, { desc = '[R]un [F]ront [B]uild (production)' })
 vim.keymap.set('n', '<leader>rft', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && npm test',
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; npm test"',
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -2138,10 +2300,10 @@ vim.keymap.set('n', '<leader>rDi', function()
   local cmd
   if vim.g.project_name == 'DCSRE' then
     -- DCSRE: Use PowerShell script (needs Windows paths, must run from Sources dir)
-    cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile .env.noproxy -Profile dev-backend -SkipTests; if ($?) { notify \'Docker Infra erfolgreich\' } else { notify \'Docker Infra fehlgeschlagen\' }"'
+    cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile \\"./.env.noproxy\\" -Profile dev-backend -SkipTests; if ($?) { notify \'Docker Infra erfolgreich\' } else { notify \'Docker Infra fehlgeschlagen\' }"'
   else
     -- CENCOCD: Simple docker compose
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose up -d && notify \'Docker erfolgreich\' || notify \'Docker fehlgeschlagen\''
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root .. '\'; docker compose up -d"'
   end
   local infra = Terminal:new({
     cmd = cmd,
@@ -2160,7 +2322,7 @@ vim.keymap.set('n', '<leader>rDa', function()
     vim.notify('Docker All is only for DCSRE project', vim.log.levels.WARN)
     return
   end
-  local cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile .env.noproxy -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
+  local cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile \\"./.env.noproxy\\" -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
   local infra = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
@@ -2171,33 +2333,50 @@ vim.keymap.set('n', '<leader>rDa', function()
   vim.notify('[DCSRE] Starting Docker ALL (full environment)...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [A]ll (Profile=all, DCSRE)' })
 
--- Docker Infrastructure Down: Stop all infrastructure services
--- DCSRE uses project name 'dcsp', CENCOCD uses default
-vim.keymap.set('n', '<leader>rDI', function()
+-- Docker Quick Down: Stop containers (keep volumes/images)
+vim.keymap.set('n', '<leader>rDr', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local cmd
   if vim.g.project_name == 'DCSRE' then
-    -- DCSRE: Use project name 'dcsp' (from docker-up.ps1)
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose -p dcsp down -v'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root .. '\'; docker compose -p dcsp down"'
   else
-    -- CENCOCD: Simple docker compose down
-    cmd = 'cd ' .. vim.g.project_docker_root .. ' && docker compose down -v'
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root .. '\'; docker compose down"'
   end
   local infra = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
-    count = 22, -- Same terminal ID as docker infra up
+    count = 22,
   })
   infra:toggle()
-  vim.notify('[' .. vim.g.project_name .. '] Stopping Docker Infrastructure...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [I]nfrastructure down (capital I)' })
+  vim.notify('[' .. vim.g.project_name .. '] Quick Docker down (keeping data)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [r]undown (quick, keep data)' })
+
+-- Docker Full Reset: Stop + remove volumes + remove images (full cleanup)
+vim.keymap.set('n', '<leader>rDR', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'DCSRE' then
+    -- -v = remove volumes, --rmi all = remove all images
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root .. '\'; docker compose -p dcsp down -v --rmi all"'
+  else
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root .. '\'; docker compose down -v --rmi all"'
+  end
+  local infra = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 22,
+  })
+  infra:toggle()
+  vim.notify('[' .. vim.g.project_name .. '] Full Docker RESET (deleting all data)...', vim.log.levels.WARN)
+end, { desc = '[R]un [D]ocker [R]eset (full cleanup)' })
 
 -- Docker Build Frontend (for projects using docker)
 vim.keymap.set('n', '<leader>rdf', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local build = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && docker compose build frontend',
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; docker compose build frontend"',
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -2209,7 +2388,7 @@ end, { desc = '[R]un [D]ocker [F]rontend build' })
 vim.keymap.set('n', '<leader>rdF', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local start = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && docker compose up frontend',
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; docker compose up frontend"',
     direction = 'horizontal',
     close_on_exit = false,
     count = 11, -- Separate terminal ID for frontend
@@ -2222,7 +2401,7 @@ end, { desc = '[R]un [D]ocker [F]rontend up' })
 vim.keymap.set('n', '<leader>rdb', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local build = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && docker compose build backend',
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; docker compose build backend"',
     direction = 'horizontal',
     close_on_exit = false,
   })
@@ -2234,7 +2413,7 @@ end, { desc = '[R]un [D]ocker [B]ackend build' })
 vim.keymap.set('n', '<leader>rdB', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local start = Terminal:new({
-    cmd = 'cd ' .. vim.g.project_frontend .. ' && docker compose up backend',
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; docker compose up backend"',
     direction = 'horizontal',
     close_on_exit = false,
     count = 10, -- Separate terminal ID for backend
@@ -2242,6 +2421,84 @@ vim.keymap.set('n', '<leader>rdB', function()
   start:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend (docker up)...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [B]ackend up' })
+
+-- Helper function to modify xunit.runner.json maxParallelThreads
+local function set_xunit_threads(threads)
+  if vim.g.project_name ~= 'DCSRE' then
+    return false
+  end
+  local xunit_file = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\\xunit.runner.json'
+  local file = io.open(xunit_file, 'r')
+  if not file then
+    vim.notify('xunit.runner.json not found: ' .. xunit_file, vim.log.levels.ERROR)
+    return false
+  end
+  local content = file:read('*all')
+  file:close()
+  local new_content = content:gsub('"maxParallelThreads": %d+', '"maxParallelThreads": ' .. threads)
+  file = io.open(xunit_file, 'w')
+  if not file then
+    vim.notify('Cannot write xunit.runner.json', vim.log.levels.ERROR)
+    return false
+  end
+  file:write(new_content)
+  file:close()
+  return true
+end
+
+-- Run Integration Mock: Tests with DicMockServer (high parallelism - 38 threads)
+vim.keymap.set('n', '<leader>rim', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  -- Set 38 threads for mock tests (no DB conflicts)
+  if not set_xunit_threads(38) then return end
+  vim.notify('[DCSRE] Set maxParallelThreads=38 for Mock tests', vim.log.levels.INFO)
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\'; dotnet test --filter \'Category=DicMockServer\' --verbosity detailed; if ($?) { notify \'Integration Mock erfolgreich\' } else { notify \'Integration Mock fehlgeschlagen\' }"'
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 40, -- Separate terminal ID for integration tests
+    on_exit = function()
+      -- Reset to 1 thread when terminal closes
+      set_xunit_threads(1)
+      vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+    end,
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running Integration Mock tests (38 threads)...', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [M]ock (DicMockServer, 38 threads)' })
+
+-- Run Integration DB: Tests WITHOUT DicMockServer (lower parallelism - 8 threads)
+vim.keymap.set('n', '<leader>rid', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  -- Set 8 threads for DB tests (avoid conflicts)
+  if not set_xunit_threads(8) then return end
+  vim.notify('[DCSRE] Set maxParallelThreads=8 for DB tests', vim.log.levels.INFO)
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\'; dotnet test --filter \'Category!=DicMockServer\' --verbosity detailed; if ($?) { notify \'Integration DB erfolgreich\' } else { notify \'Integration DB fehlgeschlagen\' }"'
+  local test = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 41, -- Separate terminal ID for integration DB tests
+    on_exit = function()
+      -- Reset to 1 thread when terminal closes
+      set_xunit_threads(1)
+      vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+    end,
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running Integration DB tests (8 threads)...', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [D]B (non-mock, 8 threads)' })
 
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
