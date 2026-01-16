@@ -627,7 +627,7 @@ require('lazy').setup({
         default_tags = { 'daily' }, -- Automatische Tags
       },
 
-      -- Attachments: Wo Bilder gespeichert werden (für später - Image-Support)
+      -- Attachments: Wo Bilder gespeichert werden
       attachments = {
         folder = 'attachments',
         confirm_img_paste = true,
@@ -655,6 +655,44 @@ require('lazy').setup({
       { '<leader>ob', '<cmd>Obsidian backlinks<cr>', desc = '[O]bsidian [B]acklinks' },
       { '<leader>ol', '<cmd>Obsidian link<cr>', desc = '[O]bsidian [L]ink selection', mode = 'v' },
       { '<leader>of', '<cmd>Obsidian follow_link<cr>', desc = '[O]bsidian [F]ollow link' },
+
+      -- Bild unter Cursor öffnen (robust - extrahiert Pfad aus Wiki-Link)
+      {
+        '<leader>op',
+        function()
+          -- Extrahiere Bild-Name aus Wiki-Link ![[...]]
+          local line = vim.api.nvim_get_current_line()
+          local img = line:match('!%[%[(.-%.[pP][nN][gG])%]%]') or line:match('!%[%[(.-%.[jJ][pP][eE]?[gG])%]%]')
+
+          if not img then
+            vim.notify('Kein Bild-Link auf dieser Zeile gefunden', vim.log.levels.WARN)
+            return
+          end
+
+          -- Finde Vault-Root (suche nach .obsidian/)
+          local current = vim.fn.expand('%:p:h')
+          local vault_root = current
+          while vault_root ~= '' and vault_root ~= '/' and vault_root ~= 'C:\\' do
+            if vim.fn.isdirectory(vault_root .. '/.obsidian') == 1 or vim.fn.isdirectory(vault_root .. '\\.obsidian') == 1 then
+              break
+            end
+            vault_root = vim.fn.fnamemodify(vault_root, ':h')
+          end
+
+          -- Vollständiger Pfad zum Bild
+          local img_path = vault_root .. '/attachments/' .. img
+          local img_path_win = img_path:gsub('/', '\\')
+          local img_path_check = img_path:gsub('\\', '/')
+
+          if vim.fn.filereadable(img_path_check) == 1 then
+            vim.fn.system('powershell.exe -Command "Start-Process \'' .. img_path .. '\'"')
+            vim.notify('Öffne: ' .. img, vim.log.levels.INFO)
+          else
+            vim.notify('Bild nicht gefunden: ' .. img_path, vim.log.levels.ERROR)
+          end
+        end,
+        desc = '[O]bsidian [P]review image',
+      },
 
       -- Workspace (Vault wechseln)
       { '<leader>ow', '<cmd>Obsidian workspace<cr>', desc = '[O]bsidian [W]orkspace switch' },
@@ -2162,7 +2200,8 @@ end, { desc = '[R]un [B]ackend [T]ests' })
 -- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker
 vim.keymap.set('n', '<leader>rbu', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend .. '\'; dotnet test --filter \\"(Category!=Database) & (Category!=Storage) & (Category!=Docker)\\""'
+  -- PowerShell: Single quotes für Filter (keine Escape-Probleme)
+  local cmd = "powershell.exe -Command \"Set-Location '" .. vim.g.project_backend .. "'; dotnet test --filter 'Category!=Database & Category!=Storage & Category!=Docker'\""
   local test = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
