@@ -643,8 +643,8 @@ require('lazy').setup({
       -- Notizen erstellen/öffnen
       { '<leader>on', '<cmd>Obsidian new<cr>', desc = '[O]bsidian [N]ew note' },
       { '<leader>oo', '<cmd>Obsidian open<cr>', desc = '[O]bsidian [O]pen in app' },
-      { '<leader>os', '<cmd>Obsidian search<cr>', desc = '[O]bsidian [S]earch' },
-      { '<leader>oq', '<cmd>Obsidian quick_switch<cr>', desc = '[O]bsidian [Q]uick switch' },
+      { '<leader>os', '<cmd>Obsidian quick_switch<cr>', desc = '[O]bsidian [S]earch titles' },
+      { '<leader>og', '<cmd>Obsidian search<cr>', desc = '[O]bsidian [G]rep content' },
 
       -- Daily Notes
       { '<leader>ot', '<cmd>Obsidian today<cr>', desc = '[O]bsidian [T]oday' },
