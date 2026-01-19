@@ -694,6 +694,40 @@ require('lazy').setup({
         desc = '[O]bsidian [P]review image',
       },
 
+      -- Graph View (öffnet Obsidian App mit Graph)
+      -- WICHTIG: Braucht "Advanced URI" Plugin in Obsidian!
+      -- Install: Settings → Community Plugins → Browse → "Advanced URI"
+      {
+        '<leader>oG',
+        function()
+          -- Finde Vault-Root (suche nach .obsidian/)
+          local current = vim.fn.expand('%:p:h')
+          local vault_root = current
+          while vault_root ~= '' and vault_root ~= '/' and vault_root ~= 'C:\\' do
+            if vim.fn.isdirectory(vault_root .. '/.obsidian') == 1 or vim.fn.isdirectory(vault_root .. '\\.obsidian') == 1 then
+              break
+            end
+            vault_root = vim.fn.fnamemodify(vault_root, ':h')
+          end
+
+          -- Vault-Name aus Pfad ableiten (letzter Ordnername)
+          local vault_name = vim.fn.fnamemodify(vault_root, ':t')
+
+          -- Advanced URI zum Öffnen des Graph View
+          local uri = 'obsidian://advanced-uri?vault=' .. vault_name .. '&commandid=graph:open'
+
+          -- Öffne in Obsidian (Windows: start, Linux: xdg-open)
+          if vim.fn.has('win32') == 1 then
+            vim.fn.system('start "" "' .. uri .. '"')
+          else
+            vim.fn.system('xdg-open "' .. uri .. '"')
+          end
+
+          vim.notify('Öffne Graph View für Vault: ' .. vault_name, vim.log.levels.INFO)
+        end,
+        desc = '[O]bsidian [G]raph view',
+      },
+
       -- Workspace (Vault wechseln)
       { '<leader>ow', '<cmd>Obsidian workspace<cr>', desc = '[O]bsidian [W]orkspace switch' },
 
@@ -2496,7 +2530,8 @@ vim.keymap.set('n', '<leader>rim', function()
   vim.notify('[DCSRE] Set maxParallelThreads=38 for Mock tests', vim.log.levels.INFO)
 
   local Terminal = require('toggleterm.terminal').Terminal
-  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\'; dotnet test --filter \'Category=DicMockServer\' --verbosity detailed; if ($?) { notify \'Integration Mock erfolgreich\' } else { notify \'Integration Mock fehlgeschlagen\' }"'
+  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local cmd = 'dotnet test "' .. test_dir .. '" --filter "FullyQualifiedName~IntegrationTests&FullyQualifiedName~DicMockServer" --verbosity detailed'
   local test = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
@@ -2523,7 +2558,8 @@ vim.keymap.set('n', '<leader>rid', function()
   vim.notify('[DCSRE] Set maxParallelThreads=8 for DB tests', vim.log.levels.INFO)
 
   local Terminal = require('toggleterm.terminal').Terminal
-  local cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\'; dotnet test --filter \'Category!=DicMockServer\' --verbosity detailed; if ($?) { notify \'Integration DB erfolgreich\' } else { notify \'Integration DB fehlgeschlagen\' }"'
+  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local cmd = 'dotnet test "' .. test_dir .. '" --filter "FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer" --verbosity detailed'
   local test = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
