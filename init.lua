@@ -871,11 +871,11 @@ require('lazy').setup({
     init = function()
       vim.g.db_ui_use_nerd_fonts = 1
       vim.g.db_ui_show_database_icon = 1
-      -- MSSQL Connection Beispiel (auskommentiert):
-      -- vim.g.dbs = {
-      --   { name = 'DCSRE_Local', url = 'sqlserver://localhost:1433;database=DCSP;user=sa;password=YourPassword;trustServerCertificate=true' },
-      --   { name = 'DCSRE_Docker', url = 'sqlserver://localhost:1434;database=DCSP;user=sa;password=YourPassword;trustServerCertificate=true' },
-      -- }
+      -- Pre-configured DCSRE Database Connection (App User)
+      -- Available users: dcsp/dcsp (app), dcsp-test/dcsp-test (tests), keycloak/keycloak
+      vim.g.dbs = {
+        { name = 'DCSRE', url = 'sqlserver://dcsp:dcsp@localhost:5433;database=dcsp;trustServerCertificate=true' },
+      }
     end,
   },
 
