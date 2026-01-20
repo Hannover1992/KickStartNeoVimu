@@ -108,17 +108,23 @@ local is_windows = vim.fn.has('win32') == 1
 local function find_dcsre_root(path)
   -- Normalize path separators
   path = path:gsub('\\', '/')
-  -- Look for pattern: .../DCSRE.../Sources/... or .../DCSRE...
-  -- Extract everything up to and including the DCSRE-containing folder
-  local root = path:match('(.*/DCSRE[^/]*)/Sources') or path:match('(.*/DCSRE[^/]*)/')
-  if root then
+
+  -- Strategy 1: Extract from path pattern .../DCSRE.../Sources/...
+  local root = path:match('(.*/DCSRE[^/]*)/Sources')
+  if root and vim.fn.isdirectory(root .. '/Sources') == 1 then
     return root
   end
-  -- Fallback: search upward for Sources folder
+
+  -- Strategy 2: Search upward for Sources folder
   local check_path = path
   while check_path and #check_path > 3 do
     if vim.fn.isdirectory(check_path .. '/Sources') == 1 then
       return check_path
+    end
+    -- Also check for nested DCSRE folder with Sources (e.g., DCSRE_Azure/DCSRE/Sources)
+    local nested = check_path .. '/DCSRE'
+    if vim.fn.isdirectory(nested .. '/Sources') == 1 then
+      return nested
     end
     check_path = check_path:match('(.+)/[^/]+$')
   end
@@ -654,7 +660,28 @@ require('lazy').setup({
       -- Links & Navigation
       { '<leader>ob', '<cmd>Obsidian backlinks<cr>', desc = '[O]bsidian [B]acklinks' },
       { '<leader>ol', '<cmd>Obsidian link<cr>', desc = '[O]bsidian [L]ink selection', mode = 'v' },
-      { '<leader>of', '<cmd>Obsidian follow_link<cr>', desc = '[O]bsidian [F]ollow link' },
+      -- Follow link: externe URLs in neuem Chrome Fenster, interne Links via Obsidian
+      {
+        '<leader>of',
+        function()
+          local line = vim.api.nvim_get_current_line()
+          -- Prüfe ob externe URL (http/https)
+          local url = line:match('https?://[%w%-%.%_%~%:%/%?%#%[%]%@%!%$%&%\'%(%)%*%+%,%;%=]+')
+          if url then
+            -- Externe URL in neuem Chrome Fenster öffnen
+            if vim.fn.has('win32') == 1 then
+              vim.fn.system('start "" "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --new-window "' .. url .. '"')
+            else
+              vim.fn.system('google-chrome --new-window "' .. url .. '" &')
+            end
+            vim.notify('Öffne in Chrome: ' .. url, vim.log.levels.INFO)
+          else
+            -- Interne Wiki-Links via Obsidian
+            vim.cmd('Obsidian follow_link')
+          end
+        end,
+        desc = '[O]bsidian [F]ollow link (URLs in Chrome)',
+      },
 
       -- Bild unter Cursor öffnen (robust - extrahiert Pfad aus Wiki-Link)
       {
