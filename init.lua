@@ -2575,6 +2575,63 @@ vim.keymap.set('n', '<leader>rid', function()
   vim.notify('[DCSRE] Running Integration DB tests (8 threads)...', vim.log.levels.INFO)
 end, { desc = '[R]un [I]ntegration [D]B (non-mock, 8 threads)' })
 
+-- Run Backend Build (clean + build)
+vim.keymap.set('n', '<leader>rbb', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Backend Build only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local backend_dir = vim.g.project_backend_windows
+  local cmd = 'dotnet clean "' .. backend_dir .. '" && dotnet build "' .. backend_dir .. '"'
+  local build = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 44,
+  })
+  build:toggle()
+  vim.notify('[DCSRE] Backend clean + build gestartet', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [B]uild (clean + build)' })
+
+-- Run ManualTestRunner (Docker profile) - assumes MockServer is already running in Docker
+vim.keymap.set('n', '<leader>rmd', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('ManualTestRunner only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local project = vim.g.project_backend_windows .. '\\VDEK.DCSP.DIC.MockServer.ManualTestRunner'
+  local cmd = 'dotnet run --project "' .. project .. '" --launch-profile docker'
+  local runner = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 42,
+  })
+  runner:toggle()
+  vim.notify('[DCSRE] ManualTestRunner (Docker) gestartet', vim.log.levels.INFO)
+end, { desc = '[R]un [M]ock [D]ocker (ManualTestRunner)' })
+
+-- Run ManualTestRunner (Local profile) - assumes MockServer is already running locally
+vim.keymap.set('n', '<leader>rml', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('ManualTestRunner only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local project = vim.g.project_backend_windows .. '\\VDEK.DCSP.DIC.MockServer.ManualTestRunner'
+  local cmd = 'dotnet run --project "' .. project .. '" --launch-profile https'
+  local runner = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 43,
+  })
+  runner:toggle()
+  vim.notify('[DCSRE] ManualTestRunner (Local) gestartet', vim.log.levels.INFO)
+end, { desc = '[R]un [M]ock [L]ocal (ManualTestRunner)' })
+
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
   vim.diagnostic.setqflist({ severity = vim.diagnostic.severity.WARN })
