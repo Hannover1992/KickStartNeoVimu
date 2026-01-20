@@ -857,6 +857,7 @@ require('lazy').setup({
   },
 
   -- vim-dadbod - Database client for Neovim (MSSQL, PostgreSQL, MySQL, etc.)
+  -- Standard keybindings (in DBUI panel): o=open, R=refresh, d=delete, S=execute, W=save
   {
     'kristijanhusak/vim-dadbod-ui',
     dependencies = {
@@ -866,13 +867,27 @@ require('lazy').setup({
     cmd = { 'DBUI', 'DBUIToggle', 'DBUIAddConnection', 'DBUIFindBuffer' },
     keys = {
       { '<leader>db', '<cmd>DBUIToggle<cr>', desc = '[D]ata[B]ase UI toggle' },
-      { '<leader>da', '<cmd>DBUIAddConnection<cr>', desc = '[D]atabase [A]dd connection' },
+      {
+        '<leader>dw',
+        function()
+          local current = vim.g.db_ui_winwidth or 50
+          vim.g.db_ui_winwidth = current == 50 and 150 or 50
+          for _, win in ipairs(vim.api.nvim_list_wins()) do
+            local buf = vim.api.nvim_win_get_buf(win)
+            if vim.bo[buf].filetype == 'dbui' then
+              vim.api.nvim_win_set_width(win, vim.g.db_ui_winwidth)
+              vim.notify('DBUI width: ' .. vim.g.db_ui_winwidth, vim.log.levels.INFO)
+              return
+            end
+          end
+        end,
+        desc = '[D]atabase [W]idth toggle (50/150)',
+      },
     },
     init = function()
       vim.g.db_ui_use_nerd_fonts = 1
       vim.g.db_ui_show_database_icon = 1
-      -- Pre-configured DCSRE Database Connection (App User)
-      -- Available users: dcsp/dcsp (app), dcsp-test/dcsp-test (tests), keycloak/keycloak
+      vim.g.db_ui_winwidth = 50
       vim.g.dbs = {
         { name = 'DCSRE', url = 'sqlserver://dcsp:dcsp@localhost:5433;database=dcsp;trustServerCertificate=true' },
       }
