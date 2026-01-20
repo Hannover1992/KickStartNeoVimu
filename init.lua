@@ -856,6 +856,29 @@ require('lazy').setup({
     },
   },
 
+  -- vim-dadbod - Database client for Neovim (MSSQL, PostgreSQL, MySQL, etc.)
+  {
+    'kristijanhusak/vim-dadbod-ui',
+    dependencies = {
+      { 'tpope/vim-dadbod', lazy = true },
+      { 'kristijanhusak/vim-dadbod-completion', ft = { 'sql', 'mysql', 'plsql' }, lazy = true },
+    },
+    cmd = { 'DBUI', 'DBUIToggle', 'DBUIAddConnection', 'DBUIFindBuffer' },
+    keys = {
+      { '<leader>db', '<cmd>DBUIToggle<cr>', desc = '[D]ata[B]ase UI toggle' },
+      { '<leader>da', '<cmd>DBUIAddConnection<cr>', desc = '[D]atabase [A]dd connection' },
+    },
+    init = function()
+      vim.g.db_ui_use_nerd_fonts = 1
+      vim.g.db_ui_show_database_icon = 1
+      -- MSSQL Connection Beispiel (auskommentiert):
+      -- vim.g.dbs = {
+      --   { name = 'DCSRE_Local', url = 'sqlserver://localhost:1433;database=DCSP;user=sa;password=YourPassword;trustServerCertificate=true' },
+      --   { name = 'DCSRE_Docker', url = 'sqlserver://localhost:1434;database=DCSP;user=sa;password=YourPassword;trustServerCertificate=true' },
+      -- }
+    end,
+  },
+
   -- Neotest - Modern test runner for Neovim
   {
     'nvim-neotest/neotest',
