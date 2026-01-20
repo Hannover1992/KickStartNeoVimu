@@ -147,6 +147,7 @@ if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:ma
   vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
   vim.g.project_root_wsl = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco'
   vim.g.project_tfs_commit_url = nil
+  vim.g.project_pr_url = nil -- TODO: Add CENCOCD Azure DevOps URL wenn vorhanden
 elseif cwd:match('DCSRE') then
   -- DCSRE project - find root dynamically (works with DCSRE, DCSRE_Azure, worktrees, etc.)
   local dcsre_root = find_dcsre_root(cwd)
@@ -162,7 +163,12 @@ elseif cwd:match('DCSRE') then
     vim.g.project_launch_profile = 'WebHost'
     vim.g.project_root_windows = dcsre_root:gsub('/', '\\')
     vim.g.project_root_wsl = dcsre_root:gsub('C:', '/mnt/c')
-    vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
+    -- OLD TFS (auskommentiert, falls noch gebraucht):
+    -- vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
+    -- vim.g.project_pr_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/pullrequest/%s?path=%s'
+    -- NEW Azure DevOps:
+    vim.g.project_tfs_commit_url = 'https://dev.azure.com/ITSGGMBH/AP0071%%20Daten%%20Clearing%%20Stelle%%20Pflege/_git/DCSRE/commit/%s'
+    vim.g.project_pr_url = 'https://dev.azure.com/ITSGGMBH/AP0071%%20Daten%%20Clearing%%20Stelle%%20Pflege/_git/DCSRE/pullrequest/%s?path=%s'
   end
 end
 
@@ -402,9 +408,9 @@ require('lazy').setup({
       {
         '<leader>gD',
         function()
-          vim.cmd('DiffviewOpen develop..HEAD')
+          vim.cmd('DiffviewOpen origin/develop..HEAD')
         end,
-        desc = '[G]it [D]iff vs develop (local)',
+        desc = '[G]it [D]iff vs origin/develop',
       },
       {
         '<leader>gM',
@@ -2886,31 +2892,35 @@ vim.keymap.set('n', '<leader>rc', function()
   vim.notify('[' .. vim.g.project_name .. '] Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
 end, { desc = '[R]un [C]ommit (open in TFS browser)' })
 
--- Open file in PR on TFS browser (reads PR number from register P)
+-- Open file in PR on Azure DevOps (reads PR number from register p)
 vim.keymap.set('n', '<leader>rC', function()
-  local pr_number = vim.fn.getreg('P'):gsub('%s+', '') -- Get from register P, trim whitespace
+  if not vim.g.project_pr_url then
+    vim.notify('project_pr_url nicht konfiguriert für ' .. vim.g.project_name, vim.log.levels.ERROR)
+    return
+  end
+
+  local pr_number = vim.fn.getreg('p'):gsub('%s+', '') -- Get from register p, trim whitespace
   if pr_number == '' or not pr_number:match('^%d+$') then
-    vim.notify('PR-Nummer fehlt! Bitte zuerst in Register P kopieren ("Py auf die Nummer)', vim.log.levels.ERROR)
+    vim.notify('PR-Nummer fehlt! Bitte zuerst in Register p kopieren ("py auf die Nummer)', vim.log.levels.ERROR)
     return
   end
 
   local file_path = vim.fn.expand('%:p') -- Get full path of current file
-  local project_base = vim.g.project_root_wsl
+  -- Normalize path and get relative path from project root
+  file_path = file_path:gsub('\\', '/')
+  local project_root = vim.g.project_root_windows and vim.g.project_root_windows:gsub('\\', '/') or ''
 
-  -- Check if file is in current project
-  if not file_path:find(project_base, 1, true) then
-    vim.notify('Datei ist nicht im ' .. vim.g.project_name .. ' Projekt!', vim.log.levels.ERROR)
-    return
-  end
+  local relative_path = file_path:gsub('^' .. project_root:gsub('([%(%)%.%%%+%-%*%?%[%^%$])', '%%%1'), '')
+  -- URL-encode the path (spaces, etc.)
+  relative_path = relative_path:gsub(' ', '%%20')
 
-  -- Get relative path from project root
-  local relative_path = file_path:sub(#project_base + 1) -- Remove project base path
+  -- Build URL from config
+  local url = string.format(vim.g.project_pr_url, pr_number, relative_path)
 
-  -- Call PowerShell script
-  local script_path = 'C:\\Users\\Administrator\\Documents\\Projekt\\KickStartNeoVim\\open-pr-file.ps1'
-  local cmd = string.format([[powershell.exe -File "%s" -PrNumber %s -FilePath "%s"]], script_path, pr_number, relative_path)
+  -- Open in Chrome new window
+  local cmd = string.format([[start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "%s"]], url)
   vim.fn.jobstart(cmd, { detach = true })
-  vim.notify('[' .. vim.g.project_name .. '] Opening PR #' .. pr_number .. ' at file: ' .. relative_path, vim.log.levels.INFO)
+  vim.notify('[' .. vim.g.project_name .. '] Opening PR #' .. pr_number .. ' at: ' .. relative_path, vim.log.levels.INFO)
 end, { desc = '[R]un file in PR (TFS browser, PR# from register P)' })
 
 -- Git Push (Windows PowerShell - VPN requirement)
