@@ -96,6 +96,15 @@ vim.g.have_nerd_font = false
 -- Reduce LSP log spam (OmniSharp sends many warnings during startup)
 vim.lsp.set_log_level('ERROR')
 
+-- [[ Swap File Handling ]]
+-- Automatically handle swap file conflicts (E325: ATTENTION)
+-- This fixes errors when plugins (Diffview, Obsidian, Telescope) try to open files programmatically
+vim.api.nvim_create_autocmd('SwapExists', {
+  callback = function()
+    vim.v.swapchoice = 'e' -- Edit anyway (ignore swap file)
+  end,
+})
+
 -- [[ Project Detection ]]
 -- Automatically detect which project we're in based on current working directory
 -- This enables project-specific keybindings and settings
@@ -595,6 +604,22 @@ require('lazy').setup({
           vim.opt_local.conceallevel = 2
         end,
       })
+
+      -- Disable swap files for Obsidian vault files to avoid E325 swap file conflicts
+      -- when opening notes via Telescope picker (the picker can't handle the swap dialog)
+      vim.api.nvim_create_autocmd('BufReadPre', {
+        pattern = {
+          '*/Documents/DCS/*',
+          '*/Documents/DCS/**',
+          '*/Documents/Obsydian/*',
+          '*/Documents/Obsydian/**',
+          '*/Documents/Brain/*',
+          '*/Documents/Brain/**',
+        },
+        callback = function()
+          vim.opt_local.swapfile = false
+        end,
+      })
     end,
     ---@module 'obsidian'
     ---@type obsidian.config
@@ -1033,7 +1058,7 @@ require('lazy').setup({
       'nvim-tree/nvim-web-devicons',
     },
     keys = {
-      { '<leader>o', '<cmd>AerialToggle<cr>', desc = '[O]utline Toggle (Code Structure)' },
+      { '<leader>a', '<cmd>AerialToggle<cr>', desc = '[A]erial Toggle (Code Structure)' },
     },
     opts = {
       layout = {
@@ -1181,6 +1206,34 @@ require('lazy').setup({
         map('n', '<leader>hb', function() gitsigns.blame_line { full = true } end, { desc = '[H]unk [B]lame line' })
         map('n', '<leader>hd', gitsigns.diffthis, { desc = '[H]unk [D]iff this' })
         map('n', '<leader>hD', function() gitsigns.diffthis('~') end, { desc = '[H]unk [D]iff against ~' })
+
+        -- Yank current hunk as diff
+        map('n', '<leader>hy', function()
+          local hunks = require('gitsigns').get_hunks()
+          if not hunks or #hunks == 0 then
+            vim.notify('No hunks in this file', vim.log.levels.WARN)
+            return
+          end
+          local line = vim.fn.line('.')
+          for _, hunk in ipairs(hunks) do
+            -- Check if current line is within this hunk
+            if line >= hunk.added.start and line < hunk.added.start + math.max(hunk.added.count, 1) then
+              -- Build diff text from hunk
+              local diff_lines = {}
+              table.insert(diff_lines, string.format('@@ -%d,%d +%d,%d @@',
+                hunk.removed.start, hunk.removed.count,
+                hunk.added.start, hunk.added.count))
+              for _, l in ipairs(hunk.lines) do
+                table.insert(diff_lines, l)
+              end
+              local diff = table.concat(diff_lines, '\n')
+              vim.fn.setreg('+', diff)
+              vim.notify('Yanked hunk (' .. #hunk.lines .. ' lines)', vim.log.levels.INFO)
+              return
+            end
+          end
+          vim.notify('Cursor not on a hunk', vim.log.levels.WARN)
+        end, { desc = '[H]unk [Y]ank (copy diff)' })
 
         -- Toggles
         map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = '[T]oggle git [B]lame' })
@@ -1378,6 +1431,10 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sih', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.HINT })
       end, { desc = '[S]earch [I]ssues [H]int' })
+      -- Search Issues in current file only (all severities)
+      vim.keymap.set('n', '<leader>si', function()
+        builtin.diagnostics({ bufnr = 0 })
+      end, { desc = '[S]earch [I]ssues (current file only)' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
@@ -1482,6 +1539,180 @@ require('lazy').setup({
           end,
         }):find()
       end, { desc = '[S]earch [T]erminals' })
+
+      -- E2E Test Picker - Search and run Cypress feature files
+      -- Multi-select with <Tab>, run with <Enter>
+      vim.keymap.set('n', '<leader>ref', function()
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        -- Use dynamic project root (works with worktrees!)
+        local project_name = vim.g.project_name
+        local is_win = vim.fn.has('win32') == 1
+        local project_root = is_win and vim.g.project_root_windows or vim.g.project_root_wsl
+        local cypress_path
+
+        if project_name == 'DCSRE' then
+          cypress_path = project_root .. (is_win and '\\Sources\\Tests\\Cypress' or '/Sources/Tests/Cypress')
+        elseif project_name == 'CENCOCD' then
+          cypress_path = project_root .. (is_win and '\\src\\Tests\\Cypress' or '/src/Tests/Cypress')
+        else
+          vim.notify('Unknown project - cannot find Cypress path', vim.log.levels.ERROR)
+          return
+        end
+
+        -- Find all .feature files
+        local feature_files = vim.fn.globpath(cypress_path .. '/e2e', '**/*.feature', false, true)
+
+        if #feature_files == 0 then
+          vim.notify('No .feature files found in: ' .. cypress_path, vim.log.levels.WARN)
+          return
+        end
+
+        -- Create entries with relative paths
+        local results = {}
+        for _, file in ipairs(feature_files) do
+          local rel_path = file:gsub(cypress_path .. '/', '')
+          local display_name = rel_path:gsub('e2e/', ''):gsub('%.feature$', '')
+          table.insert(results, {
+            path = file,
+            rel_path = rel_path,
+            display = display_name,
+          })
+        end
+
+        -- Sort alphabetically
+        table.sort(results, function(a, b) return a.display < b.display end)
+
+        pickers.new({}, {
+          prompt_title = 'E2E Tests (' .. project_name .. ') - <Tab> multi-select, <Enter> run',
+          finder = finders.new_table({
+            results = results,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry.display,
+                ordinal = entry.display,
+                path = entry.path,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          previewer = conf.file_previewer({}),
+          attach_mappings = function(prompt_bufnr, map)
+            actions.select_default:replace(function()
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              local multi_selections = picker:get_multi_selection()
+              actions.close(prompt_bufnr)
+
+              -- Use multi-selection if available, otherwise single selection
+              local selected = {}
+              if #multi_selections > 0 then
+                for _, sel in ipairs(multi_selections) do
+                  table.insert(selected, sel.value.rel_path)
+                end
+              else
+                local single = action_state.get_selected_entry()
+                if single then
+                  table.insert(selected, single.value.rel_path)
+                end
+              end
+
+              if #selected == 0 then
+                vim.notify('No tests selected', vim.log.levels.WARN)
+                return
+              end
+
+              -- Build spec argument (comma-separated for multiple)
+              local spec_arg = table.concat(selected, ',')
+
+              -- Build and run cypress command (PowerShell for Windows)
+              local cmd
+              if is_win then
+                cmd = string.format(
+                  'powershell.exe -Command "Set-Location \'%s\'; npx cypress run --spec \'%s\'"',
+                  cypress_path:gsub('/', '\\'),
+                  spec_arg
+                )
+              else
+                cmd = string.format(
+                  'cd "%s" && npx cypress run --spec "%s"',
+                  cypress_path,
+                  spec_arg
+                )
+              end
+
+              vim.notify('Running ' .. #selected .. ' E2E test(s)...', vim.log.levels.INFO)
+
+              -- Open in toggleterm (terminal 30 = E2E Playwright)
+              local Terminal = require('toggleterm.terminal').Terminal
+              local e2e_term = Terminal:new({
+                cmd = cmd,
+                id = 30,
+                direction = 'horizontal',
+                close_on_exit = false,
+                on_open = function()
+                  vim.notify('E2E Tests started: ' .. table.concat(selected, ', '), vim.log.levels.INFO)
+                end,
+              })
+              e2e_term:toggle()
+            end)
+
+            -- Headed mode with <C-h>
+            map('i', '<C-h>', function()
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              local multi_selections = picker:get_multi_selection()
+              actions.close(prompt_bufnr)
+
+              local selected = {}
+              if #multi_selections > 0 then
+                for _, sel in ipairs(multi_selections) do
+                  table.insert(selected, sel.value.rel_path)
+                end
+              else
+                local single = action_state.get_selected_entry()
+                if single then
+                  table.insert(selected, single.value.rel_path)
+                end
+              end
+
+              if #selected == 0 then return end
+
+              local spec_arg = table.concat(selected, ',')
+              local cmd
+              if is_win then
+                cmd = string.format(
+                  'powershell.exe -Command "Set-Location \'%s\'; npx cypress run --headed --spec \'%s\'"',
+                  cypress_path:gsub('/', '\\'),
+                  spec_arg
+                )
+              else
+                cmd = string.format(
+                  'cd "%s" && npx cypress run --headed --spec "%s"',
+                  cypress_path,
+                  spec_arg
+                )
+              end
+
+              vim.notify('Running ' .. #selected .. ' E2E test(s) HEADED...', vim.log.levels.INFO)
+
+              local Terminal = require('toggleterm.terminal').Terminal
+              local e2e_term = Terminal:new({
+                cmd = cmd,
+                id = 31,
+                direction = 'horizontal',
+                close_on_exit = false,
+              })
+              e2e_term:toggle()
+            end)
+
+            return true
+          end,
+        }):find()
+      end, { desc = '[R]un [E]2E [F]ind (Cypress - multi-select with Tab)' })
     end,
   },
 
@@ -2868,6 +3099,54 @@ vim.keymap.set('n', '<leader>ywW', function()
     vim.notify('No warning on this line', vim.log.levels.WARN)
   end
 end, { desc = '[Y]ank [W]arning append [W] (path:line msg)' })
+
+-- Yank Changes: Copy git diff for current file to clipboard
+vim.keymap.set('n', '<leader>yc', function()
+  local file = vim.fn.expand('%:p')
+  if file == '' then
+    vim.notify('No file in buffer!', vim.log.levels.ERROR)
+    return
+  end
+  -- Get git root and make path relative
+  local git_root = vim.fn.systemlist('git rev-parse --show-toplevel')[1]
+  if vim.v.shell_error ~= 0 then
+    vim.notify('Not in a git repository!', vim.log.levels.ERROR)
+    return
+  end
+  -- Convert to relative path (works on Windows too)
+  local rel_path = vim.fn.fnamemodify(file, ':.')
+  -- Try unstaged first, then staged
+  local diff = vim.fn.system('git diff -- "' .. rel_path .. '"')
+  if diff == '' then
+    diff = vim.fn.system('git diff --cached -- "' .. rel_path .. '"')
+  end
+  if diff ~= '' then
+    vim.fn.setreg('+', diff)
+    local lines = select(2, diff:gsub('\n', '\n'))
+    vim.notify('Yanked diff (' .. lines .. ' lines): ' .. vim.fn.fnamemodify(file, ':t'), vim.log.levels.INFO)
+  else
+    vim.notify('No changes for this file', vim.log.levels.WARN)
+  end
+end, { desc = '[Y]ank [C]hanges (git diff for file)' })
+
+-- Yank Issues: Copy all diagnostics for current file to clipboard
+vim.keymap.set('n', '<leader>yi', function()
+  local diagnostics = vim.diagnostic.get(0) -- 0 = current buffer
+  if #diagnostics == 0 then
+    vim.notify('No issues in this file', vim.log.levels.WARN)
+    return
+  end
+  local filepath = vim.fn.expand('%:p')
+  local lines = {}
+  for _, d in ipairs(diagnostics) do
+    local severity = ({ 'ERROR', 'WARN', 'INFO', 'HINT' })[d.severity] or 'UNKNOWN'
+    local line = string.format('%s:%d [%s] %s', filepath, d.lnum + 1, severity, d.message)
+    table.insert(lines, line)
+  end
+  local result = table.concat(lines, '\n')
+  vim.fn.setreg('+', result)
+  vim.notify('Yanked ' .. #diagnostics .. ' issues to clipboard', vim.log.levels.INFO)
+end, { desc = '[Y]ank [I]ssues (all diagnostics in file)' })
 
 -- Remap Visual Block mode (Ctrl+v conflicts with Windows paste)
 vim.keymap.set('n', '<leader>v', '<C-v>', { desc = '[V]isual Block Mode' })

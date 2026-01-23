@@ -1003,3 +1003,68 @@ Markdown
 Last verified: 2025-12-12
 Neovim version: v0.11.4
 OmniSharp version: 1.39.14
+letzer projet st der Code - du kannst ihn selbst einfügen:
+
+  1. <leader>gc (Zeile ~411-430 ersetzen)
+
+  Ersetze den ganzen Block mit:
+        { '<leader>gc', '<cmd>Neogit commit<cr>', desc = '[G]it [C]ommit' },
+
+  2. ]d / [d Super Hunk (nach Zeile ~844 einfügen)
+
+  Nach end, { desc = 'Previous staged [C]hange/hunk' }) einfügen:
+
+          -- Cross-file hunk navigation (Super Hunk)
+          map('n', ']d', function()
+            local ok = pcall(function()
+              gitsigns.nav_hunk('next', { wrap = false })
+            end)
+            if not ok then
+              local changed = vim.fn.systemlist('git diff --name-only')
+              local current = vim.fn.expand('%:.')
+              local found_current = false
+              for _, file in ipairs(changed) do
+                if found_current and vim.fn.filereadable(file) == 1 then
+                  vim.cmd('edit ' .. file)
+                  vim.defer_fn(function() gitsigns.nav_hunk('first') end, 100)
+                  return
+                end
+                if file == current then found_current = true end
+              end
+              if #changed > 0 and vim.fn.filereadable(changed[1]) == 1 then
+                vim.cmd('edit ' .. changed[1])
+                vim.defer_fn(function() gitsigns.nav_hunk('first') end, 100)
+              end
+            end
+          end, { desc = 'Next [d]iff (cross-file)' })
+
+          map('n', '[d', function()
+            local ok = pcall(function()
+              gitsigns.nav_hunk('prev', { wrap = false })
+            end)
+            if not ok then
+              local changed = vim.fn.systemlist('git diff --name-only')
+              local current = vim.fn.expand('%:.')
+              for i, file in ipairs(changed) do
+                if file == current and i > 1 then
+                  local prev_file = changed[i - 1]
+                  if vim.fn.filereadable(prev_file) == 1 then
+                    vim.cmd('edit ' .. prev_file)
+                    vim.defer_fn(function() gitsigns.nav_hunk('last') end, 100)
+                    return
+                  end
+                end
+              end
+              if #changed > 0 then
+                local last_file = changed[#changed]
+                if vim.fn.filereadable(last_file) == 1 then
+                  vim.cmd('edit ' .. last_file)
+                  vim.defer_fn(function() gitsigns.nav_hunk('last') end, 100)
+                end
+              end
+            end
+          end, { desc = 'Prev [d]iff (cross-file)' })
+
+  ---
+  Sag Bescheid wenn du es eingefügt hast und es
+
