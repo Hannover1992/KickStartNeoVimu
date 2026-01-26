@@ -766,6 +766,14 @@ These commands run in WSL2/Bash for frontend development:
 - Example: Press `<leader>gyf` → Paste in Slack/Email/Notes for focused review
 - Difference from `<leader>yc`: `yc` = working tree changes (uncommitted), `gyf` = branch changes vs base
 
+**`<leader>gyd`** - **[G]it [Y]ank [D]iff (complete branch diff vs base)**
+- Copies the COMPLETE git diff (ALL files) vs base branch to clipboard
+- Auto-detects: `origin/develop` (DCSRE) or `origin/main` (CENCOCD)
+- Perfect for **full Pre-PR reviews** - see all changes in your branch!
+- Use case: Prepare for PR by reviewing complete branch diff, or paste full changes for review
+- Example: Press `<leader>gyd` → Paste entire branch diff in PR description/Notes
+- Shows file count + line count in notification (e.g., "15 files, 2345 lines")
+
 ---
 
 ### Dual Configuration (WSL2 vs Windows)
@@ -1048,7 +1056,8 @@ Clipboard
 ---------
 <leader>yp   → Yank relative path
 <leader>yn   → Yank filename only
-<leader>gyf  → Git Yank File diff vs base branch (develop/main)
+<leader>gyf  → Git Yank File diff vs base (single file)
+<leader>gyd  → Git Yank Diff vs base (entire branch, all files)
 
 Diagnostics
 -----------

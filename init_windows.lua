@@ -2716,5 +2716,43 @@ vim.keymap.set('n', '<leader>gyf', function()
   vim.notify('File diff copied! (' .. line_count .. ' lines vs ' .. base_branch .. ')', vim.log.levels.INFO)
 end, { desc = '[G]it [Y]ank [F]ile diff vs base branch' })
 
+-- Git Yank entire branch Diff vs base branch (<leader>gyd)
+-- Copies the COMPLETE git diff (all files) against origin/develop (or origin/main) to clipboard
+vim.keymap.set('n', '<leader>gyd', function()
+  -- Check if we're in a git repository
+  local is_git_repo = vim.fn.system('git rev-parse --is-inside-work-tree 2>nul'):match('true')
+  if not is_git_repo then
+    vim.notify('Not in a git repository!', vim.log.levels.WARN)
+    return
+  end
+
+  -- Auto-detect base branch: use 'main' for CENCOCD, 'develop' for DCSRE
+  local base_branch = 'origin/develop'
+  local git_root = vim.fn.systemlist('git rev-parse --show-toplevel')[1]
+  if git_root and git_root:match('cencoco') then
+    base_branch = 'origin/main'
+  end
+
+  -- Get FULL diff against base branch (all files)
+  local cmd = string.format('git diff %s', base_branch)
+  local diff = vim.fn.system(cmd)
+
+  if vim.v.shell_error ~= 0 then
+    vim.notify('Git diff failed! Is the branch fetched?', vim.log.levels.ERROR)
+    return
+  end
+
+  if diff == '' then
+    vim.notify('No changes in current branch vs ' .. base_branch, vim.log.levels.INFO)
+    return
+  end
+
+  -- Copy to clipboard
+  vim.fn.setreg('+', diff)
+  local line_count = select(2, diff:gsub('\n', '\n'))
+  local file_count = select(2, diff:gsub('diff %-%-git', ''))
+  vim.notify('Branch diff copied! (' .. file_count .. ' files, ' .. line_count .. ' lines vs ' .. base_branch .. ')', vim.log.levels.INFO)
+end, { desc = '[G]it [Y]ank [D]iff entire branch vs base' })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
