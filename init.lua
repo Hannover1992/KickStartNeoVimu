@@ -1481,6 +1481,7 @@ require('lazy').setup({
           [30] = 'E2E Playwright',
           [31] = 'E2E Headed',
           [32] = 'Cypress UI',
+          [40] = 'Integration Tests',
         }
 
         -- Get all toggleterm terminals
@@ -1713,6 +1714,152 @@ require('lazy').setup({
           end,
         }):find()
       end, { desc = '[R]un [E]2E [F]ind (Cypress - multi-select with Tab)' })
+
+      -- Integration Test Picker - Search and run backend integration tests
+      -- Multi-select with <Tab>, run with <Enter>
+      vim.keymap.set('n', '<leader>ris', function()
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        -- Use dynamic project backend (works with worktrees!)
+        local project_name = vim.g.project_name
+        local is_win = vim.fn.has('win32') == 1
+        local backend_root = is_win and vim.g.project_backend_windows or vim.g.project_backend
+
+        if project_name ~= 'DCSRE' then
+          vim.notify('Integration Tests only available for DCSRE', vim.log.levels.ERROR)
+          return
+        end
+
+        if not backend_root then
+          vim.notify('Backend root not found', vim.log.levels.ERROR)
+          return
+        end
+
+        -- Run dotnet test --list-tests to get all test names
+        vim.notify('Loading Integration Tests...', vim.log.levels.INFO)
+        local cmd
+        if is_win then
+          cmd = string.format(
+            'powershell.exe -Command "Set-Location \'%s\'; dotnet test --list-tests --no-build 2>&1 | Select-String -Pattern \'VDEK.DCSP\'"',
+            backend_root:gsub('/', '\\')
+          )
+        else
+          cmd = string.format('cd "%s" && dotnet test --list-tests --no-build 2>&1 | grep "VDEK.DCSP"', backend_root)
+        end
+
+        local output = vim.fn.system(cmd)
+        local test_lines = vim.split(output, '\n', { trimempty = true })
+
+        -- Parse test names (filter out non-test lines)
+        local results = {}
+        for _, line in ipairs(test_lines) do
+          line = line:gsub('^%s+', '') -- trim whitespace
+          if line:match('^VDEK%.DCSP%.IntegrationTests%.') then
+            -- Extract display name (last part after last dot)
+            local display_name = line:match('%.([^.]+)$') or line
+            -- Extract category (Controllers, Providers, Services, etc.)
+            local category = line:match('IntegrationTests%.([^.]+)%.')
+            table.insert(results, {
+              fqn = line,
+              display = category and (category .. '/' .. display_name) or display_name,
+              ordinal = line,
+            })
+          end
+        end
+
+        if #results == 0 then
+          vim.notify('No Integration Tests found. Run dotnet build first?', vim.log.levels.WARN)
+          return
+        end
+
+        -- Sort alphabetically
+        table.sort(results, function(a, b) return a.display < b.display end)
+
+        pickers.new({}, {
+          prompt_title = 'Integration Tests (' .. #results .. ' tests) - <Tab> multi-select, <Enter> run',
+          finder = finders.new_table({
+            results = results,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry.display,
+                ordinal = entry.ordinal,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          attach_mappings = function(prompt_bufnr, map)
+            actions.select_default:replace(function()
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              local multi_selections = picker:get_multi_selection()
+              actions.close(prompt_bufnr)
+
+              -- Use multi-selection if available, otherwise single selection
+              local selected = {}
+              if #multi_selections > 0 then
+                for _, sel in ipairs(multi_selections) do
+                  table.insert(selected, sel.value.fqn)
+                end
+              else
+                local single = action_state.get_selected_entry()
+                if single then
+                  table.insert(selected, single.value.fqn)
+                end
+              end
+
+              if #selected == 0 then
+                vim.notify('No tests selected', vim.log.levels.WARN)
+                return
+              end
+
+              -- Build filter argument (pipe-separated for multiple)
+              local filter_arg = table.concat(
+                vim.tbl_map(function(fqn)
+                  return 'FullyQualifiedName~' .. fqn
+                end, selected),
+                '|'
+              )
+
+              -- Build and run dotnet test command
+              local test_cmd
+              if is_win then
+                test_cmd = string.format(
+                  'powershell.exe -Command "Set-Location \'%s\'; dotnet test --no-build --no-restore --filter \'%s\' --verbosity detailed"',
+                  backend_root:gsub('/', '\\'),
+                  filter_arg
+                )
+              else
+                test_cmd = string.format(
+                  'cd "%s" && dotnet test --no-build --no-restore --filter "%s" --verbosity detailed',
+                  backend_root,
+                  filter_arg
+                )
+              end
+
+              vim.notify('Running ' .. #selected .. ' Integration Test(s)...', vim.log.levels.INFO)
+
+              -- Open in toggleterm (terminal 40 = Integration Tests)
+              local Terminal = require('toggleterm.terminal').Terminal
+              local test_term = Terminal:new({
+                cmd = test_cmd,
+                id = 40,
+                direction = 'horizontal',
+                close_on_exit = false,
+                on_open = function()
+                  vim.notify('Integration Tests started: ' .. #selected .. ' test(s)', vim.log.levels.INFO)
+                end,
+              })
+              test_term:toggle()
+            end)
+
+            return true
+          end,
+        }):find()
+      end, { desc = '[R]un [I]ntegration [S]earch (Backend - multi-select with Tab)' })
     end,
   },
 
@@ -3178,6 +3325,46 @@ vim.keymap.set('n', '<leader>mf', function()
 
   vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
 end, { desc = '[M]arkdown [F]oo scratch (temp)' })
+
+-- Markdown PDF Export with Pandoc (<leader>mP)
+-- Requires: sudo apt install pandoc texlive-xelatex (WSL2/Linux)
+--       OR: choco install pandoc miktex (Windows)
+vim.keymap.set('n', '<leader>mP', function()
+  local file = vim.fn.expand('%:p')
+  if vim.bo.filetype ~= 'markdown' then
+    vim.notify('Not a markdown file!', vim.log.levels.WARN)
+    return
+  end
+
+  if vim.fn.executable('pandoc') == 0 then
+    if vim.fn.has('unix') == 1 then
+      vim.notify('Install pandoc: sudo apt install pandoc texlive-xelatex', vim.log.levels.ERROR)
+    else
+      vim.notify('Install pandoc: choco install pandoc miktex', vim.log.levels.ERROR)
+    end
+    return
+  end
+
+  local pdf_file = file:gsub('%.md$', '.pdf')
+  local cmd = string.format('pandoc "%s" -o "%s" --pdf-engine=xelatex -V geometry:margin=1in', file, pdf_file)
+
+  vim.notify('Generating PDF...', vim.log.levels.INFO)
+  vim.fn.system(cmd)
+
+  if vim.v.shell_error == 0 then
+    vim.notify('PDF: ' .. vim.fn.fnamemodify(pdf_file, ':t'), vim.log.levels.INFO)
+    -- Open PDF in default viewer (works in both WSL2 and Windows)
+    if vim.fn.has('unix') == 1 then
+      -- WSL2: Use Windows explorer.exe to open
+      vim.fn.system('explorer.exe "' .. pdf_file:gsub('/mnt/c', 'C:'):gsub('/', '\\') .. '"')
+    else
+      -- Windows: Use start command
+      vim.fn.system('start "" "' .. pdf_file .. '"')
+    end
+  else
+    vim.notify('Pandoc failed! Check if LaTeX (texlive/miktex) is installed.', vim.log.levels.ERROR)
+  end
+end, { desc = '[M]arkdown [P]DF export' })
 
 -- Copy Windows path to clipboard
 vim.keymap.set('n', '<leader>ypw', function()

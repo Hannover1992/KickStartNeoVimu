@@ -577,6 +577,58 @@ cp init.lua ~/.config/nvim/init.lua
 
 **Why this plugin**: Most popular markdown preview solution in the Neovim ecosystem, default in LazyVim, NvChad, and AstroNvim distributions.
 
+### Markdown PDF Export
+
+**Keybinding**: `<leader>mP` - Export Markdown to PDF
+
+**Features**:
+- ✅ High-quality PDF generation using Pandoc + XeLaTeX
+- ✅ Professional layout (1-inch margins, clean typography)
+- ✅ Automatically opens PDF after generation
+- ✅ Cross-platform (WSL2 + Windows)
+- ✅ Supports all markdown features (tables, code blocks, images, etc.)
+
+**Requirements**:
+
+**Windows:**
+```powershell
+# Option 1: Using winget (recommended, built-in Windows 11)
+winget install --id=JohnMacFarlane.Pandoc -e
+winget install --id=MiKTeX.MiKTeX -e
+
+# Option 2: Using Chocolatey
+choco install pandoc miktex
+
+# Option 3: Manual download
+# Pandoc: https://github.com/jgm/pandoc/releases/latest
+# MiKTeX: https://miktex.org/download
+```
+
+**WSL2/Linux:**
+```bash
+sudo apt install pandoc texlive-xelatex
+```
+
+**Usage**:
+1. Open any `.md` file in Neovim
+2. Press `<leader>mP` (capital P!)
+3. PDF is generated in the same folder as the `.md` file
+4. PDF automatically opens in your default viewer
+5. Notification shows success/failure
+
+**Example workflow**:
+```vim
+:edit my-document.md
+" Write your content...
+<leader>mP
+" → my-document.pdf is created and opened
+```
+
+**Troubleshooting**:
+- If you get "Install pandoc" error: Pandoc is not installed or not in PATH
+- If you get "Pandoc failed" error: LaTeX engine (MiKTeX/texlive) is missing
+- After installation: Restart PowerShell/Terminal to refresh PATH
+
 ---
 
 ## 🎮 Keybindings Reference (DCSRE Project)
@@ -994,6 +1046,7 @@ Diagnostics
 Markdown
 --------
 <leader>mp   → Markdown Preview (Browser with Mermaid support)
+<leader>mP   → Markdown PDF Export (Pandoc + XeLaTeX)
 ```
 
 ---

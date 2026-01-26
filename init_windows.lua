@@ -2617,5 +2617,34 @@ vim.keymap.set('n', '<leader>mf', function()
   vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
 end, { desc = '[M]arkdown [F]oo scratch (temp)' })
 
+-- Markdown PDF Export with Pandoc (<leader>mP)
+-- Requires: choco install pandoc miktex
+vim.keymap.set('n', '<leader>mP', function()
+  local file = vim.fn.expand('%:p')
+  if vim.bo.filetype ~= 'markdown' then
+    vim.notify('Not a markdown file!', vim.log.levels.WARN)
+    return
+  end
+
+  if vim.fn.executable('pandoc') == 0 then
+    vim.notify('Install pandoc: choco install pandoc miktex', vim.log.levels.ERROR)
+    return
+  end
+
+  local pdf_file = file:gsub('%.md$', '.pdf')
+  local cmd = string.format('pandoc "%s" -o "%s" --pdf-engine=xelatex -V geometry:margin=1in', file, pdf_file)
+
+  vim.notify('Generating PDF...', vim.log.levels.INFO)
+  vim.fn.system(cmd)
+
+  if vim.v.shell_error == 0 then
+    vim.notify('PDF: ' .. vim.fn.fnamemodify(pdf_file, ':t'), vim.log.levels.INFO)
+    -- Open PDF in default viewer
+    vim.fn.system('start "" "' .. pdf_file .. '"')
+  else
+    vim.notify('Pandoc failed! Check if MiKTeX/TexLive is installed.', vim.log.levels.ERROR)
+  end
+end, { desc = '[M]arkdown [P]DF export' })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
