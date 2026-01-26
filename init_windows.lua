@@ -2617,8 +2617,9 @@ vim.keymap.set('n', '<leader>mf', function()
   vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
 end, { desc = '[M]arkdown [F]oo scratch (temp)' })
 
--- Markdown PDF Export with Pandoc (<leader>mP)
--- Requires: choco install pandoc miktex
+-- Markdown PDF Export with Chrome Headless (<leader>mP)
+-- Uses markdown-preview.nvim's HTML renderer + Chrome headless print
+-- Supports Mermaid, PlantUML, and all markdown-preview features!
 vim.keymap.set('n', '<leader>mP', function()
   local file = vim.fn.expand('%:p')
   if vim.bo.filetype ~= 'markdown' then
@@ -2626,25 +2627,94 @@ vim.keymap.set('n', '<leader>mP', function()
     return
   end
 
-  if vim.fn.executable('pandoc') == 0 then
-    vim.notify('Install pandoc: choco install pandoc miktex', vim.log.levels.ERROR)
+  -- Check if Chrome is available
+  local chrome_path = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+  if vim.fn.filereadable(chrome_path) == 0 then
+    vim.notify('Chrome not found! Install Google Chrome.', vim.log.levels.ERROR)
     return
   end
 
   local pdf_file = file:gsub('%.md$', '.pdf')
-  local cmd = string.format('pandoc "%s" -o "%s" --pdf-engine=xelatex -V geometry:margin=1in', file, pdf_file)
 
-  vim.notify('Generating PDF...', vim.log.levels.INFO)
-  vim.fn.system(cmd)
+  -- Start markdown preview (generates HTML with Mermaid rendering)
+  vim.cmd('MarkdownPreview')
 
-  if vim.v.shell_error == 0 then
-    vim.notify('PDF: ' .. vim.fn.fnamemodify(pdf_file, ':t'), vim.log.levels.INFO)
-    -- Open PDF in default viewer
-    vim.fn.system('start "" "' .. pdf_file .. '"')
-  else
-    vim.notify('Pandoc failed! Check if MiKTeX/TexLive is installed.', vim.log.levels.ERROR)
+  -- Wait a bit for preview server to start and render
+  vim.defer_fn(function()
+    -- Get the preview URL from markdown-preview
+    local url = vim.fn['mkdp#util#get_url']()
+    if not url or url == '' then
+      vim.notify('Failed to get preview URL!', vim.log.levels.ERROR)
+      vim.cmd('MarkdownPreviewStop')
+      return
+    end
+
+    -- Use Chrome headless to print to PDF
+    local cmd = string.format(
+      '"%s" --headless --disable-gpu --print-to-pdf="%s" "%s"',
+      chrome_path,
+      pdf_file,
+      url
+    )
+
+    vim.notify('Generating PDF with Mermaid support...', vim.log.levels.INFO)
+    vim.fn.system(cmd)
+
+    -- Stop preview after PDF generation
+    vim.cmd('MarkdownPreviewStop')
+
+    if vim.v.shell_error == 0 and vim.fn.filereadable(pdf_file) == 1 then
+      vim.notify('PDF created: ' .. vim.fn.fnamemodify(pdf_file, ':t'), vim.log.levels.INFO)
+      -- Open PDF
+      vim.fn.system('start "" "' .. pdf_file .. '"')
+    else
+      vim.notify('PDF generation failed!', vim.log.levels.ERROR)
+    end
+  end, 3000) -- Wait 3 seconds for Mermaid to render
+end, { desc = '[M]arkdown [P]DF export (with Mermaid)' })
+
+-- Git Yank File diff vs base branch (<leader>gyf)
+-- Copies the git diff for current file against origin/develop (or origin/main) to clipboard
+vim.keymap.set('n', '<leader>gyf', function()
+  local file = vim.fn.expand('%:.')  -- Relative path from repo root
+  if file == '' then
+    vim.notify('No file in buffer!', vim.log.levels.WARN)
+    return
   end
-end, { desc = '[M]arkdown [P]DF export' })
+
+  -- Check if we're in a git repository
+  local is_git_repo = vim.fn.system('git rev-parse --is-inside-work-tree 2>nul'):match('true')
+  if not is_git_repo then
+    vim.notify('Not in a git repository!', vim.log.levels.WARN)
+    return
+  end
+
+  -- Auto-detect base branch: use 'main' for CENCOCD, 'develop' for DCSRE
+  local base_branch = 'origin/develop'
+  local git_root = vim.fn.systemlist('git rev-parse --show-toplevel')[1]
+  if git_root and git_root:match('cencoco') then
+    base_branch = 'origin/main'
+  end
+
+  -- Get diff against base branch for this file
+  local cmd = string.format('git diff %s -- "%s"', base_branch, file)
+  local diff = vim.fn.system(cmd)
+
+  if vim.v.shell_error ~= 0 then
+    vim.notify('Git diff failed! Is the branch fetched?', vim.log.levels.ERROR)
+    return
+  end
+
+  if diff == '' then
+    vim.notify('No changes in this file vs ' .. base_branch, vim.log.levels.INFO)
+    return
+  end
+
+  -- Copy to clipboard
+  vim.fn.setreg('+', diff)
+  local line_count = select(2, diff:gsub('\n', '\n'))
+  vim.notify('File diff copied! (' .. line_count .. ' lines vs ' .. base_branch .. ')', vim.log.levels.INFO)
+end, { desc = '[G]it [Y]ank [F]ile diff vs base branch' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et

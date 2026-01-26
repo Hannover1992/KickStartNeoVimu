@@ -582,52 +582,56 @@ cp init.lua ~/.config/nvim/init.lua
 **Keybinding**: `<leader>mP` - Export Markdown to PDF
 
 **Features**:
-- ✅ High-quality PDF generation using Pandoc + XeLaTeX
-- ✅ Professional layout (1-inch margins, clean typography)
+- ✅ **Full Mermaid diagram support** in PDF output!
+- ✅ Uses markdown-preview.nvim renderer (same as `<leader>mp`)
+- ✅ Chrome headless print-to-PDF (professional quality)
 - ✅ Automatically opens PDF after generation
 - ✅ Cross-platform (WSL2 + Windows)
-- ✅ Supports all markdown features (tables, code blocks, images, etc.)
+- ✅ Supports PlantUML, Chart.js, KaTeX math, and all markdown-preview features
 
 **Requirements**:
+- Google Chrome (usually already installed)
+- markdown-preview.nvim plugin (already configured in init.lua)
 
-**Windows:**
-```powershell
-# Option 1: Using winget (recommended, built-in Windows 11)
-winget install --id=JohnMacFarlane.Pandoc -e
-winget install --id=MiKTeX.MiKTeX -e
+**No additional software needed!** Unlike Pandoc+LaTeX solutions, this uses the same renderer as the live preview.
 
-# Option 2: Using Chocolatey
-choco install pandoc miktex
-
-# Option 3: Manual download
-# Pandoc: https://github.com/jgm/pandoc/releases/latest
-# MiKTeX: https://miktex.org/download
-```
-
-**WSL2/Linux:**
-```bash
-sudo apt install pandoc texlive-xelatex
-```
+**How it works**:
+1. Starts markdown-preview server (with Mermaid rendering)
+2. Waits 3 seconds for diagrams to render
+3. Chrome headless prints the HTML to PDF
+4. Stops preview server
+5. Opens the PDF
 
 **Usage**:
-1. Open any `.md` file in Neovim
+1. Open any `.md` file with Mermaid diagrams
 2. Press `<leader>mP` (capital P!)
-3. PDF is generated in the same folder as the `.md` file
-4. PDF automatically opens in your default viewer
-5. Notification shows success/failure
+3. Wait ~3 seconds for rendering
+4. PDF is created in the same folder and automatically opens
 
 **Example workflow**:
 ```vim
-:edit my-document.md
-" Write your content...
+:edit architecture.md
+" Write your content with Mermaid diagrams...
 <leader>mP
-" → my-document.pdf is created and opened
+" → architecture.pdf is created with rendered diagrams!
 ```
 
+**Example Markdown with Mermaid**:
+````markdown
+# System Architecture
+
+```mermaid
+graph TD
+    A[Frontend] --> B[Backend API]
+    B --> C[Database]
+    B --> D[Cache]
+```
+````
+
 **Troubleshooting**:
-- If you get "Install pandoc" error: Pandoc is not installed or not in PATH
-- If you get "Pandoc failed" error: LaTeX engine (MiKTeX/texlive) is missing
-- After installation: Restart PowerShell/Terminal to refresh PATH
+- If you get "Chrome not found": Install Google Chrome
+- If PDF is blank: Wait longer (increase timeout in code from 3000 to 5000ms)
+- If Mermaid diagrams are missing: Make sure `<leader>mp` preview works first
 
 ---
 
@@ -753,6 +757,14 @@ These commands run in WSL2/Bash for frontend development:
 - Copies only the filename without path
 - Example: `Program.cs`
 - Useful for quick file references
+
+**`<leader>gyf`** - **[G]it [Y]ank [F]ile diff (atomic diff vs base)**
+- Copies the git diff for ONLY this file vs base branch to clipboard
+- Auto-detects: `origin/develop` (DCSRE) or `origin/main` (CENCOCD)
+- Perfect for **atomic Pre-PR reviews** - see only changes in one file!
+- Use case: You found an issue in one file during PR prep and want to review/paste JUST that file's diff
+- Example: Press `<leader>gyf` → Paste in Slack/Email/Notes for focused review
+- Difference from `<leader>yc`: `yc` = working tree changes (uncommitted), `gyf` = branch changes vs base
 
 ---
 
@@ -1036,6 +1048,7 @@ Clipboard
 ---------
 <leader>yp   → Yank relative path
 <leader>yn   → Yank filename only
+<leader>gyf  → Git Yank File diff vs base branch (develop/main)
 
 Diagnostics
 -----------
