@@ -637,8 +637,8 @@ require('lazy').setup({
 
       -- LAN Access: Server bindet auf alle Netzwerk-Interfaces (0.0.0.0)
       -- Damit ist der Server von allen Geräten im lokalen Netzwerk erreichbar!
-      -- Default: '127.0.0.1' (nur localhost)
-      vim.g.mkdp_open_ip = ''  -- Empty string = 0.0.0.0 (all interfaces)
+      -- Default: 0 (nur localhost 127.0.0.1), 1 = 0.0.0.0 (all interfaces)
+      vim.g.mkdp_open_to_the_world = 1
 
       -- Optional: Fester Port (Standard: random port zwischen 8080-9000)
       -- Empfohlen: Festen Port setzen für konsistente URL
@@ -680,16 +680,16 @@ require('lazy').setup({
             -- Get local IP address (works in Windows and WSL2)
             local ip = '127.0.0.1' -- fallback
             if vim.fn.has('win32') == 1 then
-              -- Windows: Use PowerShell to get IP
-              local handle = io.popen('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi* | Select-Object -First 1).IPAddress"')
+              -- Windows: Get private IP (exclude APIPA, loopback, WSL2/Hyper-V interfaces)
+              local handle = io.popen('powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch \'^169\\.254\\.\' -and $_.IPAddress -ne \'127.0.0.1\' -and $_.PrefixOrigin -ne \'WellKnown\' -and $_.InterfaceAlias -notmatch \'WSL\' -and $_.InterfaceAlias -notmatch \'vEthernet\' } | Select-Object -First 1 -ExpandProperty IPAddress"')
               if handle then
                 local result = handle:read('*a')
                 handle:close()
                 ip = result:match('^%s*(.-)%s*$') or ip -- trim whitespace
               end
             else
-              -- WSL2: Get Windows host IP from resolv.conf
-              local handle = io.popen("ip route show | grep -i default | awk '{ print $3}'")
+              -- WSL2: Get Windows host IP (from nameserver in resolv.conf)
+              local handle = io.popen("grep nameserver /etc/resolv.conf | awk '{print $2}' | head -1")
               if handle then
                 local result = handle:read('*a')
                 handle:close()

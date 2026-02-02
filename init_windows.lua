@@ -539,8 +539,8 @@ require('lazy').setup({
 
       -- LAN Access: Server bindet auf alle Netzwerk-Interfaces (0.0.0.0)
       -- Damit ist der Server von allen Geräten im lokalen Netzwerk erreichbar!
-      -- Default: '127.0.0.1' (nur localhost)
-      vim.g.mkdp_open_ip = ''  -- Empty string = 0.0.0.0 (all interfaces)
+      -- Default: 0 (nur localhost 127.0.0.1), 1 = 0.0.0.0 (all interfaces)
+      vim.g.mkdp_open_to_the_world = 1
 
       -- Optional: Fester Port (Standard: random port zwischen 8080-9000)
       -- Empfohlen: Festen Port setzen für konsistente URL
@@ -570,8 +570,9 @@ require('lazy').setup({
             local port = vim.g.mkdp_port or '8765'
 
             -- Get local IP address (Windows PowerShell)
+            -- Exclude APIPA (169.254.x.x), loopback, and WSL2/Hyper-V interfaces
             local ip = '127.0.0.1' -- fallback
-            local handle = io.popen('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi* | Select-Object -First 1).IPAddress"')
+            local handle = io.popen('powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch \'^169\\.254\\.\' -and $_.IPAddress -ne \'127.0.0.1\' -and $_.PrefixOrigin -ne \'WellKnown\' -and $_.InterfaceAlias -notmatch \'WSL\' -and $_.InterfaceAlias -notmatch \'vEthernet\' } | Select-Object -First 1 -ExpandProperty IPAddress"')
             if handle then
               local result = handle:read('*a')
               handle:close()
