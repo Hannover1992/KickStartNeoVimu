@@ -105,6 +105,78 @@ vim.api.nvim_create_autocmd('SwapExists', {
   end,
 })
 
+-- [[ Auto-copy .claude folder ]]
+-- If .claude folder doesn't exist in current git repo, copy from AgentsArchive
+-- This ensures Claude Code project settings are available in new worktrees/projects
+vim.api.nvim_create_autocmd('VimEnter', {
+  callback = function()
+    local current_dir = vim.fn.getcwd()
+    local claude_dir = current_dir .. '/.claude'
+
+    -- Support Windows, Git Bash, and WSL2 paths
+    local archive_paths = {
+      'C:/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
+      '/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
+      '/mnt/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
+    }
+
+    -- Find which archive path exists
+    local archive_dir = nil
+    for _, path in ipairs(archive_paths) do
+      if vim.fn.isdirectory(path) == 1 then
+        archive_dir = path
+        break
+      end
+    end
+
+    -- Check if we're in a git repo (either .git directory OR .git file for worktrees)
+    local is_git_repo = vim.fn.isdirectory(current_dir .. '/.git') == 1 or vim.fn.filereadable(current_dir .. '/.git') == 1
+
+    -- Only copy if: .claude doesn't exist AND we're in a git repo AND archive exists
+    if archive_dir and vim.fn.isdirectory(claude_dir) == 0 and is_git_repo then
+      -- Use platform-appropriate copy command
+      if vim.fn.has('win32') == 1 then
+        -- Windows: use PowerShell Copy-Item (xcopy/robocopy have issues in different shells)
+        local win_src = archive_dir:gsub('/', '\\')
+        local win_dst = claude_dir:gsub('/', '\\')
+        vim.fn.system('powershell.exe -Command "Copy-Item -Path \'' .. win_src .. '\' -Destination \'' .. win_dst .. '\' -Recurse -Force"')
+      else
+        -- Unix: use cp -r
+        vim.fn.system({ 'cp', '-r', archive_dir, claude_dir })
+      end
+      vim.notify('.claude kopiert von AgentsArchive', vim.log.levels.INFO)
+    end
+  end,
+})
+
+-- [[ Project-specific terminal background color ]]
+-- Changes terminal background based on project path:
+--   DCSRE  = Green tint  (G)
+--   CENCOCD = Blue tint  (B)
+--   Private = Red tint   (R)
+vim.api.nvim_create_autocmd('VimEnter', {
+  callback = function()
+    local cwd_upper = vim.fn.getcwd():upper()
+    if cwd_upper:find('DCSRE') then
+      -- Green tint for DCSRE
+      io.write('\027]11;rgb:0a/18/0a\027\\')
+    elseif cwd_upper:find('CENCOC') then
+      -- Blue tint for CENCOCD
+      io.write('\027]11;rgb:0a/0a/18\027\\')
+    else
+      -- Red tint for Private
+      io.write('\027]11;rgb:18/0a/0a\027\\')
+    end
+  end,
+})
+
+-- Reset terminal background when leaving Neovim
+vim.api.nvim_create_autocmd('VimLeave', {
+  callback = function()
+    io.write('\027]104\027\\')
+  end,
+})
+
 -- [[ Project Detection ]]
 -- Automatically detect which project we're in based on current working directory
 -- This enables project-specific keybindings and settings
@@ -562,6 +634,19 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
+
+      -- LAN Access: Server bindet auf alle Netzwerk-Interfaces (0.0.0.0)
+      -- Damit ist der Server von allen Geräten im lokalen Netzwerk erreichbar!
+      -- Default: '127.0.0.1' (nur localhost)
+      vim.g.mkdp_open_ip = ''  -- Empty string = 0.0.0.0 (all interfaces)
+
+      -- Optional: Fester Port (Standard: random port zwischen 8080-9000)
+      -- Empfohlen: Festen Port setzen für konsistente URL
+      vim.g.mkdp_port = '8765'
+
+      -- Echo URL beim Start (so siehst du die LAN-URL)
+      vim.g.mkdp_echo_preview_url = 1
+
       -- Open in browser - ALWAYS open in NEW Chrome window
       vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
       if vim.fn.has('win32') == 1 then
@@ -582,7 +667,47 @@ require('lazy').setup({
       -- Mermaid, PlantUML, Chart.js support included by default
     end,
     keys = {
-      { '<leader>mp', '<cmd>MarkdownPreviewToggle<cr>', desc = '[M]arkdown [P]review' },
+      {
+        '<leader>mp',
+        function()
+          -- Toggle preview
+          vim.cmd('MarkdownPreviewToggle')
+
+          -- Wait a moment for server to start, then show URL
+          vim.defer_fn(function()
+            local port = vim.g.mkdp_port or '8765'
+
+            -- Get local IP address (works in Windows and WSL2)
+            local ip = '127.0.0.1' -- fallback
+            if vim.fn.has('win32') == 1 then
+              -- Windows: Use PowerShell to get IP
+              local handle = io.popen('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi* | Select-Object -First 1).IPAddress"')
+              if handle then
+                local result = handle:read('*a')
+                handle:close()
+                ip = result:match('^%s*(.-)%s*$') or ip -- trim whitespace
+              end
+            else
+              -- WSL2: Get Windows host IP from resolv.conf
+              local handle = io.popen("ip route show | grep -i default | awk '{ print $3}'")
+              if handle then
+                local result = handle:read('*a')
+                handle:close()
+                ip = result:match('^%s*(.-)%s*$') or ip
+              end
+            end
+
+            -- Show popup with LAN URL
+            local url = string.format('http://%s:%s', ip, port)
+            vim.notify(
+              string.format('Markdown Preview Server\n\nLAN URL: %s\n\nVon allen Geraeten im Netzwerk erreichbar!', url),
+              vim.log.levels.INFO,
+              { title = 'Markdown Preview', timeout = 5000 }
+            )
+          end, 1000) -- Wait 1 second for server to start
+        end,
+        desc = '[M]arkdown [P]review (LAN access)',
+      },
     },
   },
 
@@ -664,6 +789,32 @@ require('lazy').setup({
         default_tags = { 'daily' }, -- Automatische Tags
       },
 
+      -- Templates: Wiederverwendbare Vorlagen für verschiedene Notiz-Typen
+      templates = {
+        folder = 'Templates', -- Unterordner für Templates
+        date_format = '%Y-%m-%d', -- Format für {{date}}
+        time_format = '%H:%M', -- Format für {{time}}
+        -- Substitutions: Custom Variablen die du in Templates nutzen kannst
+        -- Beispiel in Template: {{feature_number}} → wird zu "881"
+        substitutions = {
+          feature_number = function()
+            return vim.fn.input('Feature Number (z.B. 881): ')
+          end,
+          topic = function()
+            return vim.fn.input('Topic Tag (z.B. DIC, WCF, SFTP): ')
+          end,
+          goal = function()
+            return vim.fn.input('Ziel: ')
+          end,
+          task1 = function()
+            return vim.fn.input('Task 1: ')
+          end,
+          task2 = function()
+            return vim.fn.input('Task 2: ')
+          end,
+        },
+      },
+
       -- Attachments: Wo Bilder gespeichert werden
       attachments = {
         folder = 'attachments',
@@ -688,6 +839,9 @@ require('lazy').setup({
       { '<leader>oy', '<cmd>Obsidian yesterday<cr>', desc = '[O]bsidian [Y]esterday' },
       { '<leader>od', '<cmd>Obsidian dailies<cr>', desc = '[O]bsidian [D]ailies list' },
 
+      -- Templates
+      { '<leader>oT', '<cmd>Obsidian template<cr>', desc = '[O]bsidian [T]emplate insert' },
+
       -- Links & Navigation
       { '<leader>ob', '<cmd>Obsidian backlinks<cr>', desc = '[O]bsidian [B]acklinks' },
       { '<leader>ol', '<cmd>Obsidian link<cr>', desc = '[O]bsidian [L]ink selection', mode = 'v' },
@@ -703,7 +857,8 @@ require('lazy').setup({
             if vim.fn.has('win32') == 1 then
               vim.fn.system('start "" "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --new-window "' .. url .. '"')
             else
-              vim.fn.system('google-chrome --new-window "' .. url .. '" &')
+              -- WSL2: Chrome via Windows path
+              vim.fn.system('"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" --new-window "' .. url .. '" &')
             end
             vim.notify('Öffne in Chrome: ' .. url, vim.log.levels.INFO)
           else
@@ -891,7 +1046,39 @@ require('lazy').setup({
     },
     cmd = { 'DBUI', 'DBUIToggle', 'DBUIAddConnection', 'DBUIFindBuffer' },
     keys = {
-      { '<leader>db', '<cmd>DBUIToggle<cr>', desc = '[D]ata[B]ase UI toggle' },
+      {
+        '<leader>db',
+        function()
+          -- Setze nur lokale Connections (DCSRE only)
+          if vim.g.db_connections_local then
+            vim.g.dbs = vim.g.db_connections_local
+          end
+          vim.cmd('DBUIToggle')
+        end,
+        desc = '[D]ata[B]ase UI (Local only)',
+      },
+      {
+        '<leader>dR',
+        function()
+          -- WARNUNG: Remote Database!
+          vim.notify('⚠️  WARNUNG: Du bist auf DEVELOPER Database!', vim.log.levels.WARN)
+
+          -- Setze Remote Connections (DCSRE + Remote)
+          if vim.g.db_connections_remote then
+            vim.g.dbs = vim.g.db_connections_remote
+          else
+            vim.notify('Remote Database nicht konfiguriert! (DB_SERVER, DB_USER, DB_PASSWORD fehlen)', vim.log.levels.ERROR)
+            return
+          end
+
+          -- Schließe DBUI falls offen, dann neu öffnen mit Remote
+          vim.cmd('silent! DBUIClose')
+          vim.defer_fn(function()
+            vim.cmd('DBUI')
+          end, 100)
+        end,
+        desc = '[D]atabase [R]emote (⚠️ WARNING: DEVELOPER DB!)',
+      },
       {
         '<leader>dw',
         function()
@@ -913,9 +1100,75 @@ require('lazy').setup({
       vim.g.db_ui_use_nerd_fonts = 1
       vim.g.db_ui_show_database_icon = 1
       vim.g.db_ui_winwidth = 50
-      vim.g.dbs = {
+
+      -- Lese Environment Variables aus PowerShell Profile
+      local db_server = vim.env.DB_SERVER
+      local db_user = vim.env.DB_USER
+      local db_password = vim.env.DB_PASSWORD
+
+      -- Datenbank-Namen
+      local db_dev = vim.env.DB_DEV
+      local db_qs = vim.env.DB_QS
+      local db_keycloak_dev = vim.env.DB_KEYCLOAK_DEV
+      local db_keycloak_qs = vim.env.DB_KEYCLOAK_QS
+
+      -- Erstelle LOKALE Connection Liste (nur DCSRE)
+      local connections_local = {
         { name = 'DCSRE', url = 'sqlserver://dcsp:dcsp@localhost:5433;database=dcsp;trustServerCertificate=true' },
       }
+
+      -- Erstelle REMOTE Connection Liste (DCSRE + 4 Remote DBs)
+      local connections_with_remote = {
+        { name = 'DCSRE', url = 'sqlserver://dcsp:dcsp@localhost:5433;database=dcsp;trustServerCertificate=true' },
+      }
+
+      -- Erstelle Remote Connections wenn Environment Variables gesetzt sind
+      if db_server and db_user and db_password then
+        -- Entferne Instance Name (\AP071), behalte nur server,port
+        -- server\instance,port → server,port (weil Named Pipes nicht funktioniert, nur TCP/IP Port!)
+        local sqlcmd_server = db_server:gsub('\\[^,]+', '')  -- Entferne \AP071
+
+        -- Füge DEV Datenbank hinzu
+        if db_dev then
+          table.insert(connections_with_remote, {
+            name = 'Remote_DEV',
+            url = string.format('sqlserver://%s:%s@%s;database=%s;trustServerCertificate=true', db_user, db_password, sqlcmd_server, db_dev),
+          })
+        end
+
+        -- Füge QS Datenbank hinzu
+        if db_qs then
+          table.insert(connections_with_remote, {
+            name = 'Remote_QS',
+            url = string.format('sqlserver://%s:%s@%s;database=%s;trustServerCertificate=true', db_user, db_password, sqlcmd_server, db_qs),
+          })
+        end
+
+        -- Füge Keycloak DEV Datenbank hinzu
+        if db_keycloak_dev then
+          table.insert(connections_with_remote, {
+            name = 'Remote_Keycloak_DEV',
+            url = string.format('sqlserver://%s:%s@%s;database=%s;trustServerCertificate=true', db_user, db_password, sqlcmd_server, db_keycloak_dev),
+          })
+        end
+
+        -- Füge Keycloak QS Datenbank hinzu
+        if db_keycloak_qs then
+          table.insert(connections_with_remote, {
+            name = 'Remote_Keycloak_QS',
+            url = string.format('sqlserver://%s:%s@%s;database=%s;trustServerCertificate=true', db_user, db_password, sqlcmd_server, db_keycloak_qs),
+          })
+        end
+
+        -- Speichere Remote Connections global für Keybindings
+        vim.g.db_connections_remote = connections_with_remote
+      end
+
+      -- IMMER lokale Connections speichern (auch ohne Remote Env-Vars)
+      vim.g.db_connections_local = connections_local
+
+      -- Standard: Nur DCSRE (sicher)
+      vim.g.dbs = connections_local
     end,
   },
 
@@ -3351,7 +3604,10 @@ vim.keymap.set('n', '<leader>mP', function()
     return
   end
 
-  local pdf_file = file:gsub('%.md$', '.pdf')
+  -- Generate PDF path in SAME directory as markdown file
+  local dir = vim.fn.fnamemodify(file, ':h')  -- Get directory
+  local filename = vim.fn.fnamemodify(file, ':t:r')  -- Get filename without extension
+  local pdf_file = dir .. '/' .. filename .. '.pdf'  -- Combine (forward slash works in both WSL2 and Windows Neovim)
 
   -- Start markdown preview (generates HTML with Mermaid rendering)
   vim.cmd('MarkdownPreview')
@@ -3366,10 +3622,12 @@ vim.keymap.set('n', '<leader>mP', function()
       return
     end
 
-    -- Convert PDF path for Chrome (WSL2 needs Windows path)
+    -- Convert PDF path for Chrome (WSL2 needs Windows path, Chrome requires backslashes)
     local pdf_path_for_chrome = pdf_file
     if vim.fn.has('unix') == 1 then
       pdf_path_for_chrome = pdf_file:gsub('/mnt/c', 'C:'):gsub('/', '\\')
+    else
+      pdf_path_for_chrome = pdf_file:gsub('/', '\\')
     end
 
     -- Use Chrome headless to print to PDF
@@ -3484,9 +3742,15 @@ end, { desc = '[G]it [Y]ank [D]iff entire branch vs base' })
 -- Copy Windows path to clipboard
 vim.keymap.set('n', '<leader>ypw', function()
   local current_file = vim.fn.expand('%:p')
+  local windows_path
 
-  -- Convert WSL path to Windows path
-  local windows_path = current_file:gsub('/mnt/c/', 'C:\\'):gsub('/', '\\')
+  if vim.fn.has('win32') == 1 then
+    -- Windows Native: just normalize slashes
+    windows_path = current_file:gsub('/', '\\')
+  else
+    -- WSL2: Convert /mnt/c/... to C:\...
+    windows_path = current_file:gsub('/mnt/c/', 'C:\\'):gsub('/', '\\')
+  end
 
   -- Copy to clipboard
   vim.fn.setreg('+', windows_path)
@@ -3536,8 +3800,8 @@ vim.keymap.set('n', '<leader>rC', function()
   -- Build URL from config
   local url = string.format(vim.g.project_pr_url, pr_number, relative_path)
 
-  -- Open in Chrome new window
-  local cmd = string.format([[start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "%s"]], url)
+  -- Open in Chrome new window (via PowerShell for both WSL2 and Windows)
+  local cmd = string.format([[powershell.exe -Command "Start-Process 'C:\Program Files\Google\Chrome\Application\chrome.exe' -ArgumentList '--new-window', '%s'"]], url)
   vim.fn.jobstart(cmd, { detach = true })
   vim.notify('[' .. vim.g.project_name .. '] Opening PR #' .. pr_number .. ' at: ' .. relative_path, vim.log.levels.INFO)
 end, { desc = '[R]un file in PR (TFS browser, PR# from register P)' })

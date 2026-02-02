@@ -536,6 +536,19 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
+
+      -- LAN Access: Server bindet auf alle Netzwerk-Interfaces (0.0.0.0)
+      -- Damit ist der Server von allen Geräten im lokalen Netzwerk erreichbar!
+      -- Default: '127.0.0.1' (nur localhost)
+      vim.g.mkdp_open_ip = ''  -- Empty string = 0.0.0.0 (all interfaces)
+
+      -- Optional: Fester Port (Standard: random port zwischen 8080-9000)
+      -- Empfohlen: Festen Port setzen für konsistente URL
+      vim.g.mkdp_port = '8765'
+
+      -- Echo URL beim Start (so siehst du die LAN-URL)
+      vim.g.mkdp_echo_preview_url = 1
+
       -- Open in new Chrome window (not tab)
       vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
       vim.cmd([[
@@ -546,7 +559,36 @@ require('lazy').setup({
       -- Mermaid, PlantUML, Chart.js support included by default
     end,
     keys = {
-      { '<leader>mp', '<cmd>MarkdownPreviewToggle<cr>', desc = '[M]arkdown [P]review' },
+      {
+        '<leader>mp',
+        function()
+          -- Toggle preview
+          vim.cmd('MarkdownPreviewToggle')
+
+          -- Wait a moment for server to start, then show URL
+          vim.defer_fn(function()
+            local port = vim.g.mkdp_port or '8765'
+
+            -- Get local IP address (Windows PowerShell)
+            local ip = '127.0.0.1' -- fallback
+            local handle = io.popen('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet*,Wi-Fi* | Select-Object -First 1).IPAddress"')
+            if handle then
+              local result = handle:read('*a')
+              handle:close()
+              ip = result:match('^%s*(.-)%s*$') or ip -- trim whitespace
+            end
+
+            -- Show popup with LAN URL
+            local url = string.format('http://%s:%s', ip, port)
+            vim.notify(
+              string.format('Markdown Preview Server\n\nLAN URL: %s\n\nVon allen Geraeten im Netzwerk erreichbar!', url),
+              vim.log.levels.INFO,
+              { title = 'Markdown Preview', timeout = 5000 }
+            )
+          end, 1000) -- Wait 1 second for server to start
+        end,
+        desc = '[M]arkdown [P]review (LAN access)',
+      },
     },
   },
 
@@ -2634,7 +2676,10 @@ vim.keymap.set('n', '<leader>mP', function()
     return
   end
 
-  local pdf_file = file:gsub('%.md$', '.pdf')
+  -- Generate PDF path in SAME directory as markdown file
+  local dir = vim.fn.fnamemodify(file, ':h')  -- Get directory
+  local filename = vim.fn.fnamemodify(file, ':t:r')  -- Get filename without extension
+  local pdf_file = dir .. '\\' .. filename .. '.pdf'  -- Combine with backslashes (Windows)
 
   -- Start markdown preview (generates HTML with Mermaid rendering)
   vim.cmd('MarkdownPreview')
