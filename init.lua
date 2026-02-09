@@ -635,18 +635,10 @@ require('lazy').setup({
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
 
-      -- LAN Access: Server bindet auf alle Netzwerk-Interfaces (0.0.0.0)
-      -- Damit ist der Server von allen Geräten im lokalen Netzwerk erreichbar!
-      -- Default: 0 (nur localhost 127.0.0.1), 1 = 0.0.0.0 (all interfaces)
-      vim.g.mkdp_open_to_the_world = 1
-
-      -- Optional: Fester Port (Standard: random port zwischen 8080-9000)
-      -- Empfohlen: Festen Port setzen für konsistente URL
-      vim.g.mkdp_port = '8765'
-
-      -- Echo URL beim Start (so siehst du die LAN-URL)
-      vim.g.mkdp_echo_preview_url = 1
-
+      -- Auto-close preview when switching buffers (0 = keep open, 1 = auto-close)
+      vim.g.mkdp_auto_close = 0
+      -- Theme: 'dark' oder 'light'
+      vim.g.mkdp_theme = 'dark'
       -- Open in browser - ALWAYS open in NEW Chrome window
       vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
       if vim.fn.has('win32') == 1 then
@@ -667,47 +659,7 @@ require('lazy').setup({
       -- Mermaid, PlantUML, Chart.js support included by default
     end,
     keys = {
-      {
-        '<leader>mp',
-        function()
-          -- Toggle preview
-          vim.cmd('MarkdownPreviewToggle')
-
-          -- Wait a moment for server to start, then show URL
-          vim.defer_fn(function()
-            local port = vim.g.mkdp_port or '8765'
-
-            -- Get local IP address (works in Windows and WSL2)
-            local ip = '127.0.0.1' -- fallback
-            if vim.fn.has('win32') == 1 then
-              -- Windows: Get private IP (exclude APIPA, loopback, WSL2/Hyper-V interfaces)
-              local handle = io.popen('powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch \'^169\\.254\\.\' -and $_.IPAddress -ne \'127.0.0.1\' -and $_.PrefixOrigin -ne \'WellKnown\' -and $_.InterfaceAlias -notmatch \'WSL\' -and $_.InterfaceAlias -notmatch \'vEthernet\' } | Select-Object -First 1 -ExpandProperty IPAddress"')
-              if handle then
-                local result = handle:read('*a')
-                handle:close()
-                ip = result:match('^%s*(.-)%s*$') or ip -- trim whitespace
-              end
-            else
-              -- WSL2: Get Windows host IP (from nameserver in resolv.conf)
-              local handle = io.popen("grep nameserver /etc/resolv.conf | awk '{print $2}' | head -1")
-              if handle then
-                local result = handle:read('*a')
-                handle:close()
-                ip = result:match('^%s*(.-)%s*$') or ip
-              end
-            end
-
-            -- Show popup with LAN URL
-            local url = string.format('http://%s:%s', ip, port)
-            vim.notify(
-              string.format('Markdown Preview Server\n\nLAN URL: %s\n\nVon allen Geraeten im Netzwerk erreichbar!', url),
-              vim.log.levels.INFO,
-              { title = 'Markdown Preview', timeout = 5000 }
-            )
-          end, 1000) -- Wait 1 second for server to start
-        end,
-        desc = '[M]arkdown [P]review (LAN access)',
-      },
+      { '<leader>mp', '<cmd>MarkdownPreviewToggle<cr>', desc = '[M]arkdown [P]review' },
     },
   },
 
@@ -1377,6 +1329,142 @@ require('lazy').setup({
       })
       -- Set as default notify
       vim.notify = notify
+    end,
+  },
+
+  -- nvim-dap - Debug Adapter Protocol for Neovim
+  {
+    'mfussenegger/nvim-dap',
+    dependencies = {
+      -- UI for nvim-dap
+      'rcarriga/nvim-dap-ui',
+      'nvim-neotest/nvim-nio', -- Required by dap-ui
+      -- Virtual text support (shows variable values inline)
+      'theHamsta/nvim-dap-virtual-text',
+    },
+    keys = {
+      -- Execution
+      { '<leader>xc', function() require('dap').continue() end, desc = 'Debug: [C]ontinue' },
+      { '<leader>xr', function() require('dap').restart() end, desc = 'Debug: [R]estart' },
+      { '<leader>xq', function() require('dap').terminate() end, desc = 'Debug: [Q]uit/Terminate' },
+      -- Stepping
+      { '<leader>xi', function() require('dap').step_into() end, desc = 'Debug: Step [I]nto' },
+      { '<leader>xo', function() require('dap').step_out() end, desc = 'Debug: Step [O]ut' },
+      { '<leader>xj', function() require('dap').step_over() end, desc = 'Debug: Step Over/[J]ump' },
+      -- Breakpoints
+      { '<leader>xt', function() require('dap').toggle_breakpoint() end, desc = 'Debug: [T]oggle Breakpoint' },
+      { '<leader>xC', function() require('dap').set_breakpoint(vim.fn.input('Breakpoint condition: ')) end, desc = 'Debug: [C]onditional Breakpoint' },
+      -- UI
+      { '<leader>xw', function() require('dapui').toggle() end, desc = 'Debug: [W]indow Toggle (DAP UI)' },
+      { '<leader>xe', function() require('dapui').eval() end, desc = 'Debug: [E]val', mode = { 'n', 'v' } },
+      { '<leader>xh', function() require('dap.ui.widgets').hover() end, desc = 'Debug: [H]over' },
+    },
+    config = function()
+      local dap = require('dap')
+      local dapui = require('dapui')
+
+      -- Setup DAP UI
+      dapui.setup({
+        layouts = {
+          {
+            elements = {
+              { id = 'scopes', size = 0.25 },
+              { id = 'breakpoints', size = 0.25 },
+              { id = 'stacks', size = 0.25 },
+              { id = 'watches', size = 0.25 },
+            },
+            size = 40,
+            position = 'left',
+          },
+          {
+            elements = {
+              { id = 'repl', size = 0.5 },
+              { id = 'console', size = 0.5 },
+            },
+            size = 10,
+            position = 'bottom',
+          },
+        },
+      })
+
+      -- Setup virtual text
+      require('nvim-dap-virtual-text').setup({})
+
+      -- Auto-open/close DAP UI
+      dap.listeners.after.event_initialized['dapui_config'] = function()
+        dapui.open()
+      end
+      dap.listeners.before.event_terminated['dapui_config'] = function()
+        dapui.close()
+      end
+      dap.listeners.before.event_exited['dapui_config'] = function()
+        dapui.close()
+      end
+
+      -- netcoredbg adapter for C#/.NET
+      dap.adapters.coreclr = {
+        type = 'executable',
+        command = 'netcoredbg',
+        args = { '--interpreter=vscode' },
+      }
+
+      -- Launch configurations for C#/.NET
+      dap.configurations.cs = {
+        {
+          type = 'coreclr',
+          name = 'Launch - DCSRE WebHost',
+          request = 'launch',
+          program = function()
+            if vim.g.project_name == 'DCSRE' then
+              local backend = vim.g.project_backend_windows or vim.g.project_backend
+              return backend .. '/VDEK.DCSP.WebHost/bin/Debug/net8.0/VDEK.DCSP.WebHost.dll'
+            else
+              return vim.fn.input('Path to dll: ', vim.fn.getcwd() .. '/bin/Debug/', 'file')
+            end
+          end,
+          cwd = function()
+            if vim.g.project_name == 'DCSRE' then
+              return vim.g.project_backend_windows or vim.g.project_backend
+            else
+              return vim.fn.getcwd()
+            end
+          end,
+          stopAtEntry = false,
+          console = 'integratedTerminal',
+        },
+        {
+          type = 'coreclr',
+          name = 'Launch - CENCOCD API',
+          request = 'launch',
+          program = function()
+            if vim.g.project_name == 'CENCOCD' then
+              return 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API/bin/Debug/net8.0/CenCoCo.Core.API.dll'
+            else
+              return vim.fn.input('Path to dll: ', vim.fn.getcwd() .. '/bin/Debug/', 'file')
+            end
+          end,
+          cwd = function()
+            if vim.g.project_name == 'CENCOCD' then
+              return 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
+            else
+              return vim.fn.getcwd()
+            end
+          end,
+          stopAtEntry = false,
+          console = 'integratedTerminal',
+        },
+        {
+          type = 'coreclr',
+          name = 'Attach - Process ID',
+          request = 'attach',
+          processId = require('dap.utils').pick_process,
+        },
+      }
+
+      -- Signs for breakpoints
+      vim.fn.sign_define('DapBreakpoint', { text = '🔴', texthl = 'DiagnosticError', linehl = '', numhl = '' })
+      vim.fn.sign_define('DapBreakpointCondition', { text = '🟡', texthl = 'DiagnosticWarn', linehl = '', numhl = '' })
+      vim.fn.sign_define('DapStopped', { text = '▶️', texthl = 'DiagnosticInfo', linehl = 'CursorLine', numhl = '' })
     end,
   },
 
@@ -2879,7 +2967,7 @@ vim.keymap.set('n', '<leader>rbw', function()
   })
   webhost:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend WebHost...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [W]ebhost' })
+end, { desc = '[R]un [B]ackend [W]ebhost | dotnet run' })
 
 -- Run Backend Setup: Execute FluentMigrator migrations (DCSRE only)
 vim.keymap.set('n', '<leader>rbs', function()
@@ -2896,7 +2984,7 @@ vim.keymap.set('n', '<leader>rbs', function()
   })
   setup:toggle()
   vim.notify('[DCSRE] Running Backend Setup (Migrations)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [S]etup (Migrations)' })
+end, { desc = '[R]un [B]ackend [S]etup | dotnet run --project VDEK.DCSP.Setup' })
 
 -- Run Backend Build: Compile the backend solution
 vim.keymap.set('n', '<leader>rbb', function()
@@ -2909,7 +2997,7 @@ vim.keymap.set('n', '<leader>rbb', function()
   })
   build:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Building Backend...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [B]uild (dotnet build)' })
+end, { desc = '[R]un [B]ackend [B]uild | dotnet clean && dotnet build' })
 
 -- Run Backend Tests
 vim.keymap.set('n', '<leader>rbt', function()
@@ -2931,7 +3019,7 @@ vim.keymap.set('n', '<leader>rbt', function()
   })
   test:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Running Backend Tests...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [T]ests' })
+end, { desc = '[R]un [B]ackend [T]ests | dotnet test --filter FullyQualifiedName~{file}' })
 
 -- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker
 vim.keymap.set('n', '<leader>rbu', function()
@@ -2945,7 +3033,7 @@ vim.keymap.set('n', '<leader>rbu', function()
   })
   test:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests (no DB/Storage/Docker)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [U]nit tests (no DB/Storage/Docker)' })
+end, { desc = '[R]un [B]ackend [U]nit tests | dotnet test --filter Category!=Database&Storage&Docker' })
 
 -- Test Backend Integration: Run tests for current file
 vim.keymap.set('n', '<leader>tbi', function()
@@ -2985,7 +3073,7 @@ vim.keymap.set('n', '<leader>rfw', function()
   })
   frontend:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Frontend dev server...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]rontend [W]eb (dev server)' })
+end, { desc = '[R]un [F]rontend [W]eb | npm start / dotnet run' })
 
 -- Run Frontend Build: Build production app
 vim.keymap.set('n', '<leader>rfb', function()
@@ -3003,7 +3091,7 @@ vim.keymap.set('n', '<leader>rfb', function()
   })
   build:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Building Frontend...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [B]uild (production)' })
+end, { desc = '[R]un [F]ront [B]uild | npm run build / docker compose build' })
 
 -- Run Frontend Test: Execute tests
 vim.keymap.set('n', '<leader>rft', function()
@@ -3015,7 +3103,7 @@ vim.keymap.set('n', '<leader>rft', function()
   })
   test:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Running Frontend tests...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [T]est' })
+end, { desc = '[R]un [F]ront [T]est | npm test' })
 
 -- E2E Gesamtsystemtest: Run full integration E2E tests (DCSRE only, headless via PowerShell)
 vim.keymap.set('n', '<leader>reg', function()
@@ -3032,7 +3120,7 @@ vim.keymap.set('n', '<leader>reg', function()
   })
   test:toggle()
   vim.notify('[DCSRE] Running E2E Gesamtsystemtest (headless)...', vim.log.levels.INFO)
-end, { desc = '[R]un [E]2E [G]esamtsystemtest (full integration)' })
+end, { desc = '[R]un [E]2E [G]esamtsystemtest | npm run cypress:run:gesamtsystemtest' })
 
 -- E2E Systemtest: Run isolated system tests (DCSRE only, headless via PowerShell)
 vim.keymap.set('n', '<leader>res', function()
@@ -3049,7 +3137,7 @@ vim.keymap.set('n', '<leader>res', function()
   })
   test:toggle()
   vim.notify('[DCSRE] Running E2E Systemtest (isolated)...', vim.log.levels.INFO)
-end, { desc = '[R]un [E]2E [S]ystemtest (isolated)' })
+end, { desc = '[R]un [E]2E [S]ystemtest | npm run cypress:run:systemtest' })
 
 -- E2E Open: Interactive Cypress UI (DCSRE only, via PowerShell)
 vim.keymap.set('n', '<leader>reo', function()
@@ -3066,7 +3154,7 @@ vim.keymap.set('n', '<leader>reo', function()
   })
   test:toggle()
   vim.notify('[DCSRE] Opening Cypress UI...', vim.log.levels.INFO)
-end, { desc = '[R]un [E]2E [O]pen (interactive UI)' })
+end, { desc = '[R]un [E]2E [O]pen | npm run cypress:open:systemtest' })
 
 -- Docker Infrastructure: Start all infrastructure services (postgres, mongodb, minio, smtp4dev)
 -- DCSRE uses PowerShell script with specific parameters, CENCOCD uses simple docker compose
@@ -3088,7 +3176,7 @@ vim.keymap.set('n', '<leader>rDi', function()
   })
   infra:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [I]nfrastructure (up)' })
+end, { desc = '[R]un [D]ocker [I]nfrastructure | docker-up.ps1 / docker compose up' })
 
 -- Docker All: Start ALL services (Profile=all) - DCSRE only
 vim.keymap.set('n', '<leader>rDa', function()
@@ -3106,7 +3194,7 @@ vim.keymap.set('n', '<leader>rDa', function()
   })
   infra:toggle()
   vim.notify('[DCSRE] Starting Docker ALL (full environment)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [A]ll (Profile=all, DCSRE)' })
+end, { desc = '[R]un [D]ocker [A]ll | docker-up.ps1 -Profile all' })
 
 -- Docker Quick Down: Stop containers (keep volumes/images)
 vim.keymap.set('n', '<leader>rDr', function()
@@ -3125,7 +3213,7 @@ vim.keymap.set('n', '<leader>rDr', function()
   })
   infra:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Quick Docker down (keeping data)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [r]undown (quick, keep data)' })
+end, { desc = '[R]un [D]ocker [r]undown | docker compose down' })
 
 -- Docker Full Reset: Stop + remove volumes + remove images (full cleanup)
 vim.keymap.set('n', '<leader>rDR', function()
@@ -3145,7 +3233,7 @@ vim.keymap.set('n', '<leader>rDR', function()
   })
   infra:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Full Docker RESET (deleting all data)...', vim.log.levels.WARN)
-end, { desc = '[R]un [D]ocker [R]eset (full cleanup)' })
+end, { desc = '[R]un [D]ocker [R]eset | docker compose down -v --rmi all' })
 
 -- Docker Build Frontend (for projects using docker)
 vim.keymap.set('n', '<leader>rdf', function()
@@ -3157,7 +3245,7 @@ vim.keymap.set('n', '<leader>rdf', function()
   })
   build:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Building Frontend (docker)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [F]rontend build' })
+end, { desc = '[R]un [D]ocker [F]rontend build | docker compose build frontend' })
 
 -- Docker Up Frontend (for projects using docker)
 vim.keymap.set('n', '<leader>rdF', function()
@@ -3170,7 +3258,7 @@ vim.keymap.set('n', '<leader>rdF', function()
   })
   start:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Frontend (docker up)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [F]rontend up' })
+end, { desc = '[R]un [D]ocker [F]rontend up | docker compose up frontend' })
 
 -- Docker Build Backend (for projects using docker)
 vim.keymap.set('n', '<leader>rdb', function()
@@ -3182,7 +3270,7 @@ vim.keymap.set('n', '<leader>rdb', function()
   })
   build:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Building Backend (docker)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [B]ackend build' })
+end, { desc = '[R]un [D]ocker [B]ackend build | docker compose build backend' })
 
 -- Docker Up Backend (for projects using docker)
 vim.keymap.set('n', '<leader>rdB', function()
@@ -3195,7 +3283,7 @@ vim.keymap.set('n', '<leader>rdB', function()
   })
   start:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend (docker up)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [B]ackend up' })
+end, { desc = '[R]un [D]ocker [B]ackend up | docker compose up backend' })
 
 -- Helper function to modify xunit.runner.json maxParallelThreads
 local function set_xunit_threads(threads)
@@ -3247,7 +3335,7 @@ vim.keymap.set('n', '<leader>rim', function()
   })
   test:toggle()
   vim.notify('[DCSRE] Running Integration Mock tests (38 threads)...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [M]ock (DicMockServer, 38 threads)' })
+end, { desc = '[R]un [I]ntegration [M]ock | dotnet test --filter DicMockServer' })
 
 -- Run Integration DB: Tests WITHOUT DicMockServer (lower parallelism - 8 threads)
 vim.keymap.set('n', '<leader>rid', function()
@@ -3275,17 +3363,21 @@ vim.keymap.set('n', '<leader>rid', function()
   })
   test:toggle()
   vim.notify('[DCSRE] Running Integration DB tests (8 threads)...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [D]B (non-mock, 8 threads)' })
+end, { desc = '[R]un [I]ntegration [D]B | dotnet test --filter !DicMockServer' })
 
--- Run Backend Build (clean + build)
+-- Run Backend Build (clean + build) - works for DCSRE and CENCOCD
 vim.keymap.set('n', '<leader>rbb', function()
-  if vim.g.project_name ~= 'DCSRE' then
-    vim.notify('Backend Build only for DCSRE', vim.log.levels.WARN)
+  local build_dir
+  if vim.g.project_name == 'DCSRE' then
+    build_dir = vim.g.project_backend_windows
+  elseif vim.g.project_name == 'CENCOCD' then
+    build_dir = vim.g.project_docker_root_windows -- src/ where .sln lives
+  else
+    vim.notify('Backend Build: unknown project', vim.log.levels.WARN)
     return
   end
   local Terminal = require('toggleterm.terminal').Terminal
-  local backend_dir = vim.g.project_backend_windows
-  local cmd = 'dotnet clean "' .. backend_dir .. '" && dotnet build "' .. backend_dir .. '"'
+  local cmd = 'dotnet clean "' .. build_dir .. '" && dotnet build "' .. build_dir .. '"'
   local build = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
@@ -3293,8 +3385,8 @@ vim.keymap.set('n', '<leader>rbb', function()
     count = 44,
   })
   build:toggle()
-  vim.notify('[DCSRE] Backend clean + build gestartet', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [B]uild (clean + build)' })
+  vim.notify('[' .. vim.g.project_name .. '] Backend clean + build gestartet', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [B]uild [C]lean | dotnet clean && dotnet build' })
 
 -- Run ManualTestRunner (Docker profile) - assumes MockServer is already running in Docker
 vim.keymap.set('n', '<leader>rmd', function()
@@ -3313,7 +3405,7 @@ vim.keymap.set('n', '<leader>rmd', function()
   })
   runner:toggle()
   vim.notify('[DCSRE] ManualTestRunner (Docker) gestartet', vim.log.levels.INFO)
-end, { desc = '[R]un [M]ock [D]ocker (ManualTestRunner)' })
+end, { desc = '[R]un [M]ock [D]ocker | dotnet run --project ManualTestRunner --launch-profile docker' })
 
 -- Run ManualTestRunner (Local profile) - assumes MockServer is already running locally
 vim.keymap.set('n', '<leader>rml', function()
@@ -3332,7 +3424,7 @@ vim.keymap.set('n', '<leader>rml', function()
   })
   runner:toggle()
   vim.notify('[DCSRE] ManualTestRunner (Local) gestartet', vim.log.levels.INFO)
-end, { desc = '[R]un [M]ock [L]ocal (ManualTestRunner)' })
+end, { desc = '[R]un [M]ock [L]ocal | dotnet run --project ManualTestRunner --launch-profile https' })
 
 -- Quickfix: Show only warnings in quickfix list
 vim.keymap.set('n', '<leader>qw', function()
@@ -3773,7 +3865,7 @@ vim.keymap.set('n', '<leader>rc', function()
   local cmd = string.format([[powershell.exe -Command "Start-Process 'chrome.exe' -ArgumentList '--new-window', '%s'"]], url)
   vim.fn.jobstart(cmd, { detach = true }) -- Run async, non-blocking
   vim.notify('[' .. vim.g.project_name .. '] Opening commit in Chrome: ' .. commit_hash, vim.log.levels.INFO)
-end, { desc = '[R]un [C]ommit (open in TFS browser)' })
+end, { desc = '[R]un [C]ommit | Open in TFS browser (from clipboard)' })
 
 -- Open file in PR on Azure DevOps (reads PR number from register p)
 vim.keymap.set('n', '<leader>rC', function()
@@ -3816,7 +3908,7 @@ vim.keymap.set('n', '<leader>rp', function()
   })
   push:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Git Push started...', vim.log.levels.INFO)
-end, { desc = '[R]un [P]ush (Windows VPN)' })
+end, { desc = '[R]un [P]ush | git push (Windows VPN)' })
 
 -- Git Pull (Windows PowerShell - VPN requirement)
 vim.keymap.set('n', '<leader>rP', function()
@@ -3828,7 +3920,30 @@ vim.keymap.set('n', '<leader>rP', function()
   })
   pull:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Git Pull started...', vim.log.levels.INFO)
-end, { desc = '[R]un [P]ull (Windows VPN)' })
+end, { desc = '[R]un [P]ull | git pull (Windows VPN)' })
+
+-- Run .claude/ setup script (copies reusable agents/commands/scripts from OmniCommand)
+vim.keymap.set('n', '<leader>rsc', function()
+  local git_root = vim.fn.system('git rev-parse --show-toplevel'):gsub('%s+$', '')
+  if vim.v.shell_error ~= 0 then
+    vim.notify('Not in a git repository!', vim.log.levels.ERROR)
+    return
+  end
+  -- Convert WSL path to Windows path for PowerShell
+  local win_path = git_root:gsub('^/mnt/(%a)/', function(drive)
+    return drive:upper() .. ':\\'
+  end):gsub('/', '\\')
+  local claude_dir = win_path .. '\\.claude'
+  local script = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE_Azure\\OmniCommand\\.claude\\new-research-project.ps1'
+  local Terminal = require('toggleterm.terminal').Terminal
+  local setup = Terminal:new({
+    cmd = 'powershell.exe -ExecutionPolicy Bypass -File "' .. script .. '" -TargetPath "' .. win_path .. '"; pause',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  setup:toggle()
+  vim.notify('.claude/ Setup gestartet → ' .. win_path, vim.log.levels.INFO)
+end, { desc = '[R]un [S]cript [C]laude | new-research-project.ps1' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
