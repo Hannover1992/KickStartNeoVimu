@@ -6,9 +6,9 @@
 
 ---
 
-## ⚠️ WICHTIGE REGEL FÜR CLAUDE
+## ⚠️ WICHTIGE REGELN FÜR CLAUDE
 
-**NIEMALS AUTOMATISCH COMMITTEN!**
+### 1. NIEMALS AUTOMATISCH COMMITTEN!
 
 Workflow:
 1. ✅ Änderungen machen (Edit, Write, etc.)
@@ -32,6 +32,37 @@ Claude: "Fertig! Teste bitte ob es funktioniert."
 User: "ok alles gut commit"
 Claude: *committed* ✅ RICHTIG!
 ```
+
+### 2. IMMER POWERSHELL FÜR FILE OPERATIONS
+
+**Der User arbeitet in Windows PowerShell, nicht WSL2!**
+
+**Commands ausführen:**
+- ✅ `powershell.exe -Command "..."` (richtig)
+- ❌ `bash -c "..."` (falsch - nur wenn explizit WSL2 gefordert)
+
+**Config-Dateien kopieren:**
+```powershell
+# Windows Neovim (PowerShell/CMD):
+Copy-Item -Force 'C:\Users\Administrator\Documents\Projekt\KickStartNeoVim\init.lua' 'C:\Users\Administrator\AppData\Local\nvim\init.lua'
+
+# WSL2 Neovim (via wsl.exe):
+wsl.exe bash -c "cp /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua ~/.config/nvim/init.lua"
+```
+
+**Config-Pfade:**
+- Windows Neovim: `C:\Users\Administrator\AppData\Local\nvim\init.lua`
+- WSL2 Neovim: `/home/uczen/.config/nvim/init.lua`
+
+**Wichtig:** Beide nutzen jetzt die **gleiche** `init.lua` (keine separate `init_windows.lua` mehr!)
+
+### 3. NUR EINE CONFIG: init.lua
+
+**Status:** `init_windows.lua` ist **veraltet** und liegt in `old_settings/`
+
+**Aktuell:**
+- ✅ `init.lua` - Wird von **beiden** verwendet (Windows + WSL2)
+- ❌ `init_windows.lua` - **NICHT MEHR NUTZEN** (in old_settings/)
 
 ---
 

@@ -3367,17 +3367,17 @@ end, { desc = '[R]un [I]ntegration [D]B | dotnet test --filter !DicMockServer' }
 
 -- Run Backend Build (clean + build) - works for DCSRE and CENCOCD
 vim.keymap.set('n', '<leader>rbb', function()
-  local build_dir
+  local build_target
   if vim.g.project_name == 'DCSRE' then
-    build_dir = vim.g.project_backend_windows
+    build_target = vim.g.project_backend_windows
   elseif vim.g.project_name == 'CENCOCD' then
-    build_dir = vim.g.project_docker_root_windows -- src/ where .sln lives
+    build_target = vim.g.project_docker_root_windows .. '\\CenCoCo.sln'
   else
     vim.notify('Backend Build: unknown project', vim.log.levels.WARN)
     return
   end
   local Terminal = require('toggleterm.terminal').Terminal
-  local cmd = 'dotnet clean "' .. build_dir .. '" && dotnet build "' .. build_dir .. '"'
+  local cmd = 'dotnet clean "' .. build_target .. '" && dotnet build "' .. build_target .. '"'
   local build = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
