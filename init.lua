@@ -3309,61 +3309,234 @@ local function set_xunit_threads(threads)
   return true
 end
 
--- Run Integration Mock: Tests with DicMockServer (high parallelism - 38 threads)
+-- === Integration Test Infrastructure (TRX + Telescope) ===
+
+-- Write PowerShell script that runs tests with detailed output + TRX summary at end
+local function write_it_script(filter, label)
+  local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
+  local script_path = temp .. '\\run-it.ps1'
+  local trx_path = temp .. '\\it-latest.trx'
+  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+
+  local script = string.format([[$ErrorActionPreference = "Continue"
+$trx = "%s"
+if (Test-Path $trx) { Remove-Item $trx -Force }
+dotnet test "%s" --no-build --no-restore --filter "%s" --logger "console;verbosity=detailed" --logger "trx;LogFileName=$trx" --verbosity detailed
+if (Test-Path $trx) {
+    Write-Host ""
+    Write-Host "===============================" -ForegroundColor Cyan
+    [xml]$r = Get-Content $trx
+    $all = $r.TestRun.Results.UnitTestResult
+    $p = @($all | Where-Object { $_.outcome -eq 'Passed' })
+    $f = @($all | Where-Object { $_.outcome -eq 'Failed' })
+    $s = @($all | Where-Object { $_.outcome -eq 'NotExecuted' })
+    $color = if ($f.Count -gt 0) { 'Red' } else { 'Green' }
+    Write-Host ("  PASSED: {0}  FAILED: {1}  SKIPPED: {2}" -f $p.Count, $f.Count, $s.Count) -ForegroundColor $color
+    if ($f.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  FAILED TESTS:" -ForegroundColor Red
+        foreach ($t in $f) {
+            Write-Host ("  X " + $t.testName) -ForegroundColor Red
+            if ($t.Output -and $t.Output.ErrorInfo -and $t.Output.ErrorInfo.Message) {
+                $msg = $t.Output.ErrorInfo.Message
+                if ($msg.Length -gt 200) { $msg = $msg.Substring(0, 200) + "..." }
+                Write-Host ("    " + $msg) -ForegroundColor Yellow
+            }
+        }
+    }
+    Write-Host "===============================" -ForegroundColor Cyan
+    Write-Host ("  TRX: " + $trx) -ForegroundColor Gray
+    Write-Host ("  Hint: <leader>rif = Failed Tests | <leader>ris = All Tests (Telescope)") -ForegroundColor DarkGray
+} else {
+    Write-Host "TRX file not found - tests may not have run!" -ForegroundColor Red
+}]], trx_path, test_dir, filter)
+
+  local file = io.open(script_path, 'w')
+  if file then
+    file:write(script)
+    file:close()
+  end
+  return script_path
+end
+
+-- Run integration tests with TRX summary
+local function run_integration_tests(filter, label, threads, terminal_id)
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  if not set_xunit_threads(threads) then return end
+  vim.notify('[DCSRE] Set maxParallelThreads=' .. threads .. ' for ' .. label .. ' tests', vim.log.levels.INFO)
+
+  local script_path = write_it_script(filter, label)
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  local test = Terminal:new({
+    cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = terminal_id,
+    on_exit = function()
+      set_xunit_threads(1)
+      vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+    end,
+  })
+  test:toggle()
+  vim.notify('[DCSRE] Running Integration ' .. label .. ' tests (' .. threads .. ' threads)...', vim.log.levels.INFO)
+end
+
+-- Parse TRX file → Lua table of {outcome, name}
+local function parse_trx_results()
+  local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
+  local trx_path = temp .. '\\it-latest.trx'
+  local parsed_file = temp .. '\\it-parsed.txt'
+
+  -- PowerShell parses TRX → simple text file (outcome|testName per line)
+  vim.fn.system(
+    'powershell.exe -NoProfile -Command "'
+      .. "[xml]$r=Get-Content '"
+      .. trx_path
+      .. "'; $r.TestRun.Results.UnitTestResult | ForEach-Object { $_.outcome + '|' + $_.testName } | Out-File -Encoding UTF8 '"
+      .. parsed_file
+      .. "'\""
+  )
+
+  local lines = vim.fn.readfile(parsed_file)
+  local results = {}
+  for _, line in ipairs(lines) do
+    local trimmed = line:match('^%s*(.-)%s*$')
+    if trimmed and trimmed ~= '' then
+      local outcome, name = trimmed:match('^(.-)|(.*)')
+      if outcome and name then
+        table.insert(results, { outcome = outcome, name = name })
+      end
+    end
+  end
+  return results
+end
+
+-- Telescope picker for test results (shared by rif and ris)
+local function telescope_test_picker(title, test_list)
+  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local pickers = require('telescope.pickers')
+  local finders = require('telescope.finders')
+  local conf = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local action_state = require('telescope.actions.state')
+
+  pickers
+    .new({}, {
+      prompt_title = title,
+      finder = finders.new_table({
+        results = test_list,
+        entry_maker = function(entry)
+          local icon = entry.outcome == 'Passed' and 'V ' or entry.outcome == 'Failed' and 'X ' or '- '
+          return {
+            value = entry.name,
+            display = icon .. entry.name,
+            ordinal = entry.name,
+          }
+        end,
+      }),
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          local picker = action_state.get_current_picker(prompt_bufnr)
+          local selections = picker:get_multi_selection()
+
+          if #selections == 0 then
+            local entry = action_state.get_selected_entry()
+            if entry then
+              selections = { entry }
+            end
+          end
+
+          actions.close(prompt_bufnr)
+          if #selections == 0 then return end
+
+          -- Build filter: FullyQualifiedName=Test1|FullyQualifiedName=Test2
+          local filter_parts = {}
+          for _, sel in ipairs(selections) do
+            table.insert(filter_parts, 'FullyQualifiedName=' .. sel.value)
+          end
+          local filter = table.concat(filter_parts, '|')
+
+          local Terminal = require('toggleterm.terminal').Terminal
+          local test = Terminal:new({
+            cmd = 'powershell.exe -NoProfile -Command "dotnet test \''
+              .. test_dir
+              .. '\' --no-build --no-restore --filter \''
+              .. filter
+              .. '\' --verbosity detailed --logger \'console;verbosity=detailed\'"',
+            direction = 'horizontal',
+            close_on_exit = false,
+            count = 42,
+          })
+          test:toggle()
+          vim.notify('[DCSRE] Re-running ' .. #selections .. ' test(s)...', vim.log.levels.INFO)
+        end)
+        return true
+      end,
+    })
+    :find()
+end
+
+-- <leader>rim - Run Integration Mock (DicMockServer, 38 threads, TRX summary)
 vim.keymap.set('n', '<leader>rim', function()
-  if vim.g.project_name ~= 'DCSRE' then
-    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
-    return
-  end
-  -- Set 38 threads for mock tests (no DB conflicts)
-  if not set_xunit_threads(38) then return end
-  vim.notify('[DCSRE] Set maxParallelThreads=38 for Mock tests', vim.log.levels.INFO)
+  run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName~DicMockServer', 'Mock', 38, 40)
+end, { desc = '[R]un [I]ntegration [M]ock | DicMockServer (38 threads) + TRX summary' })
 
-  local Terminal = require('toggleterm.terminal').Terminal
-  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
-  local cmd = 'dotnet test "' .. test_dir .. '" --filter "FullyQualifiedName~IntegrationTests&FullyQualifiedName~DicMockServer" --verbosity detailed'
-  local test = Terminal:new({
-    cmd = cmd,
-    direction = 'horizontal',
-    close_on_exit = false,
-    count = 40, -- Separate terminal ID for integration tests
-    on_exit = function()
-      -- Reset to 1 thread when terminal closes
-      set_xunit_threads(1)
-      vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
-    end,
-  })
-  test:toggle()
-  vim.notify('[DCSRE] Running Integration Mock tests (38 threads)...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [M]ock | dotnet test --filter DicMockServer' })
-
--- Run Integration DB: Tests WITHOUT DicMockServer (lower parallelism - 8 threads)
+-- <leader>rid - Run Integration DB (ohne DicMockServer, 8 threads, TRX summary)
 vim.keymap.set('n', '<leader>rid', function()
+  run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer', 'DB', 8, 41)
+end, { desc = '[R]un [I]ntegration [D]B | ohne DicMockServer (8 threads) + TRX summary' })
+
+-- <leader>rif - Run Integration Failed (Telescope picker, Tab=multi-select, Enter=re-run)
+vim.keymap.set('n', '<leader>rif', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
     return
   end
-  -- Set 8 threads for DB tests (avoid conflicts)
-  if not set_xunit_threads(8) then return end
-  vim.notify('[DCSRE] Set maxParallelThreads=8 for DB tests', vim.log.levels.INFO)
 
-  local Terminal = require('toggleterm.terminal').Terminal
-  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
-  local cmd = 'dotnet test "' .. test_dir .. '" --filter "FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer" --verbosity detailed'
-  local test = Terminal:new({
-    cmd = cmd,
-    direction = 'horizontal',
-    close_on_exit = false,
-    count = 41, -- Separate terminal ID for integration DB tests
-    on_exit = function()
-      -- Reset to 1 thread when terminal closes
-      set_xunit_threads(1)
-      vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
-    end,
-  })
-  test:toggle()
-  vim.notify('[DCSRE] Running Integration DB tests (8 threads)...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [D]B | dotnet test --filter !DicMockServer' })
+  local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
+  if vim.fn.filereadable(temp .. '\\it-latest.trx') == 0 then
+    vim.notify('No TRX results found. Run <leader>rim or <leader>rid first!', vim.log.levels.WARN)
+    return
+  end
+
+  local all_results = parse_trx_results()
+  local failed = vim.tbl_filter(function(r) return r.outcome == 'Failed' end, all_results)
+
+  if #failed == 0 then
+    vim.notify('No failed tests! All ' .. #all_results .. ' tests passed.', vim.log.levels.INFO)
+    return
+  end
+
+  telescope_test_picker('Failed Integration Tests (' .. #failed .. ') | Tab=select, Enter=re-run', failed)
+end, { desc = '[R]un [I]ntegration [F]ailed | Telescope picker for failed tests' })
+
+-- <leader>ris - Run Integration Search (all tests from last TRX, Telescope picker)
+vim.keymap.set('n', '<leader>ris', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
+  if vim.fn.filereadable(temp .. '\\it-latest.trx') == 0 then
+    vim.notify('No TRX results found. Run <leader>rim or <leader>rid first!', vim.log.levels.WARN)
+    return
+  end
+
+  local all_results = parse_trx_results()
+  if #all_results == 0 then
+    vim.notify('No test results found in TRX.', vim.log.levels.WARN)
+    return
+  end
+
+  telescope_test_picker('Integration Tests (' .. #all_results .. ') | Tab=select, Enter=re-run', all_results)
+end, { desc = '[R]un [I]ntegration [S]earch | Telescope picker for all tests' })
 
 -- Run Backend Build (clean + build) - works for DCSRE and CENCOCD
 vim.keymap.set('n', '<leader>rbb', function()
