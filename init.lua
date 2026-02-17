@@ -93,6 +93,20 @@ vim.g.maplocalleader = ' '
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = false
 
+-- Notification toggle (vim.notify suppression)
+vim.g.notifications_enabled = true
+local _original_notify = vim.notify
+vim.notify = function(msg, level, opts)
+  if vim.g.notifications_enabled then
+    _original_notify(msg, level, opts)
+  end
+end
+
+vim.keymap.set('n', '<leader>tN', function()
+  vim.g.notifications_enabled = not vim.g.notifications_enabled
+  _original_notify('Notifications: ' .. (vim.g.notifications_enabled and 'ON' or 'OFF'), vim.log.levels.INFO)
+end, { desc = '[T]oggle [N]otifications' })
+
 -- Reduce LSP log spam (OmniSharp sends many warnings during startup)
 vim.lsp.set_log_level('ERROR')
 
@@ -778,6 +792,19 @@ require('lazy').setup({
         nvim_cmp = false,
         blink = false,
       },
+
+      -- UI: Checkbox-Icons ohne Nerd Font (Unicode statt Nerd Font Glyphen)
+      -- Fix: Default nutzt Nerd Font Icons die als ? angezeigt werden wenn keine Nerd Font installiert
+      ui = {
+        enable = true,
+        checkboxes = {
+          [' '] = { char = '☐', hl_group = 'ObsidianTodo' },
+          ['x'] = { char = '✔', hl_group = 'ObsidianDone' },
+          ['>'] = { char = '▶', hl_group = 'ObsidianRightArrow' },
+          ['~'] = { char = '~', hl_group = 'ObsidianTilde' },
+          ['!'] = { char = '!', hl_group = 'ObsidianImportant' },
+        },
+      },
     },
     keys = {
       -- Notizen erstellen/öffnen
@@ -1344,7 +1371,29 @@ require('lazy').setup({
     },
     keys = {
       -- Execution
-      { '<leader>xc', function() require('dap').continue() end, desc = 'Debug: [C]ontinue' },
+      {
+        '<leader>xc',
+        function()
+          local dap = require('dap')
+          -- If already debugging, just continue
+          if dap.session() then
+            dap.continue()
+            return
+          end
+          -- If not in a .cs file (e.g. in DAP UI panel), show cs config picker
+          if vim.bo.filetype ~= 'cs' and dap.configurations.cs then
+            vim.ui.select(dap.configurations.cs, {
+              prompt = 'Select debug configuration:',
+              format_item = function(cfg) return cfg.name end,
+            }, function(cfg)
+              if cfg then dap.run(cfg) end
+            end)
+          else
+            dap.continue()
+          end
+        end,
+        desc = 'Debug: [C]ontinue',
+      },
       { '<leader>xr', function() require('dap').restart() end, desc = 'Debug: [R]estart' },
       { '<leader>xq', function() require('dap').terminate() end, desc = 'Debug: [Q]uit/Terminate' },
       -- Stepping
@@ -1401,61 +1450,35 @@ require('lazy').setup({
         dapui.close()
       end
 
-      -- netcoredbg adapter for C#/.NET
+      -- netcoredbg adapter for C#/.NET (use Mason-installed path)
+      local netcoredbg_path = vim.fn.stdpath('data') .. '/mason/packages/netcoredbg/netcoredbg/netcoredbg'
+      if vim.fn.has('win32') == 1 then
+        netcoredbg_path = netcoredbg_path .. '.exe'
+      end
       dap.adapters.coreclr = {
         type = 'executable',
-        command = 'netcoredbg',
+        command = netcoredbg_path,
         args = { '--interpreter=vscode' },
       }
 
-      -- Launch configurations for C#/.NET
+      -- Debug configurations for C#/.NET
+      -- Workflow: 1) Start server with <leader>rbw  2) Attach debugger with <leader>xc
       dap.configurations.cs = {
         {
           type = 'coreclr',
-          name = 'Launch - DCSRE WebHost',
-          request = 'launch',
-          program = function()
-            if vim.g.project_name == 'DCSRE' then
-              local backend = vim.g.project_backend_windows or vim.g.project_backend
-              return backend .. '/VDEK.DCSP.WebHost/bin/Debug/net8.0/VDEK.DCSP.WebHost.dll'
-            else
-              return vim.fn.input('Path to dll: ', vim.fn.getcwd() .. '/bin/Debug/', 'file')
-            end
+          name = 'Attach - WebHost (auto-detect)',
+          request = 'attach',
+          processId = function()
+            -- Auto-detect the WebHost process
+            local pick = require('dap.utils').pick_process
+            return pick({
+              filter = vim.g.project_name == 'CENCOCD' and 'CenCoCo.Core.API' or 'VDEK.DCSP.WebHost',
+            })
           end,
-          cwd = function()
-            if vim.g.project_name == 'DCSRE' then
-              return vim.g.project_backend_windows or vim.g.project_backend
-            else
-              return vim.fn.getcwd()
-            end
-          end,
-          stopAtEntry = false,
-          console = 'integratedTerminal',
         },
         {
           type = 'coreclr',
-          name = 'Launch - CENCOCD API',
-          request = 'launch',
-          program = function()
-            if vim.g.project_name == 'CENCOCD' then
-              return 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API/bin/Debug/net8.0/CenCoCo.Core.API.dll'
-            else
-              return vim.fn.input('Path to dll: ', vim.fn.getcwd() .. '/bin/Debug/', 'file')
-            end
-          end,
-          cwd = function()
-            if vim.g.project_name == 'CENCOCD' then
-              return 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
-            else
-              return vim.fn.getcwd()
-            end
-          end,
-          stopAtEntry = false,
-          console = 'integratedTerminal',
-        },
-        {
-          type = 'coreclr',
-          name = 'Attach - Process ID',
+          name = 'Attach - Pick Process',
           request = 'attach',
           processId = require('dap.utils').pick_process,
         },
@@ -2587,6 +2610,7 @@ require('lazy').setup({
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
         'prettier', -- Used to format TypeScript, HTML, CSS, SCSS
+        'netcoredbg', -- C#/.NET debugger (required for DAP)
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -3021,19 +3045,26 @@ vim.keymap.set('n', '<leader>rbt', function()
   vim.notify('[' .. vim.g.project_name .. '] Running Backend Tests...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [T]ests | dotnet test --filter FullyQualifiedName~{file}' })
 
--- Run Backend Unit Tests: Run tests excluding Database/Storage/Docker
+-- Run Backend Unit Tests: Project-aware (DCSRE: exclude DB/Storage/Docker, CENCOCD: Stufe 1+2)
 vim.keymap.set('n', '<leader>rbu', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  -- PowerShell: Single quotes für Filter (keine Escape-Probleme)
-  local cmd = "powershell.exe -Command \"Set-Location '" .. vim.g.project_backend .. "'; dotnet test --filter 'Category!=Database & Category!=Storage & Category!=Docker'\""
+  local cmd
+  if vim.g.project_name == 'CENCOCD' then
+    -- CenCoCo Stufe 1+2: Unit-Tests from src/ (no Docker, no E2E)
+    local sln = vim.g.project_root_windows .. '\\src\\CenCoCo.sln'
+    cmd = "powershell.exe -Command \"dotnet test '" .. sln .. "' --filter 'Category!=IsolatedDocker&Category!=E2E' --verbosity detailed\""
+  else
+    -- DCSRE: Unit tests excluding Database/Storage/Docker categories
+    cmd = "powershell.exe -Command \"Set-Location '" .. vim.g.project_backend .. "'; dotnet test --filter 'Category!=Database & Category!=Storage & Category!=Docker'\""
+  end
   local test = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests (no DB/Storage/Docker)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [U]nit tests | dotnet test --filter Category!=Database&Storage&Docker' })
+  vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [U]nit tests | DCSRE: no DB/Storage/Docker | CENCOCD: Stufe 1+2' })
 
 -- Test Backend Integration: Run tests for current file
 vim.keymap.set('n', '<leader>tbi', function()
@@ -3105,15 +3136,81 @@ vim.keymap.set('n', '<leader>rft', function()
   vim.notify('[' .. vim.g.project_name .. '] Running Frontend tests...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [T]est | npm test' })
 
+-- Run Frontend Install: npm install
+vim.keymap.set('n', '<leader>rfi', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local install = Terminal:new({
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; npm install"',
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  install:toggle()
+  vim.notify('[' .. vim.g.project_name .. '] Running npm install...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [I]nstall | npm install' })
+
+-- Helper: Get Cypress path dynamically (works with all worktrees)
+local function get_cypress_path_windows()
+  local root = vim.g.project_root_windows
+  if not root then return nil end
+  return root .. '\\Sources\\Tests\\Cypress'
+end
+
+-- E2E Install: npm install in Cypress directory (needed for new worktrees)
+-- E2E Build: TypeScript type-check (npx tsc --noEmit)
+vim.keymap.set('n', '<leader>reb', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local build = Terminal:new({
+    cmd = "powershell.exe -Command \"cd '" .. cypress_path .. "'; npx tsc --noEmit\"",
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  build:toggle()
+  vim.notify('[DCSRE] Running E2E TypeScript check...', vim.log.levels.INFO)
+end, { desc = '[R]un [E]2E [B]uild | npx tsc --noEmit' })
+
+vim.keymap.set('n', '<leader>rei', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local install = Terminal:new({
+    cmd = "powershell.exe -Command \"cd '" .. cypress_path .. "'; npm install\"",
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  install:toggle()
+  vim.notify('[DCSRE] Running npm install in Cypress...', vim.log.levels.INFO)
+end, { desc = '[R]un [E]2E [I]nstall | npm install (Cypress)' })
+
 -- E2E Gesamtsystemtest: Run full integration E2E tests (DCSRE only, headless via PowerShell)
 vim.keymap.set('n', '<leader>reg', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
     return
   end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = 'powershell.exe -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:run:gesamtsystemtest"',
+    cmd = "powershell.exe -Command \"cd '" .. cypress_path .. "'; npm run cypress:run:gesamtsystemtest\"",
     direction = 'horizontal',
     close_on_exit = false,
     count = 30, -- Separate terminal ID for E2E tests
@@ -3128,9 +3225,14 @@ vim.keymap.set('n', '<leader>res', function()
     vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
     return
   end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = 'powershell.exe -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:run:systemtest"',
+    cmd = "powershell.exe -Command \"cd '" .. cypress_path .. "'; npm run cypress:run:systemtest\"",
     direction = 'horizontal',
     close_on_exit = false,
     count = 31, -- Separate terminal ID for E2E tests
@@ -3145,9 +3247,14 @@ vim.keymap.set('n', '<leader>reo', function()
     vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
     return
   end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
-    cmd = 'powershell.exe -Command "cd \'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE\\Sources\\Tests\\Cypress\'; npm run cypress:open:systemtest"',
+    cmd = "powershell.exe -Command \"cd '" .. cypress_path .. "'; npm run cypress:open:systemtest\"",
     direction = 'horizontal',
     close_on_exit = false,
     count = 32, -- Separate terminal ID for Cypress UI
@@ -3312,16 +3419,18 @@ end
 -- === Integration Test Infrastructure (TRX + Telescope) ===
 
 -- Write PowerShell script that runs tests with detailed output + TRX summary at end
-local function write_it_script(filter, label)
+-- extra_flags: additional dotnet test flags (e.g. '--no-build --no-restore')
+local function write_it_script(filter, label, extra_flags)
   local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
   local script_path = temp .. '\\run-it.ps1'
   local trx_path = temp .. '\\it-latest.trx'
   local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local flags = extra_flags or '--no-build --no-restore'
 
   local script = string.format([[$ErrorActionPreference = "Continue"
 $trx = "%s"
 if (Test-Path $trx) { Remove-Item $trx -Force }
-dotnet test "%s" --no-build --no-restore --filter "%s" --logger "console;verbosity=detailed" --logger "trx;LogFileName=$trx" --verbosity detailed
+dotnet test "%s" %s --filter "%s" --logger "console;verbosity=detailed" --logger "trx;LogFileName=$trx" --verbosity detailed
 if (Test-Path $trx) {
     Write-Host ""
     Write-Host "===============================" -ForegroundColor Cyan
@@ -3346,10 +3455,10 @@ if (Test-Path $trx) {
     }
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ("  TRX: " + $trx) -ForegroundColor Gray
-    Write-Host ("  Hint: <leader>rif = Failed Tests | <leader>ris = All Tests (Telescope)") -ForegroundColor DarkGray
+    Write-Host ("  Hint: <leader>riF = Failed Tests | <leader>rif = Find Tests | <leader>ris = All Tests (Telescope)") -ForegroundColor DarkGray
 } else {
     Write-Host "TRX file not found - tests may not have run!" -ForegroundColor Red
-}]], trx_path, test_dir, filter)
+}]], trx_path, test_dir, flags, filter)
 
   local file = io.open(script_path, 'w')
   if file then
@@ -3462,19 +3571,30 @@ local function telescope_test_picker(title, test_list)
           end
           local filter = table.concat(filter_parts, '|')
 
-          local Terminal = require('toggleterm.terminal').Terminal
-          local test = Terminal:new({
-            cmd = 'powershell.exe -NoProfile -Command "dotnet test \''
-              .. test_dir
-              .. '\' --no-build --no-restore --filter \''
-              .. filter
-              .. '\' --verbosity detailed --logger \'console;verbosity=detailed\'"',
-            direction = 'horizontal',
-            close_on_exit = false,
-            count = 42,
-          })
-          test:toggle()
-          vim.notify('[DCSRE] Re-running ' .. #selections .. ' test(s)...', vim.log.levels.INFO)
+          -- Prompt for thread count
+          vim.ui.input({ prompt = 'Parallel threads (default 8): ' }, function(input)
+            if input == nil then return end -- cancelled
+            local threads = tonumber(input) or 8
+            if not set_xunit_threads(threads) then return end
+
+            local Terminal = require('toggleterm.terminal').Terminal
+            local test = Terminal:new({
+              cmd = 'powershell.exe -NoProfile -Command "dotnet test \''
+                .. test_dir
+                .. '\' --no-build --no-restore --filter \''
+                .. filter
+                .. '\' --verbosity detailed --logger \'console;verbosity=detailed\'"',
+              direction = 'horizontal',
+              close_on_exit = false,
+              count = 42,
+              on_exit = function()
+                set_xunit_threads(1)
+                vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+              end,
+            })
+            test:toggle()
+            vim.notify('[DCSRE] Re-running ' .. #selections .. ' test(s) with ' .. threads .. ' threads...', vim.log.levels.INFO)
+          end)
         end)
         return true
       end,
@@ -3482,18 +3602,68 @@ local function telescope_test_picker(title, test_list)
     :find()
 end
 
--- <leader>rim - Run Integration Mock (DicMockServer, 38 threads, TRX summary)
+-- <leader>rim - Run Integration Mock (DicMockServer, prompt for threads, TRX summary)
 vim.keymap.set('n', '<leader>rim', function()
-  run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName~DicMockServer', 'Mock', 38, 40)
-end, { desc = '[R]un [I]ntegration [M]ock | DicMockServer (38 threads) + TRX summary' })
+  vim.ui.input({ prompt = 'Parallel threads (default 38): ' }, function(input)
+    if input == nil then return end -- cancelled
+    local threads = tonumber(input) or 38
+    run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName~DicMockServer', 'Mock', threads, 40)
+  end)
+end, { desc = '[R]un [I]ntegration [M]ock | DicMockServer (prompt threads) + TRX summary' })
 
--- <leader>rid - Run Integration DB (ohne DicMockServer, 8 threads, TRX summary)
+-- <leader>rid - Run Integration Docker: Project-aware (DCSRE: DB tests, CENCOCD: IsolatedDocker Stufe 3)
 vim.keymap.set('n', '<leader>rid', function()
-  run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer', 'DB', 8, 41)
-end, { desc = '[R]un [I]ntegration [D]B | ohne DicMockServer (8 threads) + TRX summary' })
+  if vim.g.project_name == 'CENCOCD' then
+    -- CenCoCo Stufe 3: Isolated Docker tests
+    local test_proj = vim.g.project_root_windows .. '\\tests\\CenCoCo.TestInfrastructure.Tests'
+    local Terminal = require('toggleterm.terminal').Terminal
+    local test = Terminal:new({
+      cmd = "powershell.exe -Command \"dotnet test '" .. test_proj .. "' --filter 'Category=IsolatedDocker' --verbosity detailed --logger 'console;verbosity=detailed'\"",
+      direction = 'horizontal',
+      close_on_exit = false,
+      count = 41,
+    })
+    test:toggle()
+    vim.notify('[CENCOCD] Running Isolated Docker Tests (Stufe 3)...', vim.log.levels.INFO)
+  else
+    -- DCSRE: Integration DB tests (ohne DicMockServer, prompt for threads, TRX summary)
+    vim.ui.input({ prompt = 'Parallel threads (default 8): ' }, function(input)
+      if input == nil then return end -- cancelled
+      local threads = tonumber(input) or 8
+      run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer', 'DB', threads, 41)
+    end)
+  end
+end, { desc = '[R]un [I]ntegration [D]B | DCSRE: prompt threads + TRX | CENCOCD: IsolatedDocker Stufe 3' })
 
--- <leader>rif - Run Integration Failed (Telescope picker, Tab=multi-select, Enter=re-run)
-vim.keymap.set('n', '<leader>rif', function()
+-- <leader>riC - Run Integration Clean (Docker prune + rebuild test project)
+vim.keymap.set('n', '<leader>riC', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Clean only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local test_proj = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\\VDEK.DCSP.IntegrationTests.csproj'
+  local Terminal = require('toggleterm.terminal').Terminal
+  local clean = Terminal:new({
+    cmd = "powershell.exe -NoProfile -Command \""
+      .. "Write-Host '=== Docker Cleanup ===' -ForegroundColor Cyan; "
+      .. "docker container prune -f; "
+      .. "docker volume prune -f; "
+      .. "docker builder prune -f; "
+      .. "Write-Host '=== Remove testdatabase_* images ===' -ForegroundColor Cyan; "
+      .. "docker images 'testdatabase_*' -q | ForEach-Object { docker rmi -f $_ }; "
+      .. "Write-Host '=== Rebuild IntegrationTests ===' -ForegroundColor Cyan; "
+      .. "dotnet build '" .. test_proj .. "'; "
+      .. "Write-Host '=== Clean complete ===' -ForegroundColor Green\"",
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 43,
+  })
+  clean:toggle()
+  vim.notify('[DCSRE] Cleaning Docker + rebuilding IntegrationTests...', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [C]lean | Docker prune + remove testdatabase images + rebuild' })
+
+-- <leader>riF - Run Integration Failed (Telescope picker, Tab=multi-select, Enter=re-run)
+vim.keymap.set('n', '<leader>riF', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
     return
@@ -3514,7 +3684,119 @@ vim.keymap.set('n', '<leader>rif', function()
   end
 
   telescope_test_picker('Failed Integration Tests (' .. #failed .. ') | Tab=select, Enter=re-run', failed)
-end, { desc = '[R]un [I]ntegration [F]ailed | Telescope picker for failed tests' })
+end, { desc = '[R]un [I]ntegration [F]ailed (capital F) | Telescope picker for failed tests' })
+
+-- <leader>rif - Run Integration Find (Telescope picker for test files, Tab=multi-select, Enter=run)
+vim.keymap.set('n', '<leader>rif', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  local test_root = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  -- Find all *Tests*.cs files, excluding obj/ directories
+  local all_files = vim.fn.globpath(test_root, '**/*Tests*.cs', false, true)
+  local test_files = {}
+  for _, file in ipairs(all_files) do
+    if not file:match('\\obj\\') then
+      local rel = file:gsub(test_root:gsub('\\', '\\\\') .. '\\', '')
+      local display = rel:gsub('\\', '/'):gsub('%.cs$', '')
+      table.insert(test_files, { path = file, rel = rel, display = display })
+    end
+  end
+
+  if #test_files == 0 then
+    vim.notify('No test files found in: ' .. test_root, vim.log.levels.WARN)
+    return
+  end
+
+  table.sort(test_files, function(a, b) return a.display < b.display end)
+
+  local pickers = require('telescope.pickers')
+  local finders = require('telescope.finders')
+  local conf = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local action_state = require('telescope.actions.state')
+
+  pickers.new({}, {
+    prompt_title = 'Integration Tests (' .. #test_files .. ') | Tab=multi-select, Enter=run',
+    finder = finders.new_table({
+      results = test_files,
+      entry_maker = function(entry)
+        return {
+          value = entry,
+          display = entry.display,
+          ordinal = entry.display,
+          path = entry.path,
+        }
+      end,
+    }),
+    sorter = conf.generic_sorter({}),
+    previewer = conf.file_previewer({}),
+    attach_mappings = function(prompt_bufnr)
+      actions.select_default:replace(function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local multi = picker:get_multi_selection()
+        actions.close(prompt_bufnr)
+
+        local selected = {}
+        if #multi > 0 then
+          for _, sel in ipairs(multi) do
+            table.insert(selected, sel.value)
+          end
+        else
+          local single = action_state.get_selected_entry()
+          if single then
+            table.insert(selected, single.value)
+          end
+        end
+
+        if #selected == 0 then
+          vim.notify('No tests selected', vim.log.levels.WARN)
+          return
+        end
+
+        -- Build filter: FullyQualifiedName~ClassName1|FullyQualifiedName~ClassName2
+        local filters = {}
+        for _, sel in ipairs(selected) do
+          local class_name = sel.rel:match('([^\\]+)%.cs$')
+          if class_name then
+            table.insert(filters, 'FullyQualifiedName~' .. class_name)
+          end
+        end
+        local filter_str = table.concat(filters, '|')
+
+        -- Ask for thread count
+        local names = {}
+        for _, sel in ipairs(selected) do table.insert(names, sel.display) end
+        vim.ui.input({ prompt = 'Parallel threads (default 8): ' }, function(input)
+          if input == nil then return end -- cancelled
+          local threads = tonumber(input) or 8
+          if not set_xunit_threads(threads) then return end
+
+          local label = #selected .. ' classes, ' .. threads .. ' threads'
+          local script_path = write_it_script(filter_str, label, '')
+
+          vim.notify('[DCSRE] ' .. label .. ': ' .. table.concat(names, ', '), vim.log.levels.INFO)
+
+          local Terminal = require('toggleterm.terminal').Terminal
+          local term = Terminal:new({
+            cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+            direction = 'horizontal',
+            close_on_exit = false,
+            count = 42,
+            on_exit = function()
+              set_xunit_threads(1)
+              vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+            end,
+          })
+          term:toggle()
+        end)
+      end)
+      return true
+    end,
+  }):find()
+end, { desc = '[R]un [I]ntegration [F]ind | Telescope picker for test files' })
 
 -- <leader>ris - Run Integration Search (all tests from last TRX, Telescope picker)
 vim.keymap.set('n', '<leader>ris', function()
@@ -4096,6 +4378,27 @@ vim.keymap.set('n', '<leader>rP', function()
 end, { desc = '[R]un [P]ull | git pull (Windows VPN)' })
 
 -- Run .claude/ setup script (copies reusable agents/commands/scripts from OmniCommand)
+-- Run Swagger: Generate swagger and client via PowerShell script (DCSRE only)
+vim.keymap.set('n', '<leader>rS', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Swagger generation only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local root = vim.g.project_root_windows
+  if not root then
+    vim.notify('Could not determine project root', vim.log.levels.ERROR)
+    return
+  end
+  local Terminal = require('toggleterm.terminal').Terminal
+  local swagger = Terminal:new({
+    cmd = "powershell.exe -ExecutionPolicy Bypass -File \"" .. root .. "\\Sources\\Tools\\generate-swagger-and-client.ps1\"",
+    direction = 'horizontal',
+    close_on_exit = false,
+  })
+  swagger:toggle()
+  vim.notify('[DCSRE] Generating Swagger & Client...', vim.log.levels.INFO)
+end, { desc = '[R]un [S]wagger (capital S) | generate-swagger-and-client.ps1' })
+
 vim.keymap.set('n', '<leader>rsc', function()
   local git_root = vim.fn.system('git rev-parse --show-toplevel'):gsub('%s+$', '')
   if vim.v.shell_error ~= 0 then
