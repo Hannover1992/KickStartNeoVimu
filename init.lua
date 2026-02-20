@@ -3045,14 +3045,14 @@ vim.keymap.set('n', '<leader>rbt', function()
   vim.notify('[' .. vim.g.project_name .. '] Running Backend Tests...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [T]ests | dotnet test --filter FullyQualifiedName~{file}' })
 
--- Run Backend Unit Tests: Project-aware (DCSRE: exclude DB/Storage/Docker, CENCOCD: Stufe 1+2)
+-- Run Backend Unit Tests: Project-aware (DCSRE: exclude DB/Storage/Docker, CENCOCD: Stufe 1 only)
 vim.keymap.set('n', '<leader>rbu', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local cmd
   if vim.g.project_name == 'CENCOCD' then
-    -- CenCoCo Stufe 1+2: Unit-Tests from src/ (no Docker, no E2E)
+    -- CenCoCo Stufe 1: Unit Tests only (no Docker, no IntegrationTests)
     local sln = vim.g.project_root_windows .. '\\src\\CenCoCo.sln'
-    cmd = "powershell.exe -Command \"dotnet test '" .. sln .. "' --filter 'Category!=IsolatedDocker&Category!=E2E' --verbosity detailed\""
+    cmd = "powershell.exe -Command \"dotnet test '" .. sln .. "' --filter 'Category!=IsolatedDocker&Category!=IntegrationTests' --verbosity minimal\""
   else
     -- DCSRE: Unit tests excluding Database/Storage/Docker categories
     cmd = "powershell.exe -Command \"Set-Location '" .. vim.g.project_backend .. "'; dotnet test --filter 'Category!=Database & Category!=Storage & Category!=Docker'\""
@@ -3063,8 +3063,26 @@ vim.keymap.set('n', '<leader>rbu', function()
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [U]nit tests | DCSRE: no DB/Storage/Docker | CENCOCD: Stufe 1+2' })
+  vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests (Stufe 1)...', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [U]nit tests | DCSRE: no DB/Storage/Docker | CENCOCD: Stufe 1' })
+
+-- Run Integration InMemory: CenCoCo Stufe 2 (Integration Tests without Docker)
+vim.keymap.set('n', '<leader>rii', function()
+  if vim.g.project_name == 'CENCOCD' then
+    -- CenCoCo Stufe 2: Integration Tests (InMemory/echte DB, no IsolatedDocker)
+    local sln = vim.g.project_root_windows .. '\\src\\CenCoCo.sln'
+    local Terminal = require('toggleterm.terminal').Terminal
+    local test = Terminal:new({
+      cmd = "powershell.exe -Command \"dotnet test '" .. sln .. "' --filter 'Category=IntegrationTests' --verbosity minimal\"",
+      direction = 'horizontal',
+      close_on_exit = false,
+    })
+    test:toggle()
+    vim.notify('[CENCOCD] Running Integration Tests (Stufe 2)...', vim.log.levels.INFO)
+  else
+    vim.notify('Use <leader>rid for DCSRE integration tests', vim.log.levels.INFO)
+  end
+end, { desc = '[R]un [I]ntegration [I]nMemory | CENCOCD: Stufe 2 (Integration without Docker)' })
 
 -- Test Backend Integration: Run tests for current file
 vim.keymap.set('n', '<leader>tbi', function()
@@ -3611,14 +3629,14 @@ vim.keymap.set('n', '<leader>rim', function()
   end)
 end, { desc = '[R]un [I]ntegration [M]ock | DicMockServer (prompt threads) + TRX summary' })
 
--- <leader>rid - Run Integration Docker: Project-aware (DCSRE: DB tests, CENCOCD: IsolatedDocker Stufe 3)
+-- <leader>rid - Run Integration Docker: Project-aware (DCSRE: DB tests, CENCOCD: Stufe 3 IsolatedDocker)
 vim.keymap.set('n', '<leader>rid', function()
   if vim.g.project_name == 'CENCOCD' then
-    -- CenCoCo Stufe 3: Isolated Docker tests
-    local test_proj = vim.g.project_root_windows .. '\\tests\\CenCoCo.TestInfrastructure.Tests'
+    -- CenCoCo Stufe 3: Isolated Docker tests (ServiceDesk SystemTests project)
+    local test_proj = vim.g.project_root_windows .. '\\tests\\CenCoCo.ServiceDesk.SystemTests\\CenCoCo.ServiceDesk.SystemTests.csproj'
     local Terminal = require('toggleterm.terminal').Terminal
     local test = Terminal:new({
-      cmd = "powershell.exe -Command \"dotnet test '" .. test_proj .. "' --filter 'Category=IsolatedDocker' --verbosity detailed --logger 'console;verbosity=detailed'\"",
+      cmd = "powershell.exe -Command \"dotnet test '" .. test_proj .. "' --filter 'Category=IsolatedDocker' --verbosity minimal\"",
       direction = 'horizontal',
       close_on_exit = false,
       count = 41,
@@ -3633,7 +3651,7 @@ vim.keymap.set('n', '<leader>rid', function()
       run_integration_tests('FullyQualifiedName~IntegrationTests&FullyQualifiedName!~DicMockServer', 'DB', threads, 41)
     end)
   end
-end, { desc = '[R]un [I]ntegration [D]B | DCSRE: prompt threads + TRX | CENCOCD: IsolatedDocker Stufe 3' })
+end, { desc = '[R]un [I]ntegration [D]ocker | DCSRE: DB tests + TRX | CENCOCD: Stufe 3 IsolatedDocker' })
 
 -- <leader>riC - Run Integration Clean (Docker prune + rebuild test project)
 vim.keymap.set('n', '<leader>riC', function()
