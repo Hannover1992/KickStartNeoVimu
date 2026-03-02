@@ -67,7 +67,7 @@
 - **PHASE:** I_RUNNING
 - **pipeline_mode:** I_RUNNING
 - **start:** 2026-03-02
-- **aktuelle_stufe:** cleanCodeArchitect
+- **aktuelle_stufe:** PIPELINE_COMPLETE
 - **rag_collection:** i_knowledge_kickstart_neovim
 - **rag_init:** 2026-03-02
 - **w_fetch:** SKIP (keine Collection vor Pipeline-Start)
@@ -81,18 +81,11 @@
   - Welle1_S1_TestInfra: DONE (lua/spec/ - 3 Spec-Dateien)
   - Welle1_S2_Platform: DONE (lua/shared/platform.lua - 50 LOC)
   - Welle1_S3_Project: DONE (lua/shared/project.lua + Bug B-001 Fix)
-  - Welle2_S4_Core: pending
-  - Welle2_S5_Keybindings: pending
-  - Welle3_S6_Dispatcher: pending
-- **hil_W1:** PENDING_USER_TEST
-  - codeAtomic: pending
-  - codeIntegration: pending
-  - codeSystem: pending
-  - verify: pending
-  - fanIn: pending
-- **resume_zaehler:** {}
+  - Welle2_S4_Core: DONE (lua/shared/core.lua - 2883 LOC, Smoke OK)
+  - Welle2_S5_Keybindings: DONE (6 Module: backend/173 frontend/67 docker/135 tests/618 git/191 clipboard/355, Smoke OK)
+  - Welle3_S6_Dispatcher: DONE (init.lua Dispatcher ~40 LOC, lua/init_windows.lua + lua/init_linux.lua, Smoke OK)
+- **hil:** false (User: "huma in der loop = false")
+- **resume_zaehler:**
+  - S4_Core.codeAtomic: 1
 - **worktrees:** {}
-- **hil:**
-  - test_suite: PENDING
-  - commits: PENDING
 - **query_guard_warnings:** 0
