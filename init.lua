@@ -514,6 +514,28 @@ require('lazy').setup({
         end,
         desc = '[G]it diff vs [M]ain (CENCOCD)',
       },
+      {
+        '<leader>gS',
+        function()
+          require('telescope.builtin').git_branches({
+            prompt_title = 'Diff against which branch?',
+            attach_mappings = function(prompt_bufnr)
+              local actions = require('telescope.actions')
+              local action_state = require('telescope.actions.state')
+              actions.select_default:replace(function()
+                local selection = action_state.get_selected_entry()
+                actions.close(prompt_bufnr)
+                if selection then
+                  local branch = selection.value
+                  vim.cmd('DiffviewOpen ' .. branch .. '..HEAD')
+                end
+              end)
+              return true
+            end,
+          })
+        end,
+        desc = '[G]it Diff [S]elect branch (Telescope picker)',
+      },
       { '<leader>g.', '<cmd>DiffviewClose<cr>', desc = '[G]it [.] close diff (done)' },
       {
         '<leader>gF',
@@ -1571,8 +1593,8 @@ require('lazy').setup({
         map('n', '<leader>hd', gitsigns.diffthis, { desc = '[H]unk [D]iff this' })
         map('n', '<leader>hD', function() gitsigns.diffthis('~') end, { desc = '[H]unk [D]iff against ~' })
 
-        -- Yank current hunk as diff
-        map('n', '<leader>hy', function()
+        -- Yank current hunk as raw diff
+        map('n', '<leader>gyH', function()
           local hunks = require('gitsigns').get_hunks()
           if not hunks or #hunks == 0 then
             vim.notify('No hunks in this file', vim.log.levels.WARN)
@@ -1597,7 +1619,71 @@ require('lazy').setup({
             end
           end
           vim.notify('Cursor not on a hunk', vim.log.levels.WARN)
-        end, { desc = '[H]unk [Y]ank (copy diff)' })
+        end, { desc = '[G]it [Y]ank [H]unk raw diff' })
+
+        -- Yank hunk as readable before/after (for AI review)
+        map('n', '<leader>hy', function()
+          local filepath = vim.fn.expand('%')
+          if filepath == '' then
+            vim.notify('No file in buffer', vim.log.levels.ERROR)
+            return
+          end
+          -- Get unstaged diff for this file
+          local diff_output = vim.fn.systemlist('git diff -- ' .. vim.fn.shellescape(filepath))
+          if #diff_output == 0 then
+            -- Try staged diff if no unstaged
+            diff_output = vim.fn.systemlist('git diff --cached -- ' .. vim.fn.shellescape(filepath))
+          end
+          if #diff_output == 0 then
+            vim.notify('No changes in this file', vim.log.levels.WARN)
+            return
+          end
+          -- Find hunk near cursor
+          local cursor_line = vim.fn.line('.')
+          local hunks = {}
+          local current_hunk = nil
+          local new_line = 0
+          for _, line in ipairs(diff_output) do
+            if line:match('^@@') then
+              if current_hunk then table.insert(hunks, current_hunk) end
+              local new_start = line:match('%+(%d+)')
+              new_line = tonumber(new_start) or 0
+              current_hunk = { header = line, before = {}, after = {}, start = new_line }
+            elseif current_hunk then
+              if line:match('^%-') and not line:match('^%-%-%-') then
+                table.insert(current_hunk.before, line:sub(2))
+              elseif line:match('^%+') and not line:match('^%+%+%+') then
+                table.insert(current_hunk.after, line:sub(2))
+                new_line = new_line + 1
+              else
+                new_line = new_line + 1
+              end
+            end
+          end
+          if current_hunk then table.insert(hunks, current_hunk) end
+          -- Find closest hunk to cursor
+          local best = hunks[1]
+          for _, h in ipairs(hunks) do
+            if cursor_line >= h.start then best = h end
+          end
+          if not best then
+            vim.notify('No hunk found', vim.log.levels.WARN)
+            return
+          end
+          -- Format as readable before/after
+          local parts = {
+            'File: ' .. filepath,
+            '',
+            '--- VORHER ---',
+            #best.before > 0 and table.concat(best.before, '\n') or '(leer)',
+            '',
+            '+++ NACHHER +++',
+            #best.after > 0 and table.concat(best.after, '\n') or '(leer)',
+          }
+          local result = table.concat(parts, '\n')
+          vim.fn.setreg('+', result)
+          vim.notify('Hunk kopiert: ' .. #best.before .. ' → ' .. #best.after .. ' Zeilen', vim.log.levels.INFO)
+        end, { desc = '[H]unk [Y]ank (before/after für AI)' })
 
         -- Toggles
         map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = '[T]oggle git [B]lame' })
@@ -1730,6 +1816,13 @@ require('lazy').setup({
         --  All the info you're looking for is in `:help telescope.setup()`
         --
         defaults = {
+          layout_config = {
+            horizontal = {
+              width = 0.9,          -- 90% der Bildschirmbreite
+              height = 0.85,        -- 85% der Bildschirmhöhe
+              preview_width = 0.55, -- Preview nimmt 55% der Breite
+            },
+          },
           -- Respect .gitignore files (don't show ignored files)
           file_ignore_patterns = { 'node_modules', '.git/' },
           vimgrep_arguments = {
@@ -1758,7 +1851,12 @@ require('lazy').setup({
         },
         extensions = {
           ['ui-select'] = {
-            require('telescope.themes').get_dropdown(),
+            require('telescope.themes').get_ivy({
+              layout_config = {
+                width = 0.99,  -- 99% der Breite
+                height = 0.95, -- 95% der Höhe
+              },
+            }),
           },
         },
       }
@@ -2991,7 +3089,7 @@ vim.keymap.set('n', '<leader>rbw', function()
   })
   webhost:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend WebHost...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [W]ebhost | dotnet run' })
+end, { desc = '[R]un [B]ackend [W]ebhost | CENCOCD: dotnet run --launch-profile https | DCSRE: dotnet run --no-restore (https://localhost:5443)' })
 
 -- Run Backend Setup: Execute FluentMigrator migrations (DCSRE only)
 vim.keymap.set('n', '<leader>rbs', function()
@@ -3021,7 +3119,7 @@ vim.keymap.set('n', '<leader>rbb', function()
   })
   build:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Building Backend...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [B]uild | dotnet clean && dotnet build' })
+end, { desc = '[R]un [B]ackend [B]uild | dotnet build' })
 
 -- Run Backend Tests
 vim.keymap.set('n', '<leader>rbt', function()
@@ -3064,7 +3162,7 @@ vim.keymap.set('n', '<leader>rbu', function()
   })
   test:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Running Unit Tests (Stufe 1)...', vim.log.levels.INFO)
-end, { desc = '[R]un [B]ackend [U]nit tests | DCSRE: no DB/Storage/Docker | CENCOCD: Stufe 1' })
+end, { desc = '[R]un [B]ackend [U]nit tests Stufe 1 | DCSRE: --filter Category!=Database&Category!=Storage&Category!=Docker | CENCOCD: --filter Category!=IsolatedDocker&Category!=IntegrationTests' })
 
 -- Run Integration InMemory: CenCoCo Stufe 2 (Integration Tests without Docker)
 vim.keymap.set('n', '<leader>rii', function()
@@ -3082,7 +3180,7 @@ vim.keymap.set('n', '<leader>rii', function()
   else
     vim.notify('Use <leader>rid for DCSRE integration tests', vim.log.levels.INFO)
   end
-end, { desc = '[R]un [I]ntegration [I]nMemory | CENCOCD: Stufe 2 (Integration without Docker)' })
+end, { desc = '[R]un [I]ntegration [I]nMemory Stufe 2 | CENCOCD: --filter Category=IntegrationTests' })
 
 -- Test Backend Integration: Run tests for current file
 vim.keymap.set('n', '<leader>tbi', function()
@@ -3122,7 +3220,7 @@ vim.keymap.set('n', '<leader>rfw', function()
   })
   frontend:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Frontend dev server...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]rontend [W]eb | npm start / dotnet run' })
+end, { desc = '[R]un [F]rontend [W]eb | CENCOCD: dotnet run --launch-profile https | DCSRE: npm start' })
 
 -- Run Frontend Build: Build production app
 vim.keymap.set('n', '<leader>rfb', function()

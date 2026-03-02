@@ -1,0 +1,51 @@
+{
+  "$schema": "vault-routing-v1",
+  "version": "1.0",
+  "description": "Vault-Routing fuer Obsidian Sync - erkennt automatisch den Ziel-Vault basierend auf Projekt-Pfad",
+  "detection": {
+    "method": "path-pattern",
+    "rules": [
+      {
+        "pattern": "DCSRE",
+        "vault": "DCS",
+        "priority": 1,
+        "description": "DCSRE-Projekt → DCS Vault"
+      },
+      {
+        "pattern": "CenCoCo",
+        "vault": "CenCoCo-Vault",
+        "priority": 2,
+        "description": "CenCoCo-Projekt → CenCoCo-Vault"
+      },
+      {
+        "pattern": "*",
+        "vault": "Brain",
+        "priority": 999,
+        "description": "Default: Private Projekte → Brain"
+      }
+    ]
+  },
+  "vaults": {
+    "DCS": {
+      "path": "C:\\Users\\Administrator\\Documents\\DCS",
+      "projects": ["DCSRE-881", "DCSRE-*"],
+      "description": "Haupt-Vault fuer DCSRE Projekte"
+    },
+    "CenCoCo-Vault": {
+      "path": "C:\\Users\\Administrator\\Documents\\Obsydian\\CenCoCo",
+      "projects": ["CenCoCo-*"],
+      "description": "Vault fuer CenCoCo Consulting"
+    },
+    "Brain": {
+      "path": "C:\\Users\\Administrator\\Documents\\Brain",
+      "projects": ["*"],
+      "description": "Default Vault fuer Private/Brain Projekte"
+    }
+  },
+  "notes": [
+    "Detection verwendet den AKTUELLEN PFAD (pwd)",
+    "Erste Regel die matched wird verwendet (nach Prioritaet sortiert)",
+    "Pattern ist case-insensitive",
+    "Wildcard '*' matched alles"
+  ]
+}

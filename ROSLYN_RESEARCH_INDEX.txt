@@ -1,0 +1,335 @@
+ROSLYN ANALYZERS RESEARCH - COMPLETE DOCUMENTATION INDEX
+=========================================================
+
+Research Date: 2025-11-13
+Duration: Comprehensive research via WebFetch from official repositories
+Sources: dotnet/roslyn, dotnet/roslyn-sdk, Microsoft Learn, OmniSharp documentation
+
+NEWLY CREATED DOCUMENTATION (This Session)
+===========================================
+
+1. ROSLYN_ANALYZERS_RESEARCH.md (1,036 lines)
+   Location: /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/
+   Description: COMPREHENSIVE REFERENCE - Complete technical documentation
+   
+   Contents:
+   - Executive Summary
+   - Part 1: What Are Roslyn Analyzers?
+   - Part 2: How Roslyn Analyzers Work (2.1-2.4)
+   - Part 3: Analyzer API Surface (3.1-3.5)
+   - Part 4: Analyzer Lifecycle and Discovery (4.1-4.3)
+   - Part 5: How Third-Party Analyzers Integrate (5.1-5.2)
+   - Part 6: IDE and LSP Integration (6.1-6.3)
+   - Part 7: Configuration Mechanisms (7.1-7.6)
+   - Part 8: Analyzer Execution Lifecycle (8.1-8.3)
+   - Part 9: Summary Table - Analyzer Components
+   - Part 10: Key Insights for LSP Integration
+   - Part 11: Resources and References
+
+   Best for: Deep understanding of how analyzers work, implementation details
+   Time to read: 45 minutes (comprehensive)
+
+---
+
+2. ROSLYN_QUICK_REFERENCE.md (188 lines)
+   Location: /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/
+   Description: QUICK LOOKUP - Fast answers to common questions
+   
+   Contents:
+   - Q&A format with concise answers
+   - Common troubleshooting scenarios
+   - Configuration methods (EditorConfig, ruleset, pragmas)
+   - Debugging approaches
+   - Rule prefix reference
+   - StyleCop common rules
+   - Key takeaways
+   
+   Best for: Quick lookups, troubleshooting, reference during development
+   Time to read: 10-15 minutes
+
+---
+
+3. ROSLYN_ANALYZER_ARCHITECTURE.md (570 lines)
+   Location: /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/
+   Description: VISUAL GUIDES - ASCII diagrams and architecture flows
+   
+   Contents:
+   - 1. Analyzer Execution Pipeline (visual flow)
+   - 2. Analyzer Action Execution Order (timeline)
+   - 3. IDE Integration (Visual Studio / OmniSharp)
+   - 4. OmniSharp/LSP Integration (detailed diagram)
+   - 5. Analyzer Discovery Mechanism
+   - 6. DiagnosticAnalyzer Class Hierarchy
+   - 7. Configuration Mechanism (precedence)
+   - 8. Analyzer Lifecycle States
+   - 9. Syntax Tree Traversal Example
+   - 10. OmniSharp Configuration for StyleCop
+   - 11. Complete Analysis Flow (StyleCop SA1116)
+   - Key Architecture Principles
+   - References
+   
+   Best for: Understanding the big picture, visual learners
+   Time to read: 20-30 minutes
+
+---
+
+DOCUMENT SELECTION GUIDE
+========================
+
+SELECT THIS DOCUMENT FOR:
+
+ROSLYN_ANALYZERS_RESEARCH.md
+  ✓ Understanding how Roslyn analyzers work
+  ✓ Learning the complete API surface
+  ✓ Understanding analyzer lifecycle
+  ✓ How third-party analyzers integrate
+  ✓ Configuration mechanisms
+  ✓ IDE/LSP integration details
+  ✓ Implementation of custom analyzers
+  ✓ Deep technical understanding
+
+ROSLYN_QUICK_REFERENCE.md
+  ✓ Quick answer to "How do I enable StyleCop?"
+  ✓ Troubleshooting why warnings don't appear
+  ✓ Configuring specific analyzer rules
+  ✓ Debugging analyzer issues
+  ✓ Looking up rule IDs and prefixes
+  ✓ On-the-fly reference during development
+
+ROSLYN_ANALYZER_ARCHITECTURE.md
+  ✓ Visual understanding of the system
+  ✓ How data flows through analyzers
+  ✓ Configuration precedence
+  ✓ Understanding IDE integration
+  ✓ Tracing through a complete analysis example
+  ✓ Understanding lifecycle states
+  ✓ Seeing the "big picture"
+
+---
+
+KEY FINDINGS SUMMARY
+====================
+
+1. WHAT ARE ROSLYN ANALYZERS?
+   - Code analysis tools built on .NET Compiler Platform
+   - Run during IDE editing and/or build time
+   - Three categories: IDE rules (style), CA rules (quality), SA rules (StyleCop)
+   - Automatically discovered via reflection from NuGet packages
+
+2. HOW DO THEY WORK?
+   - Compiler creates syntax trees and semantic model
+   - Analyzer discovery via reflection
+   - Analyzer initialization (register action callbacks)
+   - Action execution (traverse AST, check patterns)
+   - Diagnostic reporting (violations found)
+   - LSP delivery to editor
+
+3. WHY DON'T STYLECOP WARNINGS SHOW?
+   - Most Common Cause: RoslynExtensionsOptions:EnableAnalyzersSupport = false
+   - Solution: Set to true in omnisharp.json or command-line args
+   - Must verify in process arguments: ps aux | grep omnisharp
+
+4. HOW TO CONFIGURE?
+   - EditorConfig (precedence 4): dotnet_diagnostic.SA1116.severity = warning
+   - Ruleset files (precedence 5): <Rule Id="SA1116" Action="Warning" />
+   - omnisharp.json (precedence 3): RoslynExtensionsOptions settings
+   - Project file (precedence 6): MSBuild properties
+   - Command-line (precedence 1): Overrides everything
+
+5. HOW STYLECOP INTEGRATES?
+   - Install via NuGet: StyleCop.Analyzers package
+   - Automatically discovered by compiler
+   - Provides DiagnosticAnalyzer implementations (SA rules)
+   - Configured via .editorconfig or .ruleset
+   - Integrated into build and IDE automatically
+
+6. IDE/LSP INTEGRATION?
+   - OmniSharp loads analyzers from project
+   - Runs them on current document
+   - Sends diagnostics via textDocument/publishDiagnostics (LSP)
+   - Editor displays squiggles, error list, code fixes
+   - All automatic once RoslynExtensionsOptions:EnableAnalyzersSupport=true
+
+---
+
+CRITICAL CONFIGURATION FOR OMNISHARP
+=====================================
+
+File: omnisharp.json
+Location: ~/.omnisharp/ or /project/omnisharp.json
+
+Content:
+{
+  "RoslynExtensionsOptions": {
+    "EnableAnalyzersSupport": true,        <--- CRITICAL FOR STYLECOP!
+    "EnableImportCompletion": true,
+    "AnalyzeOpenDocumentsOnly": false
+  },
+  "FormattingOptions": {
+    "EnableEditorConfigSupport": true,
+    "OrganizeImports": true
+  }
+}
+
+Command-line equivalent:
+dotnet /path/to/OmniSharp.dll -s /path/to/solution \
+  RoslynExtensionsOptions:EnableAnalyzersSupport=true \
+  RoslynExtensionsOptions:AnalyzeOpenDocumentsOnly=false
+
+Verification:
+ps aux | grep omnisharp | grep -v grep
+# Should show: RoslynExtensionsOptions:EnableAnalyzersSupport=true
+
+---
+
+ANALYZER API SURFACE (Quick Reference)
+=======================================
+
+DiagnosticAnalyzer (abstract base class)
+├─ public abstract void Initialize(AnalysisContext context)
+└─ public abstract ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
+
+AnalysisContext (for registering actions)
+├─ void RegisterSyntaxNodeAction<T>(Action<SyntaxNodeAnalysisContext> action, ...)
+├─ void RegisterSymbolAction(Action<SymbolAnalysisContext> action, ...)
+├─ void RegisterSemanticModelAction(Action<SemanticModelAnalysisContext> action)
+├─ void RegisterCodeBlockStartAction<T>(Action<CodeBlockStartAnalysisContext<T>> action)
+├─ void RegisterCompilationStartAction(Action<CompilationStartAnalysisContext> action)
+├─ void RegisterCompilationEndAction(Action<CompilationAnalysisContext> action)
+└─ void EnableConcurrentExecution()
+
+Diagnostic (reported result)
+├─ DiagnosticDescriptor Descriptor
+├─ Location Location
+├─ DiagnosticSeverity Severity
+├─ string Message
+└─ ImmutableDictionary<string, string?> Properties
+
+DiagnosticSeverity (enum)
+├─ Hidden (0)
+├─ Info (1)
+├─ Warning (2)
+└─ Error (3)
+
+---
+
+ANALYZER ACTION EXECUTION ORDER GUARANTEE
+==========================================
+
+Compilation Start
+  └─ Symbol Start
+      ├─ Symbol Actions
+      ├─ Semantic Model Actions
+      ├─ Code Block Start
+      │  ├─ Syntax Node Actions
+      │  └─ Code Block End
+      └─ Symbol End
+Compilation End
+
+Key Guarantee:
+- Within each category: Start actions BEFORE End actions
+- No guaranteed order between different action types
+- Enables safe parallelization
+
+---
+
+ANALYZER CONFIGURATION HIERARCHY (Precedence)
+==============================================
+
+1. Command-Line Arguments (Highest - overrides everything)
+2. Environment Variables
+3. omnisharp.json (project or global)
+4. .editorconfig files
+5. .ruleset files
+6. .csproj properties
+7. Analyzer Defaults (Lowest)
+
+---
+
+MOST IMPORTANT FOR OMNISHARP/NEOVIM USERS
+==========================================
+
+To enable StyleCop warnings in OmniSharp/Neovim:
+
+1. Ensure StyleCop.Analyzers is installed in .csproj:
+   <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" />
+
+2. Configure omnisharp.json:
+   {
+     "RoslynExtensionsOptions": {
+       "EnableAnalyzersSupport": true,
+       "AnalyzeOpenDocumentsOnly": false
+     }
+   }
+
+3. Create .editorconfig with StyleCop rules:
+   dotnet_diagnostic.SA1116.severity = warning
+   dotnet_diagnostic.SA1117.severity = warning
+
+4. Verify process:
+   ps aux | grep omnisharp
+   # Should show: RoslynExtensionsOptions:EnableAnalyzersSupport=true
+
+5. Check in editor:
+   :LspInfo  # Should show RoslynExtensionsOptions in config
+
+---
+
+FILE LOCATIONS
+==============
+
+All new documentation created in:
+/mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/
+
+Files:
+- ROSLYN_ANALYZERS_RESEARCH.md (1,036 lines) - Comprehensive reference
+- ROSLYN_QUICK_REFERENCE.md (188 lines) - Quick lookup
+- ROSLYN_ANALYZER_ARCHITECTURE.md (570 lines) - Visual guides
+
+Total documentation: 1,794 lines of content
+
+---
+
+RESOURCES REFERENCED
+====================
+
+Official Repositories:
+- https://github.com/dotnet/roslyn - Compiler platform
+- https://github.com/dotnet/roslyn-sdk - SDK and samples
+- https://github.com/OmniSharp/omnisharp-roslyn - Language server
+- https://github.com/StyleCop/StyleCop.Analyzers - StyleCop implementation
+
+Microsoft Documentation:
+- https://learn.microsoft.com/dotnet/csharp/roslyn-sdk/
+- https://learn.microsoft.com/en-us/visualstudio/code-quality/roslyn-analyzers-overview
+- https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview
+
+Documentation Files Referenced:
+- dotnet/roslyn/docs/analyzers/Analyzer Actions Semantics.md
+- dotnet/roslyn/docs/analyzers/Analyzer Samples.md
+- dotnet/roslyn/docs/analyzers/DiagnosticSuppressorDesign.md
+- dotnet/roslyn/docs/analyzers/FixAllProvider.md
+
+---
+
+SUMMARY
+=======
+
+This research provides complete understanding of how Roslyn analyzers work:
+
+✓ What they are and how they work
+✓ Complete API surface and types
+✓ How they're discovered and loaded
+✓ How they integrate with IDEs and LSP servers
+✓ Configuration mechanisms (EditorConfig, ruleset, omnisharp.json)
+✓ Why StyleCop warnings don't show (and how to fix it)
+✓ How to enable/disable specific rules
+✓ How to write custom analyzers
+✓ Visual architecture and data flow
+✓ Troubleshooting approaches
+
+Use the three documents provided to get the right level of detail for your needs:
+- ROSLYN_ANALYZERS_RESEARCH.md - Deep dive
+- ROSLYN_QUICK_REFERENCE.md - Quick answers
+- ROSLYN_ANALYZER_ARCHITECTURE.md - Visual understanding
+

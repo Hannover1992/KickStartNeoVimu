@@ -1,0 +1,336 @@
+# Roslyn LSP Research - Executive Summary
+
+**Completed**: 2025-11-13
+**Scope**: Roslyn architecture, OmniSharp integration, LSP protocol, diagnostic reporting
+**Deliverables**: 3 comprehensive documents + this summary
+
+---
+
+## What You Now Know
+
+### 1. Roslyn is a Compiler Platform
+
+Roslyn is Microsoft's open-source C# and Visual Basic compiler exposed as APIs. It's a language analysis platform with four API layers:
+- Compiler APIs (syntax, semantics)
+- Diagnostic APIs (errors, warnings)
+- Scripting APIs (REPL)
+- Workspaces APIs (solution-wide analysis)
+
+Key insight: Roslyn = Language analysis engine
+
+### 2. OmniSharp Wraps Roslyn for LSP
+
+OmniSharp is a wrapper that exposes Roslyn via Language Server Protocol, allowing any editor to use Roslyn.
+
+Architecture:
+  Neovim (LSP Client)
+    ↓ LSP JSON-RPC
+  OmniSharp (LSP Server - wraps Roslyn)
+    ↓ Roslyn APIs
+  Roslyn (Compiler Platform)
+    ↓ Runs analyzers
+  StyleCop, FxCop, Custom
+
+Key insight: OmniSharp = Roslyn's translator to LSP messages
+
+### 3. StyleCop Warnings From Roslyn Analyzers
+
+StyleCop.Analyzers (~200 Roslyn analyzers) check C# code style:
+- Register syntax actions
+- Visit nodes as code is parsed
+- Compare against rules
+- Report diagnostics (violations)
+
+Key insight: StyleCop warnings appear only if EnableAnalyzersSupport=true
+
+### 4. Configuration Flows Through Multiple Layers
+
+Critical chain:
+  init.lua settings
+    ↓ (Lua table)
+  nvim-lspconfig on_new_config()
+    ↓ (flatten to CLI args)
+  OmniSharp command line
+    ↓ (parse config)
+  Roslyn analyzer configuration
+    ↓ (enable/disable)
+  Diagnostics reported or suppressed
+
+Critical setting: EnableAnalyzersSupport=true (default is false!)
+
+### 5. Diagnostics Are JSON Over LSP
+
+Example diagnostic:
+{
+  "method": "textDocument/publishDiagnostics",
+  "params": {
+    "diagnostics": [{
+      "range": {"start": {"line": 55, "character": 25}, ...},
+      "severity": 2,
+      "code": "SA1116",
+      "message": "Split parameters must begin on new line"
+    }]
+  }
+}
+
+---
+
+## Why This Matters
+
+### The Problem You Experienced
+
+StyleCop warnings not showing despite:
+- StyleCop.Analyzers installed
+- OmniSharp configured
+- dotnet build shows warnings
+
+Root cause: EnableAnalyzersSupport=false (default)
+
+Configuration chain broken at step 1:
+- NOT in init.lua settings → nvim-lspconfig couldn't flatten
+- OR handler called setup() twice (second call ignored)
+- OR settings not passed to command line
+
+Result: OmniSharp started without analyzer support → Roslyn didn't load StyleCop → No warnings
+
+### The Solution
+
+Configuration in init.lua:
+
+servers.omnisharp = {
+  cmd = { 'dotnet', '/path/OmniSharp.dll', '-s', '/path/solution.sln', '-loglevel', 'Information' },
+  settings = {
+    RoslynExtensionsOptions = {
+      EnableAnalyzersSupport = true,        -- KEY SETTING
+      EnableImportCompletion = true,
+      AnalyzeOpenDocumentsOnly = false,
+    },
+  }
+}
+
+Now entire chain works:
+1. Setting in init.lua ✓
+2. Flattened to CLI by nvim-lspconfig ✓
+3. Parsed by OmniSharp ✓
+4. Passed to Roslyn ✓
+5. Analyzers enabled ✓
+6. StyleCop runs ✓
+7. Diagnostics reported ✓
+8. Warnings visible ✓
+
+---
+
+## Key Concepts
+
+### LSP ServerCapabilities
+
+OmniSharp announces what it can do:
+- Provide completions
+- Go to definitions
+- Find references
+- Format code
+- Provide hover info
+- Report diagnostics ← StyleCop warnings
+- Rename symbols
+- Show type hints
+- Provide code actions
+- 12+ more features
+
+### Diagnostic Severity
+
+1 = Error (compilation failure)
+2 = Warning (style violation) ← StyleCop
+3 = Information (hint)
+4 = Hint (suggestion)
+
+StyleCop = severity 2 (yellow squiggles)
+
+### Handler Pattern
+
+OmniSharp has 22 handlers, each converting LSP requests to Roslyn API calls:
+- CompletionHandler → textDocument/completion
+- DefinitionHandler → textDocument/definition
+- DiagnosticsHandler → textDocument/publishDiagnostics (async)
+- FormattingHandler → textDocument/formatting
+- HoverHandler → textDocument/hover
+
+### Configuration Precedence
+
+1. Local omnisharp.json (highest)
+2. Global ~/.omnisharp/omnisharp.json
+3. Command-line arguments
+4. Environment variables (OMNISHARP_)
+5. Hardcoded defaults (lowest)
+
+This is why EnableAnalyzersSupport=true must be explicit.
+
+---
+
+## Documents Created
+
+### 1. ROSLYN_LSP_INTEGRATION_RESEARCH.md
+
+Comprehensive technical reference (15 parts):
+- Roslyn's four-phase compiler pipeline
+- How analyzers work
+- OmniSharp's role
+- LSP initialization
+- Configuration flow
+- StyleCop example end-to-end
+- 200+ diagnostic topics
+
+Use for: Complete background on how system works
+
+### 2. ROSLYN_LSP_QUICK_REFERENCE.md
+
+Quick answer reference:
+- Q&A format (30 questions)
+- Troubleshooting flowchart
+- Common settings
+- File locations
+- One-liner fixes
+- Top 5 key points
+
+Use for: Quick answers or debugging
+
+### 3. ROSLYN_DIAGNOSTIC_FLOW_TECHNICAL.md
+
+Deep technical guide (8 parts):
+- Complete diagnostic lifecycle (8 phases)
+- Configuration transformation with code
+- Analyzer registration and execution
+- LSP message format specs
+- OmniSharp handler architecture
+- Roslyn workspace model
+- Performance characteristics
+- Detailed debugging scenarios
+
+Use for: Understanding implementation or debugging
+
+---
+
+## Verification Checklist
+
+After configuration:
+
+1. Clear bytecode cache
+   rm -rf ~/.cache/nvim/luac/
+
+2. Kill OmniSharp
+   pkill -f omnisharp
+
+3. Restart Neovim with C# file
+   nvim /path/to/file.cs
+
+4. Check process for settings
+   ps aux | grep omnisharp | grep -v grep
+   Should show:
+   - -s /path/to/solution.sln
+   - RoslynExtensionsOptions:EnableAnalyzersSupport=true
+   - -loglevel Information
+
+5. Check LSP info
+   :LspInfo
+   Should show RoslynExtensionsOptions with EnableAnalyzersSupport = true
+
+6. Wait 2-3 seconds for diagnostics
+   StyleCop warnings should appear with yellow squiggles
+
+7. Hover over warning
+   Should show "Split parameters must begin on new line" or similar
+
+8. View all diagnostics
+   :Telescope diagnostics
+
+---
+
+## Debugging Decision Tree
+
+StyleCop warnings not showing?
+│
+├─ Is EnableAnalyzersSupport=true in init.lua?
+│  ├─ NO → Add it
+│  └─ YES → Continue
+│
+├─ Is solution path correct (-s)?
+│  ├─ NO → Fix path
+│  └─ YES → Continue
+│
+├─ Are settings in running process?
+│  ├─ NO → Clear cache, kill omnisharp, restart
+│  └─ YES → Continue
+│
+├─ Is StyleCop.Analyzers NuGet installed?
+│  ├─ NO → dotnet add package StyleCop.Analyzers
+│  └─ YES → Continue
+│
+├─ Check LSP logs:
+│  ├─ "Loaded 1 project" → Fix solution path
+│  ├─ "Analysis timeout" → Increase timeout
+│  ├─ "Cannot resolve type" → Check NuGet cache
+│  └─ "Analyzer failed" → Check .ruleset
+│
+└─ Still failing? Check logs: tail -f ~/.local/state/nvim/lsp.log
+
+---
+
+## Technical Insights
+
+### Why Configuration Matters
+
+Settings → Configuration → Analyzer Loading → Rule Checking → Diagnostics
+
+Miss step 1 = Everything breaks
+
+### Why Cache Matters
+
+Neovim compiles Lua to .luac bytecode. Stale cache = old settings.
+
+Always clear after config changes:
+  rm -rf ~/.cache/nvim/luac/
+
+### Why Solution Path Matters
+
+With -s /path/solution.sln:
+  ✓ All projects loaded
+  ✓ Cross-project types resolved
+  ✓ Complete compilation
+  ✓ Full analyzer coverage
+
+Without -s:
+  ✗ Single project only
+  ✗ Missing cross-project
+  ✗ Incomplete compilation
+  ✗ Reduced coverage
+
+### Why Defaults Matter
+
+Most settings enabled by default EXCEPT:
+  EnableAnalyzersSupport = false
+
+This is why explicitly setting it true is critical.
+
+---
+
+## Summary
+
+You now understand:
+
+1. Roslyn - Compiler platform, four APIs, extensible
+2. OmniSharp - Thin translator, orchestrator, state management
+3. LSP - JSON-RPC protocol, capability negotiation
+4. Configuration - Hierarchical, must flow through layers
+5. Diagnostics - Complete lifecycle from analyzer to display
+6. Debugging - Verification steps, common issues
+
+Three documents provide reference, quick answers, and implementation details.
+
+---
+
+Files Created:
+- ROSLYN_LSP_INTEGRATION_RESEARCH.md (comprehensive)
+- ROSLYN_LSP_QUICK_REFERENCE.md (quick answers)
+- ROSLYN_DIAGNOSTIC_FLOW_TECHNICAL.md (implementation)
+- ROSLYN_RESEARCH_COMPLETE_SUMMARY.txt (this file)
+
+All ready for reference, sharing, or documentation.

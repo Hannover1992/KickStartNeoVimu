@@ -1,0 +1,362 @@
+================================================================================
+ROSLYN PROJECT LOADING AND ANALYSIS - RESEARCH SUMMARY
+================================================================================
+
+Research Date: November 13, 2025
+Repository: https://github.com/dotnet/roslyn
+Status: COMPLETE
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+This research documents how Roslyn (the .NET Compiler Platform) loads and
+analyzes C# projects, with specific focus on:
+
+1. How .csproj and .sln files are loaded
+2. MSBuild integration and project evaluation
+3. NuGet package resolution and analyzer loading
+4. Project reference management
+5. Workspace abstraction for multi-project solutions
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. HOW ROSLYN LOADS .csproj AND .sln FILES
+   
+   Process:
+   - OmniSharp receives "-s /path/to/solution/" parameter
+   - Creates MSBuildWorkspace
+   - Reads .sln file to discover all projects
+   - For each .csproj:
+     * Parses project file (XML format)
+     * Evaluates MSBuild properties (framework, language version, etc.)
+     * Extracts compiler settings and options
+     * Lists package references and project references
+   - Creates Roslyn compilation objects with full context
+   
+   Critical: The -s parameter is the entry point. Without it, Roslyn has
+   no context and cannot provide any analysis.
+
+2. MSBUILD INTEGRATION AND PROJECT EVALUATION
+   
+   MSBuild Properties Extracted:
+   - Target framework (.NET version like net8.0)
+   - C# language version (latest, 11.0, etc.)
+   - Nullable reference types setting
+   - Preprocessor symbols and defines
+   - Compiler flags and warnings
+   - Package references
+   - Project references
+   
+   MSBuild Versions Supported:
+   - Visual Studio MSBuild (15.0+)
+   - CLI MSBuild
+   - XCopy MSBuild (portable)
+   - BuildTools
+
+3. NUGET PACKAGE RESOLUTION
+   
+   Three-Step Process:
+   1. Declaration: <PackageReference Include="StyleCop.Analyzers" />
+   2. Resolution: NuGet resolves from cache (~/.nuget/packages/)
+   3. Loading: Roslyn loads assemblies and discovers analyzers
+   
+   For Analyzers:
+   - Roslyn scans package for [DiagnosticAnalyzer] classes
+   - Analyzer is registered with compilation
+   - For each file: Analyzer receives semantic model and reports diagnostics
+   
+   WSL2 Cross-Filesystem Issue:
+   - Building in Windows: packages in Windows cache
+   - Running OmniSharp in WSL2: looks in WSL2 cache (different locations)
+   - Result: Packages not found
+   - Fix: dotnet restore --force-evaluate --no-cache (in WSL2)
+
+4. PROJECT REFERENCES
+   
+   Process:
+   - Project A declares <ProjectReference Include="ProjectB.csproj" />
+   - Roslyn loads Project B first
+   - Compiles Project B
+   - Uses Project B's compilation as MetadataReference for Project A
+   - Project A can now reference all public types from Project B
+   
+   Benefits:
+   - Go to definition works across projects
+   - Type checking works across projects
+   - Cross-project navigation enabled
+
+5. WORKSPACE ABSTRACTION
+   
+   Hierarchy:
+   Workspace
+   └── Solution
+       ├── Project 1
+       │   ├── Documents (source files)
+       │   ├── Compilation (with all references)
+       │   ├── MetadataReferences (assemblies, NuGet)
+       │   └── ProjectReferences (other projects)
+       └── Project 2...
+   
+   Key Features:
+   - Immutable (changes create new instances, not modifications)
+   - Thread-safe (multiple threads can access safely)
+   - Lazy-loaded (compilations built only when needed)
+   - Cached (results reused if unchanged)
+   - IDE-integrated (standard workspace abstraction)
+
+================================================================================
+COMPILATION ARCHITECTURE
+================================================================================
+
+Four-Phase Pipeline:
+
+Phase 1: Parse
+- Input: Source text
+- Output: Syntax tree (AST)
+- Represents: Language structure
+- API: CSharpSyntaxTree.ParseText(code)
+
+Phase 2: Declaration
+- Input: Syntax trees + imported metadata
+- Output: Symbol table (types, methods, fields)
+- Represents: What's declared in code
+
+Phase 3: Bind
+- Input: Symbols + syntax trees
+- Output: Semantic information (bindings, overload resolution)
+- Represents: What things mean in language rules
+- API: SemanticModel
+
+Phase 4: Emit
+- Input: Bound tree + symbols
+- Output: IL byte code (executable)
+- Note: Compiler-only, not used by LSP
+
+For LSP (Neovim/OmniSharp): Only phases 1-3 are used.
+
+Data Structures:
+
+SyntaxTree: Immutable AST with full source fidelity
+- SyntaxNodes (language constructs)
+- SyntaxTokens (keywords, identifiers)
+- SyntaxTrivia (whitespace, comments)
+
+SemanticModel: Answers semantic questions about code
+- Symbol resolution
+- Type inference
+- Diagnostic generation
+- Variable flow analysis
+
+Compilation: Container for compilation context
+- Syntax trees from all source files
+- References (framework assemblies, NuGet packages, project outputs)
+- Compilation options
+
+Symbols: Represent declared code elements
+- Types (classes, structs, interfaces, enums)
+- Methods, properties, fields
+- Parameters, local variables
+- Unified across source and metadata
+- Location and metadata information
+
+================================================================================
+ANALYZER ARCHITECTURE
+================================================================================
+
+How Analyzers Get Context:
+
+1. Analyzer registers context actions during Initialize()
+2. Roslyn invokes registered actions as it analyzes
+3. Analyzer receives:
+   - Syntax trees
+   - Semantic models
+   - Symbols
+   - Type information
+4. Analyzer detects issues
+5. Analyzer reports diagnostics
+6. Diagnostics sent to IDE/editor
+
+StyleCop Example:
+- Package: StyleCop.Analyzers 1.1.118
+- Contains: 50+ analyzers (SA1xxx codes)
+- Requires: EnableAnalyzersSupport = true
+- Process: For each file, semantic model created, analyzer runs, diagnostics reported
+
+================================================================================
+NEOVIM/OMNISHARP INTEGRATION
+================================================================================
+
+The Chain:
+
+Neovim init.lua configuration
+    ↓
+OmniSharp process started with -s parameter
+    ↓
+Roslyn MSBuildWorkspace created
+    ↓
+For each project in solution:
+  - .csproj parsed
+  - Compiler settings extracted
+  - NuGet packages resolved
+  - Project references resolved
+    ↓
+For each C# file:
+  - Syntax tree created
+  - Semantic model created
+  - Analyzers run (StyleCop, etc.)
+  - Diagnostics collected
+    ↓
+Diagnostics returned to Neovim
+    ↓
+Neovim displays warnings/errors
+
+Critical Configuration Points:
+
+1. cmd: Must point to OmniSharp.dll
+2. -s /path/to/solution/: Entry point for everything
+3. EnableAnalyzersSupport = true: Enables StyleCop and other analyzers
+4. AnalyzeOpenDocumentsOnly = false: Analyzes entire solution (not just open files)
+
+================================================================================
+TROUBLESHOOTING CHECKLIST
+================================================================================
+
+Issue: No StyleCop Warnings
+
+1. Is -s pointing to correct solution?
+   Check: ps aux | grep omnisharp
+   Should show: -s /path/to/solution/
+
+2. Is EnableAnalyzersSupport = true?
+   Check: :LspInfo in Neovim
+   Should show: RoslynExtensionsOptions: { EnableAnalyzersSupport = true }
+
+3. Is StyleCop.Analyzers in project?
+   Check: .csproj file
+   Should have: <PackageReference Include="StyleCop.Analyzers" />
+
+4. Are packages in correct cache?
+   Run: dotnet restore --force-evaluate --no-cache
+   Check: ~/.nuget/packages/stylecop.analyzers/ exists
+
+5. Restart OmniSharp:
+   Kill: pkill -f omnisharp
+   Clear: rm -rf ~/.cache/nvim/luac/
+   Restart: :LspRestart
+
+================================================================================
+DOCUMENTATION FILES
+================================================================================
+
+Quick References (5-10 minutes):
+- ROSLYN_QUICK_REFERENCE.md
+- ROSLYN_DIAGNOSTIC_QUICK_REFERENCE.md
+- ROSLYN_LSP_QUICK_REFERENCE.md
+- ROSLYN_PERFORMANCE_QUICK_REFERENCE.md
+- ROSLYNEXTENSIONSOPTIONS_QUICK_REFERENCE.md
+
+Core Research (20-30 minutes):
+- ROSLYN_MSBUILD_OMNISHARP_CONNECTION.md (START HERE for Neovim users)
+- ROSLYN_PROJECT_LOADING_RESEARCH.md (Comprehensive overview)
+- ROSLYN_COMPILER_PIPELINE_RESEARCH.md (Technical details)
+- ROSLYN_LSP_INTEGRATION_RESEARCH.md (Neovim-specific)
+- ROSLYN_EXTENSIONS_OPTIONS_RESEARCH.md (Configuration)
+
+Advanced Research:
+- ROSLYN_DIAGNOSTIC_SYSTEM_RESEARCH.md
+- ROSLYN_ANALYZER_ARCHITECTURE.md
+- ROSLYN_ARCHITECTURE_RESEARCH.md
+- ROSLYN_EDITORCONFIG_RESEARCH.md
+- ROSLYN_PERFORMANCE_RESEARCH.md
+- ROSLYN_CACHING_ARCHITECTURE.md
+- ROSLYN_DIAGNOSTIC_FLOW.md
+
+Navigation:
+- README_ROSLYN_RESEARCH.md (Main index)
+- ROSLYN_RESEARCH_INDEX.md (Detailed topic index)
+- ROSLYN_TECHNICAL_REFERENCE.md (API reference)
+
+================================================================================
+KEY TAKEAWAYS
+================================================================================
+
+1. Roslyn is a compiler platform that provides semantic analysis APIs
+2. MSBuild describes project structure - Roslyn reads these descriptions
+3. NuGet provides packages and analyzers - Roslyn loads them
+4. OmniSharp uses Roslyn - it's the engine behind Neovim's C# LSP
+5. The -s parameter is critical - it's the entry point
+6. WSL2 has cache issues - packages must be resolved in same environment
+7. Everything is immutable - workspace changes create new instances
+8. Everything is lazy - compilations only built when needed
+9. Analyzers receive full context - they have semantic information
+10. Configuration matters - EnableAnalyzersSupport controls analyzer loading
+
+================================================================================
+EXTERNAL RESOURCES
+================================================================================
+
+GitHub: https://github.com/dotnet/roslyn
+Microsoft Learn: https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/
+OmniSharp: https://github.com/OmniSharp/omnisharp-roslyn
+
+================================================================================
+RESEARCH STATISTICS
+================================================================================
+
+Total Documents: 24 files
+Total Content: ~13,000 lines
+Documentation Types:
+  - Quick References: 5 files
+  - Research Documents: 10 files
+  - Supplementary: 9 files
+
+Coverage:
+  - Project Loading: Complete
+  - MSBuild Integration: Complete
+  - NuGet Resolution: Complete
+  - Project References: Complete
+  - Workspace Model: Complete
+  - Compilation Pipeline: Complete
+  - Analyzer Architecture: Complete
+  - LSP Integration: Complete
+  - Configuration: Complete
+  - Performance: Complete
+
+================================================================================
+HOW TO USE
+================================================================================
+
+For Quick Fix (15 minutes):
+1. Read: ROSLYN_QUICK_REFERENCE.md
+2. Read: ROSLYN_MSBUILD_OMNISHARP_CONNECTION.md (first half)
+3. Follow troubleshooting checklist
+
+For Complete Understanding (1 hour):
+1. ROSLYN_QUICK_REFERENCE.md
+2. ROSLYN_MSBUILD_OMNISHARP_CONNECTION.md
+3. ROSLYN_PROJECT_LOADING_RESEARCH.md
+4. ROSLYN_LSP_INTEGRATION_RESEARCH.md
+
+For Deep Knowledge (2+ hours):
+- Read all documents in sequence
+- Focus on compiler pipeline and architecture
+- Study analyzer architecture
+- Review performance considerations
+
+================================================================================
+NOTES
+================================================================================
+
+This research was conducted through:
+- Official Roslyn GitHub repository examination
+- Microsoft Learn documentation review
+- OmniSharp integration research
+- WebFetch analysis of documentation
+
+All examples and information are based on Roslyn's actual architecture and
+implementation. Focus is on practical understanding for Neovim/OmniSharp users.
+
+================================================================================

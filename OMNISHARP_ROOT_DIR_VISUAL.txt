@@ -1,0 +1,217 @@
+═══════════════════════════════════════════════════════════════════════════
+  OMNISHARP ROOT_DIR DETECTION - VISUAL EXPLANATION
+═══════════════════════════════════════════════════════════════════════════
+
+📁 PROJECT STRUCTURE
+═══════════════════════
+
+/mnt/c/.../cencoco/
+└── src/
+    ├── 📄 CenCoCo.sln                      ← SOLUTION FILE HERE
+    ├── Core/
+    │   └── CenCoCo.Core.API/
+    │       ├── 📄 CenCoCo.Core.API.csproj  ← PROJECT FILE HERE
+    │       └── 📄 Program.cs               ← WE OPEN THIS FILE
+    ├── Modules/
+    │   ├── Accounting/
+    │   │   ├── CenCoCo.Accounting.API/
+    │   │   ├── CenCoCo.Accounting.Domain/
+    │   │   └── ...
+    │   └── CRM/
+    │       ├── CenCoCo.CRM.Api/
+    │       └── ...
+    └── SharedKernel/
+
+
+🔍 DETECTION ALGORITHM - CURRENT (BEFORE FIX)
+═══════════════════════════════════════════════
+
+Pattern: *.sln, *.csproj, omnisharp.json, function.json
+
+nvim opens: Program.cs
+            ↓
+Start here: /mnt/c/.../CenCoCo.Core.API/Program.cs
+            ↓
+Level 1:    /mnt/c/.../CenCoCo.Core.API/
+            ↓ Check for patterns
+            ├─ *.sln?           ❌ Not found
+            ├─ *.csproj?        ✅ FOUND: CenCoCo.Core.API.csproj
+            ├─ omnisharp.json?  ❌ Not found
+            └─ function.json?   ❌ Not found
+            ↓
+            ⚠️  STOPS HERE! (found *.csproj)
+            ↓
+root_dir =  /mnt/c/.../CenCoCo.Core.API/  ← PROJECT LEVEL
+
+
+Level 2: ❌ NEVER REACHED
+         /mnt/c/.../Core/
+
+Level 3: ❌ NEVER REACHED
+         /mnt/c/.../src/
+         ✅ CenCoCo.sln IS HERE (but never checked!)
+
+
+🔧 CONFIGURED -S FLAG
+═══════════════════════
+
+cmd = { 'dotnet', 'OmniSharp.dll', '-s', '/mnt/c/.../src', ... }
+                                          ↑
+                                    SOLUTION LEVEL
+
+
+⚠️  MISMATCH DETECTED
+═══════════════════════
+
+┌──────────────────────────────────────────────────────────┐
+│  Detected root_dir:    /mnt/c/.../CenCoCo.Core.API/      │  ← PROJECT
+│  Configured -s flag:   /mnt/c/.../src/                   │  ← SOLUTION
+│                                                           │
+│  ❌ DIFFERENT PATHS!                                      │
+└──────────────────────────────────────────────────────────┘
+
+
+💥 WHAT THIS CAUSES
+═══════════════════════
+
+┌─────────────────────────────────────────────────────────────┐
+│  OmniSharp Server:                                          │
+│  - Loads FULL SOLUTION (all projects)                       │
+│  - Knows about CenCoCo.Core.API, Accounting, CRM, etc.      │
+│  - Can resolve cross-project references                     │
+│  - All IntelliSense works                                   │
+└─────────────────────────────────────────────────────────────┘
+                    ↕️ MISMATCH ↕️
+┌─────────────────────────────────────────────────────────────┐
+│  Neovim Workspace:                                          │
+│  - Thinks root is ONLY CenCoCo.Core.API                     │
+│  - Doesn't know about other projects                        │
+│  - File watchers limited to Core.API directory              │
+│  - Relative paths might be wrong                            │
+└─────────────────────────────────────────────────────────────┘
+
+
+Real-world scenario:
+
+Program.cs (in Core.API):
+│
+├─ using CenCoCo.Accounting.Domain;  ← Reference to different project
+│
+└─ var account = new Account();      ← User presses 'gd' (go to definition)
+                     ↓
+                ❌ MIGHT FAIL!
+
+   Neovim thinks: "Accounting.Domain is not in my workspace"
+   OmniSharp knows: "Accounting.Domain is in Modules/Accounting/"
+
+   Result: Navigation might fail or show errors
+
+
+✅ THE FIX
+═══════════
+
+Change detection pattern to ONLY look for solution files:
+
+root_dir = require('lspconfig.util').root_pattern('*.sln', 'omnisharp.json')
+                                                    ↑
+                                        Remove *.csproj from pattern!
+
+
+🔍 DETECTION ALGORITHM - AFTER FIX
+═══════════════════════════════════
+
+Pattern: *.sln, omnisharp.json  (no *.csproj!)
+
+nvim opens: Program.cs
+            ↓
+Start here: /mnt/c/.../CenCoCo.Core.API/Program.cs
+            ↓
+Level 1:    /mnt/c/.../CenCoCo.Core.API/
+            ↓ Check for patterns
+            ├─ *.sln?           ❌ Not found
+            ├─ omnisharp.json?  ❌ Not found
+            ↓
+            Continue to parent (*.csproj ignored now!)
+            ↓
+Level 2:    /mnt/c/.../Core/
+            ↓ Check for patterns
+            ├─ *.sln?           ❌ Not found
+            ├─ omnisharp.json?  ❌ Not found
+            ↓
+            Continue to parent
+            ↓
+Level 3:    /mnt/c/.../src/
+            ↓ Check for patterns
+            ├─ *.sln?           ✅ FOUND: CenCoCo.sln
+            └─ omnisharp.json?  ❌ Not found
+            ↓
+            ✅ STOPS HERE! (found *.sln)
+            ↓
+root_dir =  /mnt/c/.../src/  ← SOLUTION LEVEL
+
+
+✅ MATCH ACHIEVED
+═══════════════════
+
+┌──────────────────────────────────────────────────────────┐
+│  Detected root_dir:    /mnt/c/.../src/                   │  ← SOLUTION
+│  Configured -s flag:   /mnt/c/.../src/                   │  ← SOLUTION
+│                                                           │
+│  ✅ SAME PATH!                                            │
+└──────────────────────────────────────────────────────────┘
+
+
+🎉 RESULT
+═══════════
+
+┌─────────────────────────────────────────────────────────────┐
+│  OmniSharp Server:                                          │
+│  - Loads FULL SOLUTION (all projects)                       │
+│  - Knows about all projects                                 │
+└─────────────────────────────────────────────────────────────┘
+                    ✅ MATCH ✅
+┌─────────────────────────────────────────────────────────────┐
+│  Neovim Workspace:                                          │
+│  - Root is FULL SOLUTION                                    │
+│  - Knows about all projects                                 │
+│  - File watchers monitor entire solution                    │
+└─────────────────────────────────────────────────────────────┘
+
+
+Real-world scenario:
+
+Program.cs (in Core.API):
+│
+├─ using CenCoCo.Accounting.Domain;  ← Reference to different project
+│
+└─ var account = new Account();      ← User presses 'gd' (go to definition)
+                     ↓
+                ✅ WORKS!
+
+   Neovim thinks: "Accounting.Domain is in my workspace"
+   OmniSharp knows: "Accounting.Domain is in Modules/Accounting/"
+
+   Result: Jumps to Account.cs in Accounting module successfully!
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+📝 SUMMARY
+
+BEFORE FIX:
+- Pattern includes *.csproj
+- Detects project-level directory (CenCoCo.Core.API)
+- Mismatch with -s flag (solution-level)
+- Cross-project navigation might fail
+
+AFTER FIX:
+- Pattern excludes *.csproj
+- Detects solution-level directory (src)
+- Matches -s flag
+- Cross-project navigation works
+
+CHANGE: 1 line
+IMPACT: Correct workspace detection
+EFFORT: 30 seconds
+
+═══════════════════════════════════════════════════════════════════════════

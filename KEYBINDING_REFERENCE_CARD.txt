@@ -1,0 +1,197 @@
+================================================================================
+                    NEOVIM KEYBINDING REFERENCE CARD
+                        Updated: February 9, 2026
+================================================================================
+
+BACKEND OPERATIONS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rbw  Run Backend WebHost           dotnet run
+  <leader>rbs  Run Backend Setup             dotnet run --project VDEK.DCSP.Setup
+  <leader>rbb  Run Backend Build             dotnet clean && dotnet build
+  <leader>rbt  Run Backend Tests             dotnet test --filter FullyQualifiedName~{file}
+  <leader>rbu  Run Backend Unit tests        dotnet test --filter Category!=Database&Storage&Docker
+
+FRONTEND OPERATIONS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rfw  Run Frontend Web              npm start / dotnet run
+  <leader>rfb  Run Frontend Build            npm run build / docker compose build
+  <leader>rft  Run Frontend Test             npm test
+
+E2E / CYPRESS TESTS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>reg  Run E2E Gesamtsystemtest      npm run cypress:run:gesamtsystemtest
+  <leader>res  Run E2E Systemtest            npm run cypress:run:systemtest
+  <leader>reo  Run E2E Open                  npm run cypress:open:systemtest
+
+DOCKER OPERATIONS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rDi  Run Docker Infrastructure     docker-up.ps1 / docker compose up
+  <leader>rDa  Run Docker All                docker-up.ps1 -Profile all
+  <leader>rDr  Run Docker rundown            docker compose down
+  <leader>rDR  Run Docker Reset              docker compose down -v --rmi all
+  <leader>rdf  Run Docker Frontend build     docker compose build frontend
+  <leader>rdF  Run Docker Frontend up        docker compose up frontend
+  <leader>rdb  Run Docker Backend build      docker compose build backend
+  <leader>rdB  Run Docker Backend up         docker compose up backend
+
+INTEGRATION TESTS (DCSRE)
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rim  Run Integration Mock          dotnet test --filter DicMockServer (38 threads)
+  <leader>rid  Run Integration DB            dotnet test --filter !DicMockServer (8 threads)
+
+MANUAL TEST RUNNER (DCSRE)
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rmd  Run Mock Docker               dotnet run --project ManualTestRunner --launch-profile docker
+  <leader>rml  Run Mock Local                dotnet run --project ManualTestRunner --launch-profile https
+
+GIT OPERATIONS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rc   Run Commit                    Open in TFS browser (from clipboard)
+  <leader>rp   Run Push                      git push (Windows VPN)
+  <leader>rP   Run Pull                      git pull (Windows VPN)
+
+SETUP SCRIPTS
+──────────────────────────────────────────────────────────────────────────────
+  <leader>rsc  Run Script Claude             new-research-project.ps1
+
+================================================================================
+                              HOW TO USE
+================================================================================
+
+Option 1: Command Mode
+  :map <leader>r
+  Shows all <leader>r keybindings with their descriptions
+
+Option 2: Telescope Search
+  :Telescope keymaps
+  Search for "dotnet", "docker", "npm", "git" to find related commands
+
+Option 3: Leader Key Help
+  <leader>?
+  Shows all keybindings in a nice menu (with which-key plugin)
+
+Option 4: In Insert Mode
+  Press <leader> in insert mode - typically shows a popup with hints
+
+================================================================================
+                           COMMAND PATTERNS
+================================================================================
+
+Backend (dotnet):
+  Run                 dotnet run
+  Setup/Migrations    dotnet run --project VDEK.DCSP.Setup
+  Clean & Build       dotnet clean && dotnet build
+  Tests               dotnet test [--filter ...]
+
+Frontend:
+  Dev Server          npm start
+  Production Build    npm run build
+  Tests               npm test
+
+Docker Compose:
+  Infrastructure      docker-up.ps1 / docker compose up
+  Down                docker compose down
+  Reset               docker compose down -v --rmi all
+
+Integration:
+  Mock (38 threads)   dotnet test --filter DicMockServer
+  DB (8 threads)      dotnet test --filter !DicMockServer
+
+================================================================================
+                         QUICK COMMAND LOOKUP
+================================================================================
+
+Need to...                          Press this keybinding
+──────────────────────────────────────────────────────────────────────────────
+Start backend API                   <leader>rbw
+Run database migrations             <leader>rbs
+Build backend                       <leader>rbb
+Run backend unit tests              <leader>rbu
+Start frontend dev server           <leader>rfw
+Build frontend for production       <leader>rfb
+Run frontend tests                  <leader>rft
+Run E2E tests (headless)            <leader>res
+Open E2E tests (interactive)        <leader>reo
+Start Docker infrastructure         <leader>rDi
+Start all Docker services           <leader>rDa
+Stop Docker (keep data)             <leader>rDr
+Reset Docker (delete everything)    <leader>rDR
+Run mock integration tests          <leader>rim
+Run database integration tests      <leader>rid
+Push changes to git                 <leader>rp
+Pull latest changes                 <leader>rP
+Open commit in TFS browser          <leader>rc
+
+================================================================================
+                        CONFIGURATION LOCATION
+================================================================================
+
+Windows Neovim:
+  C:\Users\Administrator\AppData\Local\nvim\init.lua
+
+WSL2 Neovim:
+  ~/.config/nvim/init.lua
+
+Master Repository:
+  C:\Users\Administrator\Documents\Projekt\KickStartNeoVim\init.lua
+
+================================================================================
+                            TROUBLESHOOTING
+================================================================================
+
+Keybindings not appearing?
+  1. Restart Neovim completely
+  2. Check file saved: :edit ~/.config/nvim/init.lua
+  3. Verify changes: :checkhealth
+
+Want to search for specific command?
+  :Telescope keymaps
+  Type the command or part of it (e.g., "dotnet", "docker")
+
+Want to see all keybindings?
+  :map                 " All mappings
+  :map <leader>r       " Just backend/run mappings
+  :map <leader>R       " Just capitalized leader mappings
+
+Customize descriptions?
+  Edit init.lua, find the keybinding, change the { desc = '...' } part
+
+================================================================================
+                              KEYBOARD TIPS
+================================================================================
+
+<leader> key binding:
+  The <leader> key is typically:
+  - Space in this config (set leader = ' ')
+  - Can also be comma (,) or backslash (\) depending on your setup
+
+Examples:
+  <leader>rbw  means: Press Space, then 'r', then 'b', then 'w'
+  <leader>rp   means: Press Space, then 'r', then 'p'
+
+Faster entry:
+  You can type these all at once! No need for pauses between keys.
+  Just type: Space + r + b + w  and it will trigger <leader>rbw
+
+================================================================================
+                           DOCUMENTATION FILES
+================================================================================
+
+Main documentation:
+  KEYBINDING_DESCRIPTIONS_UPDATE.md    Details of all 27 changes
+
+Before/After comparison:
+  BEFORE_AFTER_COMPARISON.md           Shows old vs new descriptions
+
+This reference card:
+  KEYBINDING_REFERENCE_CARD.txt        Quick lookup table
+
+Git history:
+  Commit 4c8cedb                       All changes committed
+
+================================================================================
+Last Updated: February 9, 2026
+Commit: 4c8cedb (feat: Add actual command descriptions to all <leader>r* keybindings)
+Total Keybindings Updated: 27
+Status: READY TO USE
+================================================================================
