@@ -194,78 +194,12 @@ vim.api.nvim_create_autocmd('VimLeave', {
 -- [[ Project Detection ]]
 -- Automatically detect which project we're in based on current working directory
 -- This enables project-specific keybindings and settings
-local cwd = vim.fn.getcwd()
+-- [[ Platform Detection ]]
+-- Plattform-Modul lädt: is_windows, chrome_path, open_url(), path-Utilities
+local platform = require('shared.platform')
+local is_windows = platform.is_windows  -- Kompatibilität: alle bestehenden is_windows-Refs bleiben
 
--- Platform detection helper
-local is_windows = vim.fn.has('win32') == 1
-
--- Helper: Find DCSRE root dynamically (looks for folder containing "Sources")
-local function find_dcsre_root(path)
-  -- Normalize path separators
-  path = path:gsub('\\', '/')
-
-  -- Strategy 1: Extract from path pattern .../DCSRE.../Sources/...
-  local root = path:match('(.*/DCSRE[^/]*)/Sources')
-  if root and vim.fn.isdirectory(root .. '/Sources') == 1 then
-    return root
-  end
-
-  -- Strategy 2: Search upward for Sources folder
-  local check_path = path
-  while check_path and #check_path > 3 do
-    if vim.fn.isdirectory(check_path .. '/Sources') == 1 then
-      return check_path
-    end
-    -- Also check for nested DCSRE folder with Sources (e.g., DCSRE_Azure/DCSRE/Sources)
-    local nested = check_path .. '/DCSRE'
-    if vim.fn.isdirectory(nested .. '/Sources') == 1 then
-      return nested
-    end
-    check_path = check_path:match('(.+)/[^/]+$')
-  end
-  return nil
-end
-
--- Detect project and set paths dynamically
-vim.g.project_name = 'UNKNOWN'
-
-if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:match('cencoco') then
-  -- CENCOCD project
-  vim.g.project_name = 'CENCOCD'
-  vim.g.project_backend = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
-  vim.g.project_frontend = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.Blazor'
-  vim.g.project_webhost = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src/Core/CenCoCo.Core.API'
-  vim.g.project_docker_root = is_windows and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco/src' or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco/src'
-  vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src'
-  vim.g.project_git_base = 'origin/main'
-  vim.g.project_launch_profile = 'https'
-  vim.g.project_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
-  vim.g.project_root_wsl = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco'
-  vim.g.project_tfs_commit_url = nil
-  vim.g.project_pr_url = nil -- TODO: Add CENCOCD Azure DevOps URL wenn vorhanden
-elseif cwd:match('DCSRE') then
-  -- DCSRE project - find root dynamically (works with DCSRE, DCSRE_Azure, worktrees, etc.)
-  local dcsre_root = find_dcsre_root(cwd)
-  if dcsre_root then
-    vim.g.project_name = 'DCSRE'
-    vim.g.project_backend = dcsre_root .. '/Sources/Backend'
-    vim.g.project_backend_windows = dcsre_root:gsub('/', '\\') .. '\\Sources\\Backend'
-    vim.g.project_frontend = dcsre_root .. '/Sources/Frontend'
-    vim.g.project_webhost = dcsre_root .. '/Sources/Backend/VDEK.DCSP.WebHost'
-    vim.g.project_docker_root = dcsre_root .. '/Sources'
-    vim.g.project_docker_root_windows = dcsre_root:gsub('/', '\\') .. '\\Sources'
-    vim.g.project_git_base = 'origin/develop'
-    vim.g.project_launch_profile = 'WebHost'
-    vim.g.project_root_windows = dcsre_root:gsub('/', '\\')
-    vim.g.project_root_wsl = dcsre_root:gsub('C:', '/mnt/c')
-    -- OLD TFS (auskommentiert, falls noch gebraucht):
-    -- vim.g.project_tfs_commit_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/commit/%s'
-    -- vim.g.project_pr_url = 'https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/pullrequest/%s?path=%s'
-    -- NEW Azure DevOps:
-    vim.g.project_tfs_commit_url = 'https://dev.azure.com/ITSGGMBH/AP0071%%20Daten%%20Clearing%%20Stelle%%20Pflege/_git/DCSRE/commit/%s'
-    vim.g.project_pr_url = 'https://dev.azure.com/ITSGGMBH/AP0071%%20Daten%%20Clearing%%20Stelle%%20Pflege/_git/DCSRE/pullrequest/%s?path=%s'
-  end
-end
+require('shared.project').detect()
 
 -- Welcome message showing which project was detected
 vim.api.nvim_create_autocmd('VimEnter', {

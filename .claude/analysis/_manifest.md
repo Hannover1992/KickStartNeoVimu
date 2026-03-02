@@ -60,5 +60,39 @@
 - Quick Win: lua/shared/platform.lua (~30 min Aufwand)
 
 ## Offene Entscheidung für User
-- E1: Dispatcher-Schema: Option A (init_windows.lua + init_linux.lua als echte Entry-Points) vs Option B (ein init.lua alles)
-- SPEC empfiehlt Option A
+- E1: ✅ ENTSCHIEDEN - Variante A (init_windows.lua + init_linux.lua als echte Entry-Points)
+- E2: Bug B-001 wird in project.lua eingebaut (kein separater Commit)
+
+## I-Pipeline State
+- **PHASE:** I_RUNNING
+- **pipeline_mode:** I_RUNNING
+- **start:** 2026-03-02
+- **aktuelle_stufe:** cleanCodeArchitect
+- **rag_collection:** i_knowledge_kickstart_neovim
+- **rag_init:** 2026-03-02
+- **w_fetch:** SKIP (keine Collection vor Pipeline-Start)
+- **entity_readiness:** CLEAR (init.lua vorhanden, Refactoring-Projekt)
+- **handoff_consumed:** false (kein SC-Vorzyklus)
+- **WORKTREE_PATH:** C:/Users/Administrator/Documents/Projekt/KickStartNeoVim
+- **slices:** S1_TestInfra | S2_Platform | S3_Project | S4_Core | S5_Keybindings | S6_Dispatcher
+- **wellen:** 3 (W1: S1+S2+S3 | W2: S4+S5 | W3: S6)
+- **stufen_status:**
+  - cleanCodeArchitect: done
+  - Welle1_S1_TestInfra: DONE (lua/spec/ - 3 Spec-Dateien)
+  - Welle1_S2_Platform: DONE (lua/shared/platform.lua - 50 LOC)
+  - Welle1_S3_Project: DONE (lua/shared/project.lua + Bug B-001 Fix)
+  - Welle2_S4_Core: pending
+  - Welle2_S5_Keybindings: pending
+  - Welle3_S6_Dispatcher: pending
+- **hil_W1:** PENDING_USER_TEST
+  - codeAtomic: pending
+  - codeIntegration: pending
+  - codeSystem: pending
+  - verify: pending
+  - fanIn: pending
+- **resume_zaehler:** {}
+- **worktrees:** {}
+- **hil:**
+  - test_suite: PENDING
+  - commits: PENDING
+- **query_guard_warnings:** 0
