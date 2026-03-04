@@ -64,7 +64,7 @@
 - E2: Bug B-001 wird in project.lua eingebaut (kein separater Commit)
 
 ## I-Pipeline State
-- **PHASE:** I_RUNNING
+- **PHASE:** DONE
 - **pipeline_mode:** I_RUNNING
 - **start:** 2026-03-02
 - **aktuelle_stufe:** PIPELINE_COMPLETE

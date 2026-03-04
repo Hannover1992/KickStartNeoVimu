@@ -1,10 +1,20 @@
 ---
-version: 1.0
+version: 2.0
 project: KickStartNeoVim
 date: 2026-03-02
-last_sync_command: /_model
+last_sync_command: /_SC_modelMaintain
 last_sync_commit: 523bbcc2cc316dbb24308a37b7b7353306095584
 status: final
+w-open: 8
+w-confirmed: 0
+tags:
+  - type/model
+  - op/KickStartNeoVim
+  - topic/neovim-modularisierung
+sync:
+  last_sync_commit: "fe6bfabcecf719184c1eaf0dc78b19b2ecbd887b"
+  last_sync_date: "2026-03-04"
+  sync_source: "out-of-cycle"
 ---
 
 # KickStartNeoVim Architektur-Model
@@ -501,48 +511,47 @@ mkdir -p lua/spec
 
 ---
 
-## Kap. 6: Offene Fragen
+## Kap. 6: Offene Fragen ~~AUFGELÖST~~
 
-### 6.1 Klärungsbedarf mit User
+> **Status (2026-03-04):** Alle offenen Fragen durch I-Pipeline abgeschlossen. Zur Referenz behalten.
 
-**F1: Ein init.lua oder init_windows.lua + init_linux.lua?**
+### 6.1 ~~Klärungsbedarf mit User~~ → BEANTWORTET
 
-Task.md spezifiziert `init_windows.lua` + `init_linux.lua` als Entry-Points.
-Das aktuelle `init.lua` läuft aber bereits auf BEIDEN Plattformen (Windows-Neovim UND WSL2-Neovim).
-**Frage**: Ist das Ziel zwei separate Entry-Points (`init_windows.lua` / `init_linux.lua`) oder ein einziger Dispatcher?
+**F1:** ✅ **Variante A gewählt** — `lua/init_windows.lua` + `lua/init_linux.lua` als echte Entry-Points. `init.lua` ist ~40-Zeilen Platform-Dispatcher. Beide Files haben `assert()` für falsche Plattform.
 
-Pro separate Entry-Points: Klarere Platform-Trennung, kein Runtime-Branching
-Pro einziger Dispatcher: Weniger Dateien, bereits getestete Plattformunabhängigkeit
+**F2:** ✅ **Nicht relevant** — `old_settings/init_windows.lua` existiert nicht im Repo. Neue `lua/init_windows.lua` ohne Konfusion erstellt.
 
-**F2: Was soll mit dem `old_settings/init_windows.lua` passieren?**
+**F3:** ✅ **Schrittweise Migration** — 3 Wellen (W1: platform+project+tests | W2: core+keybindings | W3: dispatcher). Alle Schritte einzeln smoke-getestet.
 
-CLAUDE.md sagt explizit: veraltet, nicht mehr nutzen. Die neue `init_windows.lua` wäre eine NEUE Datei.
-**Frage**: Soll die alte Datei gelöscht werden um Verwirrung zu vermeiden?
+### 6.2 ~~Technische Unklarheiten~~ → GELÖST
 
-**F3: Schrittweise Migration oder Big Bang?**
+**U1:** ✅ Deployment per `Copy-Item -Recurse -Force 'lua\*' nvim\lua\` — `lua/` mit `\*` (Contents, nicht Directory). Ohne `\*` entsteht nested `lua/lua/` Bug (→ W6).
 
-Da der User Windows-Neovim und WSL2-Neovim parallel nutzt, muss jeder Schritt funktional bleiben.
-**Empfehlung**: Schrittweise (Schritt 1–7 wie oben), nie beide Neovim-Instanzen gleichzeitig broken.
+**U2:** ✅ `core.lua` beginnt mit `rtp:prepend(lazypath)` vor `require('lazy').setup({...})`.
 
-### 6.2 Technische Unklarheiten
-
-**U1: init.lua runtime Pfad**
-
-`require('shared.platform')` setzt voraus, dass Neovims `runtimepath` `lua/` im Projekt-Verzeichnis enthält. Das ist bei kickstart.nvim standard (da init.lua in `~/.config/nvim/` liegt und Neovim automatisch `~/.config/nvim/lua/` im runtimepath hat). **Aber**: Das Repo liegt in `KickStartNeoVim/`, nicht direkt in `~/.config/nvim/`. Es wird per Copy deployed. Sicherstellung nötig, dass `lua/shared/` mitgecopy-wird.
-
-**U2: Bootstrapping-Problem bei Lazy.setup**
-
-Wenn `core.lua` via `require()` geladen wird, muss der Lazy-Bootstrap-Code dort `package.path` korrekt setzen. Die aktuelle init.lua setzt `rtp:prepend(lazypath)` [Zeile 447]. Diese Zeile muss in `core.lua` vorhanden sein, bevor `require('lazy').setup()` aufgerufen wird. Reihenfolge in `core.lua`:
-1. `rtp:prepend(lazypath)`
-2. `require('lazy').setup({...})`
-
-**U3: Inline `is_windows` in Lazy-Plugin-Specs**
-
-Innerhalb von `require('lazy').setup({...})` werden Plugin-Specs als Lua-Tabellen definiert. Felder wie `opts = function() ... end` werden lazy evaluiert. Die `is_windows`-Variable muss in `core.lua` als lokale Variable definiert sein: `local is_windows = require('shared.platform').is_windows` — vor dem `lazy.setup()`-Aufruf.
+**U3:** ✅ `core.lua` Zeile 1: `local is_windows = require('shared.platform').is_windows` — verfügbar für alle lazy.setup() Closures.
 
 ---
 
-## Kap. 6a: Analyse-Qualität
+## Kap. 6a: Offene Bereiche & Aktive Technologie-Concerns
+
+### Offene Bereiche
+1. **Keybinding-Erweiterungen** — Laufend (rbP, ]d/[d, gc, rDp, rbp hinzugefügt 2026-03-04)
+2. **WSL2 Deployment** — init.lua + lua/* noch nicht nach `~/.config/nvim/` deployed (nur Windows)
+3. **Debloat Model.md** — 588+ Zeilen, SOFT-Trigger noch offen (parking-lot)
+4. **CENCOCD rbp** — `project_backend_windows` für CENCOCD nicht konfiguriert → rbp schlägt fehl
+
+### Aktive Technologie-Concerns (TC)
+| TC | W{n} Anzahl | Status | Priorität |
+|----|-------------|--------|-----------|
+| Modular-Architecture | W1–W5 | ABGESCHLOSSEN | — |
+| Deployment | W6 | BEOBACHTET | NIEDRIG |
+| Keybinding-Expansion | W7–W8 | AKTIV/LAUFEND | MITTEL |
+
+**Fokus-TC:** Keybinding-Expansion (neue Picker-Features)
+**Nächster TC:** WSL2-Deployment (wenn benötigt)
+
+## Kap. 6b: Analyse-Qualität (ehemals 6a)
 
 ### Direkt verifiziert (Primärquellen)
 
@@ -586,3 +595,201 @@ Innerhalb von `require('lazy').setup({...})` werden Plugin-Specs als Lua-Tabelle
 | "Stille-Post"-Warnung über `platform.is_windows` keine zentrale Injection | D01 | Niedrig (technisch korrekt) |
 | 25 busted Test-Cases für find_dcsre_root | D02 | Medium (Zahl ist Schätzung) |
 | Schritt 2↔3 tauschen (core VOR project) | D03 | Niedrig (technisch korrekt, aber Reihenfolge unkritisch) |
+
+---
+
+## Kap. 7: Wahrheiten (W{n}) — Out-of-Cycle 2026-03-04
+
+> Hinzugefügt via /_SC_modelMaintain --out-of-cycle (523bbcc → fe6bfab)
+
+### W1: I-Pipeline vollständig abgeschlossen (S1–S6)
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Modular-Architecture
+**Quelle:** git diff 523bbcc..fe6bfab — commits 55b8c83 + e6796c8 + fe6bfab
+
+Alle 6 I-Pipeline Slices (S1_TestInfra, S2_Platform, S3_Project, S4_Core, S5_Keybindings, S6_Dispatcher) wurden erfolgreich implementiert und committed. Die SOLL-Architektur aus Kap. 3 ist nun die REALITÄT.
+
+**Details:**
+- Commit 55b8c83: Welle 1 (platform.lua 50 LOC, project.lua 93 LOC, lua/spec/ 3 Dateien)
+- Commit e6796c8: Welle 2+3 (core.lua 2883 LOC, 6 Keybinding-Module, init_windows/linux.lua)
+- Commit fe6bfab: Neue Picker-Features (rDp, rbp, rbP, ]d/[d, gc fix)
+
+**Widerlegbar durch:** Regression auf monolithische init.lua (unwahrscheinlich)
+
+**Mermaid-Ziel:** keins
+
+---
+
+### W2: Variante A implementiert — Platform-Dispatcher mit echten Entry-Points
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Modular-Architecture
+**Quelle:** lua/init_windows.lua + lua/init_linux.lua + init.lua (Dispatcher)
+
+`init.lua` ist ein ~40-Zeilen Platform-Dispatcher (`if vim.fn.has('win32') == 1`). Beide Entry-Points haben `assert()` zur Plattformprüfung. Die Lade-Reihenfolge ist KRITISCH: platform → project.detect() → core → keybindings/*.
+
+**Details:**
+```lua
+-- init.lua (Dispatcher)
+if vim.fn.has('win32') == 1 then
+  require('init_windows')
+else
+  require('init_linux')
+end
+```
+
+**Widerlegbar durch:** Umstieg auf einzigen Dispatcher ohne separate Entry-Points
+
+**Mermaid-Ziel:** NEU — flowchart: Modul-Dependency-Graph (Lade-Reihenfolge)
+
+```mermaid
+%% Basiert auf: W2, W4 (letzte Änderung: out-of-cycle 2026-03-04)
+%% W2: Platform-Dispatcher + Entry-Points
+%% W4: 6 Keybinding-Module
+flowchart TD
+    A["init.lua\n(~40 LOC Dispatcher)"]
+    A -->|win32| B["lua/init_windows.lua"]
+    A -->|unix| C["lua/init_linux.lua"]
+    B & C --> D["shared/platform.lua\n(is_windows, chrome_path)"]
+    B & C --> E["shared/project.lua\n(detect(), vim.g.project_*)"]
+    E --> F["shared/core.lua\n(vim.opt, lazy, plugins)"]
+    F --> G1["keybindings/backend.lua"]
+    F --> G2["keybindings/frontend.lua"]
+    F --> G3["keybindings/docker.lua"]
+    F --> G4["keybindings/tests.lua"]
+    F --> G5["keybindings/git.lua"]
+    F --> G6["keybindings/clipboard.lua"]
+```
+
+---
+
+### W3: init.lua von 4541 → ~40 LOC reduziert
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Modular-Architecture
+**Quelle:** wc -l init.lua nach Refactoring
+
+Die monolithische init.lua (4541 Zeilen) wurde auf einen ~40-Zeilen Platform-Dispatcher reduziert. Der gesamte Code lebt jetzt in `lua/shared/` und `lua/init_windows/linux.lua`.
+
+**Widerlegbar durch:** Messung zeigt >100 LOC in init.lua
+
+**Mermaid-Ziel:** keins
+
+---
+
+### W4: 6 Keybinding-Module mit verifizierter LOC-Verteilung
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Modular-Architecture
+**Quelle:** wc -l lua/shared/keybindings/*.lua
+
+| Modul | LOC | Keybindings |
+|-------|-----|-------------|
+| backend.lua | 236 | rbw, rbs, rbp, rbP, rbb, rbt, rbu |
+| frontend.lua | 67 | rfw, rfb, rft, rfi |
+| docker.lua | 197 | rDi, rDa, rDr, rDR, rDp, rdf, rdB, rdb, rdF |
+| tests.lua | 618 | rim, rid, riC, riF, rif, ris, rii, E2E |
+| git.lua | 191 | rc, rC, rp, rP, rS, rsc, qd, qD, ypw |
+| clipboard.lua | 355 | yp, yn, yd, gyf, gyd, yDA, yW, yWA, yC, yI |
+
+**Widerlegbar durch:** Modul-Split oder Merge ändert Anzahl
+
+**Mermaid-Ziel:** Kap. 7 — W2 Mermaid bereits integriert (G1-G6 Knoten)
+
+---
+
+### W5: 22/22 Plenary-Tests grün (Smoke + Platform + Project)
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Modular-Architecture
+**Quelle:** nvim --headless PlenaryBustedDirectory lua/spec/
+
+Alle drei Test-Suiten bestehen nach Refactoring:
+- `platform_spec.lua`: 9/9 ✅
+- `project_spec.lua`: 10/10 ✅
+- `smoke_spec.lua`: 3/3 ✅
+
+**Widerlegbar durch:** Test-Run zeigt Failure nach Code-Änderung
+
+**Mermaid-Ziel:** keins
+
+---
+
+### W6: Deployment-Bug B-002 — Copy-Item ohne \* erstellt nested lua/lua/
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Deployment
+**Quelle:** Bug entdeckt nach S6_Dispatcher Deployment
+
+`Copy-Item -Recurse 'lua' 'dest\lua'` erstellt `dest\lua\lua\` (nested) wenn `dest\lua\` bereits existiert. Fix: `Copy-Item -Recurse 'lua\*' 'dest\lua\'` — kopiert INHALTE, nicht das Verzeichnis selbst.
+
+**Details:**
+```powershell
+# FALSCH (nested lua/lua/):
+Copy-Item -Recurse -Force 'lua' "$env:LOCALAPPDATA\nvim\lua\"
+# RICHTIG (flat lua/):
+Copy-Item -Recurse -Force 'lua\*' "$env:LOCALAPPDATA\nvim\lua\"
+```
+
+**Widerlegbar durch:** PowerShell-Version ändert Verhalten (unwahrscheinlich)
+
+**Mermaid-Ziel:** keins
+
+---
+
+### W7: Dynamisches Picker-Pattern — Konfiguration aus Projektdateien lesen
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Keybinding-Expansion
+**Quelle:** lua/shared/keybindings/docker.lua (rDp) + backend.lua (rbp, rbP)
+
+Neues Pattern: Keybinding liest zur Laufzeit eine Projektdatei aus, extrahiert Optionen und öffnet `vim.ui.select()` Picker. Zwei Implementierungen:
+- `<leader>rDp`: Liest `docker-compose.yml` → extrahiert `profiles:` Blöcke → Docker-Profile-Picker
+- `<leader>rbp/rbP`: Liest `.sln` → parst `Project("{GUID}") = "Name", "Path.csproj"` → Build-Picker
+
+**Details — .sln Parser Pattern (W7-Befund: %b{} war falsch!):**
+```lua
+-- FALSCH (matched nicht wegen '(' vor '{'):
+line:match('^Project%b{} = "([^"]+)", "([^"]+%.csproj)"')
+-- RICHTIG:
+line:match('^Project%("[^"]*"%)%s*=%s*"([^"]+)",%s*"([^"]+%.csproj)"')
+```
+
+**Widerlegbar durch:** Dateiformat ändert sich (neue docker-compose.yml Syntax)
+
+**Mermaid-Ziel:** NEU — sequenceDiagram: Picker-Flow
+
+```mermaid
+%% Basiert auf: W7 (letzte Änderung: out-of-cycle 2026-03-04)
+%% W7: Dynamisches Picker-Pattern aus Projektdateien
+sequenceDiagram
+    participant U as User
+    participant N as Neovim
+    participant F as Projektdatei
+    participant T as Terminal
+    U->>N: <leader>rDp / <leader>rbp
+    N->>F: io.open(docker-compose.yml / .sln)
+    F-->>N: Dateiinhalt
+    N->>N: Profiles / Projekte parsen
+    N->>U: vim.ui.select() Picker
+    U->>N: Auswahl bestätigen
+    N->>T: PowerShell Command starten
+```
+
+---
+
+### W8: Neue Keybindings — ]d/[d Super Hunk + gc Fix + rbP Clean Build
+**Zyklus:** out-of-cycle
+**Status:** AKTIV
+**Kategorie:** Keybinding-Expansion
+**Quelle:** Commit fe6bfab
+
+Drei nachträgliche Keybinding-Ergänzungen:
+1. `]d`/`[d` Super Hunk: Fehlten komplett. Navigiert cross-file (nächste geänderte Datei wenn kein Hunk mehr im aktuellen File). Implementiert in gitsigns-Konfigurationsblock in core.lua.
+2. `<leader>gc` Fix: `<cmd>Neogit commit kind=commit<cr>` → `<cmd>Neogit commit<cr>` (kind=commit war ungültiges Syntax).
+3. `<leader>rbP` (capital P): Clean Build via Picker — `dotnet clean` + `dotnet build --verbosity detailed`. Nutzt `pick_backend_project()` Helper (DRY mit rbp).
+
+**Widerlegbar durch:** Weitere Änderungen an diesen Keybindings
+
+**Mermaid-Ziel:** keins
