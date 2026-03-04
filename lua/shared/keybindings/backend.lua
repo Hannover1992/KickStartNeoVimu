@@ -77,6 +77,69 @@ vim.keymap.set('n', '<leader>rbs', function()
   vim.notify('[DCSRE] Running Backend Setup (Migrations)...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [S]etup | dotnet run --project VDEK.DCSP.Setup' })
 
+-- Backend Project Picker: Projekte aus .sln auslesen, ein Projekt bauen (analog rDp)
+vim.keymap.set('n', '<leader>rbp', function()
+  local backend_win = vim.g.project_backend_windows
+  if not backend_win then
+    vim.notify('project_backend_windows nicht konfiguriert', vim.log.levels.ERROR)
+    return
+  end
+
+  -- .sln Datei finden (Windows-Pfad für io.open)
+  local sln_files = vim.fn.glob(backend_win .. '\\*.sln', false, true)
+  if #sln_files == 0 then
+    vim.notify('Keine .sln Datei in: ' .. backend_win, vim.log.levels.ERROR)
+    return
+  end
+
+  local sln_path = sln_files[1]
+  local file = io.open(sln_path, 'r')
+  if not file then
+    vim.notify('.sln nicht lesbar: ' .. sln_path, vim.log.levels.ERROR)
+    return
+  end
+
+  -- Projekte parsen: Project("{GUID}") = "Name", "Path\Name.csproj", "{GUID}"
+  local projects = {}
+  for line in file:lines() do
+    local name, rel_path = line:match('^Project%("[^"]*"%)%s*=%s*"([^"]+)",%s*"([^"]+%.csproj)"')
+    if name and rel_path then
+      table.insert(projects, { name = name, path = rel_path })
+    end
+  end
+  file:close()
+  table.sort(projects, function(a, b) return a.name < b.name end)
+
+  if #projects == 0 then
+    vim.notify('Keine .csproj Projekte in .sln gefunden', vim.log.levels.ERROR)
+    return
+  end
+
+  local display = vim.tbl_map(function(p) return p.name end, projects)
+
+  vim.ui.select(display, {
+    prompt = 'Backend Projekt builden:',
+    format_item = function(item) return item end,
+  }, function(choice)
+    if not choice then return end
+    local rel_path
+    for _, p in ipairs(projects) do
+      if p.name == choice then rel_path = p.path; break end
+    end
+    if not rel_path then return end
+
+    local Terminal = require('toggleterm.terminal').Terminal
+    local cmd = 'powershell.exe -Command "Set-Location \'' .. backend_win .. '\'; dotnet build \'' .. rel_path .. '\'"'
+    local build = Terminal:new({
+      cmd = cmd,
+      direction = 'horizontal',
+      close_on_exit = false,
+    })
+    build:toggle()
+    vim.notify('[' .. vim.g.project_name .. '] Building: ' .. choice, vim.log.levels.INFO)
+  end)
+end, { desc = '[R]un [B]ackend [P]roject | Picker (dynamisch aus .sln)' })
+
 -- Run Backend Build: Compile the backend solution
 vim.keymap.set('n', '<leader>rbb', function()
   local Terminal = require('toggleterm.terminal').Terminal

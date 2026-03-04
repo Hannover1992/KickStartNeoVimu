@@ -121,6 +121,68 @@ vim.keymap.set('n', '<leader>rdb', function()
   vim.notify('[' .. vim.g.project_name .. '] Building Backend (docker)...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [B]ackend build | docker compose build backend' })
 
+-- Docker Profile Picker: Liest Profile dynamisch aus docker-compose.yml (DCSRE only)
+vim.keymap.set('n', '<leader>rDp', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Docker Profile picker nur für DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  -- docker-compose.yml dynamisch lesen
+  local compose_path = vim.g.project_docker_root_windows .. '\\docker-compose.yml'
+  local file = io.open(compose_path, 'r')
+  if not file then
+    vim.notify('docker-compose.yml nicht gefunden: ' .. compose_path, vim.log.levels.ERROR)
+    return
+  end
+
+  local profiles = {}
+  local seen = {}
+  local in_profiles_block = false
+  for line in file:lines() do
+    if line:match('%s*profiles%s*:') then
+      in_profiles_block = true
+    elseif in_profiles_block then
+      local profile = line:match('%s*%-%s*(.-)%s*$')
+      if profile and profile ~= '' then
+        if not seen[profile] then
+          seen[profile] = true
+          table.insert(profiles, profile)
+        end
+      else
+        in_profiles_block = false
+      end
+    end
+  end
+  file:close()
+  table.sort(profiles)
+
+  if #profiles == 0 then
+    vim.notify('Keine Profile in docker-compose.yml gefunden', vim.log.levels.ERROR)
+    return
+  end
+
+  vim.ui.select(profiles, {
+    prompt = 'Docker Profile wählen:',
+    format_item = function(item) return item end,
+  }, function(choice)
+    if not choice then return end
+    local Terminal = require('toggleterm.terminal').Terminal
+    local cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "'
+      .. 'Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; '
+      .. '.\\docker-up.ps1 -EnvFile \\"./.env.noproxy\\" -Profile ' .. choice .. ' -SkipTests; '
+      .. 'if ($?) { notify \'Docker ' .. choice .. ' erfolgreich\' } else { notify \'Docker ' .. choice .. ' fehlgeschlagen\' }"'
+    local docker = Terminal:new({
+      cmd = cmd,
+      direction = 'horizontal',
+      close_on_exit = false,
+      count = 22,
+    })
+    docker:toggle()
+    vim.notify('[DCSRE] Docker Profile: ' .. choice, vim.log.levels.INFO)
+  end)
+end, { desc = '[R]un [D]ocker [P]rofile | Picker (dynamisch aus docker-compose.yml)' })
+
 -- Docker Up Backend (for projects using docker)
 vim.keymap.set('n', '<leader>rdB', function()
   local Terminal = require('toggleterm.terminal').Terminal
