@@ -41,28 +41,45 @@ Claude: *committed* ✅ RICHTIG!
 - ✅ `powershell.exe -Command "..."` (richtig)
 - ❌ `bash -c "..."` (falsch - nur wenn explizit WSL2 gefordert)
 
-**Config-Dateien kopieren:**
+**Config-Dateien kopieren (modulare Architektur — lua\* nicht lua!):**
 ```powershell
 # Windows Neovim (PowerShell/CMD):
+Copy-Item -Recurse -Force 'C:\Users\Administrator\Documents\Projekt\KickStartNeoVim\lua\*' 'C:\Users\Administrator\AppData\Local\nvim\lua\'
 Copy-Item -Force 'C:\Users\Administrator\Documents\Projekt\KickStartNeoVim\init.lua' 'C:\Users\Administrator\AppData\Local\nvim\init.lua'
 
 # WSL2 Neovim (via wsl.exe):
-wsl.exe bash -c "cp /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua ~/.config/nvim/init.lua"
+wsl.exe bash -c "cp -r /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/lua/. ~/.config/nvim/lua/ && cp /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim/init.lua ~/.config/nvim/init.lua"
 ```
 
 **Config-Pfade:**
-- Windows Neovim: `C:\Users\Administrator\AppData\Local\nvim\init.lua`
-- WSL2 Neovim: `/home/uczen/.config/nvim/init.lua`
+- Windows Neovim: `C:\Users\Administrator\AppData\Local\nvim\init.lua` (Dispatcher → `lua\init_windows.lua`)
+- WSL2 Neovim: `~/.config/nvim/init.lua` (Dispatcher → `lua/init_linux.lua`)
 
-**Wichtig:** Beide nutzen jetzt die **gleiche** `init.lua` (keine separate `init_windows.lua` mehr!)
+**Wichtig:** `init.lua` ist jetzt ein ~40-Zeilen Platform-Dispatcher. Die eigentliche Konfiguration liegt in `lua/`.
 
-### 3. NUR EINE CONFIG: init.lua
+### 3. MODULARE ARCHITEKTUR (Stand: 2026-03-02)
 
-**Status:** `init_windows.lua` ist **veraltet** und liegt in `old_settings/`
+**Neue Dateistruktur:**
+```
+init.lua                        ← 40-Zeilen Platform-Dispatcher
+lua/
+├── init_windows.lua            ← Windows Native Entry-Point
+├── init_linux.lua              ← Linux/WSL2 Entry-Point
+└── shared/
+    ├── platform.lua            ← is_windows, Chrome-Pfade, open_url()
+    ├── project.lua             ← DCSRE/CENCOCD Detection, vim.g.project_*
+    ├── core.lua                ← vim.opt, Autocmds, Lazy-Bootstrap, Plugins
+    └── keybindings/
+        ├── backend.lua         ← rbw, rbs, rbb, rbt, rbu
+        ├── frontend.lua        ← rfw, rfb, rft, rfi
+        ├── docker.lua          ← rDi, rDa, rDI
+        ├── tests.lua           ← rim, rid, E2E, Integration Tests
+        ├── git.lua             ← rp, rP, rc, git helper
+        └── clipboard.lua       ← yp, yn, gyf, gyd, yd, yW
+```
 
-**Aktuell:**
-- ✅ `init.lua` - Wird von **beiden** verwendet (Windows + WSL2)
-- ❌ `init_windows.lua` - **NICHT MEHR NUTZEN** (in old_settings/)
+**Lade-Reihenfolge (KRITISCH):**
+`platform.lua` → `project.detect()` → `core.lua` → `keybindings/*`
 
 ---
 
@@ -807,27 +824,31 @@ These commands run in WSL2/Bash for frontend development:
 
 ---
 
-### Dual Configuration (WSL2 vs Windows)
+### Platform-Dispatcher Architecture (Stand: 2026-03-02)
 
-This repository contains **two separate init.lua configurations**:
+`init.lua` ist ein **Platform-Dispatcher** der automatisch zum richtigen Entry-Point verzweigt:
 
-1. **`init.lua`** (WSL2/Linux - Primary)
-   - Location: `~/.config/nvim/init.lua`
-   - Uses WSL2 paths: `/mnt/c/Users/...`
-   - Git operations via PowerShell (VPN requirement)
-   - Backend operations via Bash (normal dev workflow)
+```lua
+if vim.fn.has('win32') == 1 then
+  require('init_windows')   -- lua/init_windows.lua
+else
+  require('init_linux')     -- lua/init_linux.lua
+end
+```
 
-2. **`init_windows.lua`** (Windows Native)
-   - Location: `%LOCALAPPDATA%\nvim\init.lua` → `C:\Users\Administrator\AppData\Local\nvim\init.lua`
-   - Uses Windows paths: `C:\Users\...`
-   - All operations via PowerShell
-   - For use when running Neovim natively in Windows PowerShell/CMD
-
-**To use Windows version:**
+**Deployment (Windows Neovim):**
 ```powershell
-# Windows PowerShell
+# WICHTIG: lua\* (mit Stern!) — kopiert Inhalt, nicht das Verzeichnis selbst
 cd C:\Users\Administrator\Documents\Projekt\KickStartNeoVim
-Copy-Item init_windows.lua $env:LOCALAPPDATA\nvim\init.lua
+Copy-Item -Recurse -Force 'lua\*' "$env:LOCALAPPDATA\nvim\lua\"
+Copy-Item -Force 'init.lua' "$env:LOCALAPPDATA\nvim\init.lua"
+```
+
+**Deployment (WSL2 Neovim):**
+```bash
+cd /mnt/c/Users/Administrator/Documents/Projekt/KickStartNeoVim
+cp -r lua/. ~/.config/nvim/lua/
+cp init.lua ~/.config/nvim/init.lua
 ```
 
 **Check config path in Neovim:**
@@ -835,7 +856,7 @@ Copy-Item init_windows.lua $env:LOCALAPPDATA\nvim\init.lua
 :echo stdpath('config')
 ```
 
-**Why two configs?** Cross-filesystem operations between WSL2 and Windows can cause path resolution issues. Separate configs ensure reliable operation in each environment.
+**Why modular?** Testbar (plenary busted), DRY (kein doppelter Code), platform-sauber (Bug B-001 gefixt).
 
 ---
 
