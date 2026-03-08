@@ -15,6 +15,11 @@ local is_windows = platform.is_windows  -- Kompatibilität: keybindings nutzen i
 -- 2. Project: vim.g.project_* Globals setzen (DCSRE / CENCOCD / UNKNOWN)
 require('shared.project').detect()
 
+-- 2b. Claude-Sync: Projekt-spezifisches .claude aus AgentsArchive → Projekt-Root
+--     Routing: DCSRE → .claude_DCSRE | CENCOCD → .claude_CenCoCo
+--     Läuft non-blocking im Hintergrund (robocopy /E /XO)
+vim.defer_fn(function() require('shared.claude_sync').sync() end, 300)
+
 -- 3. Core: vim.g.mapleader, vim.opt, Autocmds, Lazy-Bootstrap, alle Plugins
 -- MUSS nach project.detect() laufen (core.lua nutzt vim.g.project_* intern)
 require('shared.core')

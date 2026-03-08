@@ -379,8 +379,8 @@ vim.keymap.set('n', '<leader>riC', function()
       .. "docker container prune -f; "
       .. "docker volume prune -f; "
       .. "docker builder prune -f; "
-      .. "Write-Host '=== Remove testdatabase_* images ===' -ForegroundColor Cyan; "
-      .. "docker images 'testdatabase_*' -q | ForEach-Object { docker rmi -f $_ }; "
+      .. "Write-Host '=== Remove ALL Docker images ===' -ForegroundColor Cyan; "
+      .. "docker images -q | ForEach-Object { docker rmi -f $_ }; "
       .. "Write-Host '=== Rebuild IntegrationTests ===' -ForegroundColor Cyan; "
       .. "dotnet build '" .. test_proj .. "'; "
       .. "Write-Host '=== Clean complete ===' -ForegroundColor Green\"",

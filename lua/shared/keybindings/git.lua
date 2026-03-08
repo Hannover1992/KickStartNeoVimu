@@ -189,3 +189,8 @@ vim.keymap.set('n', '<leader>rsc', function()
   setup:toggle()
   vim.notify('.claude/ Setup gestartet → ' .. win_path, vim.log.levels.INFO)
 end, { desc = '[R]un [S]cript [C]laude | new-research-project.ps1' })
+
+-- Claude Archive Sync: AgentsArchive\.claude_DCSRE/.claude_CenCoCo → Projekt-Root\.claude
+vim.keymap.set('n', '<leader>rca', function()
+  require('shared.claude_sync').sync_with_notify()
+end, { desc = '[R]un [C]laude [A]rchive sync | AgentsArchive→Projekt .claude (DCSRE/CenCoCo)' })
