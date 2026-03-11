@@ -255,6 +255,40 @@ local function parse_trx_results()
   return results
 end
 
+-- Cache: class_name → file size in KB (avoid repeated disk lookups)
+local _file_size_cache = {}
+
+-- Extrahiert Klassenname aus fully-qualified test name und gibt Dateigröße in KB zurück
+-- z.B. "VDEK.DCSP.IntegrationTests.Foo.BarTest.Method" → "BarTest" → 14 KB
+local function get_test_file_kb(test_name, test_dir)
+  -- Klassenname = vorletztes Segment des FQN
+  local segments = {}
+  for seg in test_name:gmatch('[^.]+') do
+    table.insert(segments, seg)
+  end
+  local class_name = #segments >= 2 and segments[#segments - 1] or segments[#segments]
+  if not class_name then return nil end
+
+  if _file_size_cache[class_name] ~= nil then
+    return _file_size_cache[class_name]
+  end
+
+  local matches = vim.fn.globpath(test_dir, '**\\' .. class_name .. '.cs', false, true)
+  -- Filtere obj/ Ordner raus
+  local file
+  for _, m in ipairs(matches) do
+    if not m:match('\\obj\\') then file = m; break end
+  end
+
+  local kb = nil
+  if file then
+    local size = vim.fn.getfsize(file)
+    if size > 0 then kb = math.ceil(size / 1024) end
+  end
+  _file_size_cache[class_name] = kb
+  return kb
+end
+
 -- Telescope picker for test results (shared by rif and ris)
 local function telescope_test_picker(title, test_list)
   local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
@@ -263,6 +297,17 @@ local function telescope_test_picker(title, test_list)
   local conf = require('telescope.config').values
   local actions = require('telescope.actions')
   local action_state = require('telescope.actions.state')
+  local entry_display = require('telescope.pickers.entry_display')
+
+  -- Spalten: [icon 2] [testname flex] [KB 7 right]
+  local displayer = entry_display.create({
+    separator = ' ',
+    items = {
+      { width = 2 },
+      { remaining = true },
+      { width = 7, right_justify = true },
+    },
+  })
 
   pickers
     .new({}, {
@@ -271,9 +316,13 @@ local function telescope_test_picker(title, test_list)
         results = test_list,
         entry_maker = function(entry)
           local icon = entry.outcome == 'Passed' and 'V ' or entry.outcome == 'Failed' and 'X ' or '- '
+          local kb = get_test_file_kb(entry.name, test_dir)
+          local kb_str = kb and (kb .. ' KB') or '?'
           return {
             value = entry.name,
-            display = icon .. entry.name,
+            display = function()
+              return displayer({ icon, entry.name, kb_str })
+            end,
             ordinal = entry.name,
           }
         end,
@@ -378,9 +427,10 @@ vim.keymap.set('n', '<leader>riC', function()
       .. "Write-Host '=== Docker Cleanup ===' -ForegroundColor Cyan; "
       .. "docker container prune -f; "
       .. "docker volume prune -f; "
-      .. "docker builder prune -f; "
       .. "Write-Host '=== Remove ALL Docker images ===' -ForegroundColor Cyan; "
       .. "docker images -q | ForEach-Object { docker rmi -f $_ }; "
+      .. "Write-Host '=== Clear ALL build cache ===' -ForegroundColor Cyan; "
+      .. "docker builder prune -f --all; "
       .. "Write-Host '=== Rebuild IntegrationTests ===' -ForegroundColor Cyan; "
       .. "dotnet build '" .. test_proj .. "'; "
       .. "Write-Host '=== Clean complete ===' -ForegroundColor Green\"",
