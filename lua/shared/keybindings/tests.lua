@@ -414,6 +414,105 @@ vim.keymap.set('n', '<leader>rid', function()
   end
 end, { desc = '[R]un [I]ntegration [D]ocker | DCSRE: DB tests + TRX | CENCOCD: Stufe 3 IsolatedDocker' })
 
+-- <leader>riR - Run Integration Retry (bis zu N Runden, nur noch-fehlgeschlagene)
+-- Flaky-Test-Filter: nach 3 Runden bleiben nur wirklich kaputte Tests übrig
+vim.keymap.set('n', '<leader>riR', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Retry only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  local temp = os.getenv('TEMP') or os.getenv('TMP') or 'C:\\Users\\Administrator\\AppData\\Local\\Temp'
+  if vim.fn.filereadable(temp .. '\\it-latest.trx') == 0 then
+    vim.notify('Kein TRX gefunden. Zuerst <leader>rim oder <leader>rid ausführen!', vim.log.levels.WARN)
+    return
+  end
+
+  vim.ui.input({ prompt = 'Max Runden (default 3): ' }, function(rounds_input)
+    if rounds_input == nil then return end
+    local max_rounds = tonumber(rounds_input) or 3
+
+    -- Threads NICHT ändern — läuft mit der aktuell gesetzten Zahl aus xunit.runner.json
+    local test_dir   = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+      local script_path = temp .. '\\run-it-retry.ps1'
+      local trx_path    = temp .. '\\it-latest.trx'
+
+      local script = string.format([[
+$ErrorActionPreference = "Continue"
+$trx       = "%s"
+$testDir   = "%s"
+$maxRounds = %d
+$prevFailed = 9999
+
+Write-Host ""
+Write-Host "=== RETRY-MODUS: bis zu $($maxRounds) Runden ===" -ForegroundColor Cyan
+
+for ($round = 1; $round -le $maxRounds; $round++) {
+    if (-not (Test-Path $trx)) {
+        Write-Host "  [Round $($round)] Kein TRX - Abbruch." -ForegroundColor Red
+        break
+    }
+    [xml]$r = Get-Content $trx
+    $failed = @($r.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' })
+
+    if ($failed.Count -eq 0) {
+        Write-Host "  [Round $($round)] Alle Tests GRUEN!" -ForegroundColor Green
+        break
+    }
+    if ($failed.Count -eq $prevFailed) {
+        Write-Host "  [Round $($round)] Keine Verbesserung ($($failed.Count) fehlgeschlagen) - wirklich kaputt!" -ForegroundColor Red
+        break
+    }
+
+    Write-Host ""
+    Write-Host "  --- Round $($round): $($failed.Count) fehlgeschlagen - erneut starten ---" -ForegroundColor Yellow
+    $prevFailed = $failed.Count
+    $filterParts = $failed | ForEach-Object { "FullyQualifiedName=" + $_.testName }
+    $filter = $filterParts -join "|"
+    Remove-Item $trx -Force
+
+    dotnet test $testDir --no-build --no-restore --filter $filter --logger "console;verbosity=detailed" --logger "trx;LogFileName=$trx" --verbosity detailed
+}
+
+Write-Host ""
+Write-Host "=======================================" -ForegroundColor Cyan
+Write-Host "  ERGEBNIS nach $($maxRounds) Runden:" -ForegroundColor Cyan
+if (Test-Path $trx) {
+    [xml]$r = Get-Content $trx
+    $f = @($r.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' })
+    if ($f.Count -eq 0) {
+        Write-Host "  ALLE GRUEN - Tests waren flaky!" -ForegroundColor Green
+    } else {
+        Write-Host "  WIRKLICH KAPUTT ($($f.Count) Tests):" -ForegroundColor Red
+        foreach ($t in $f) {
+            Write-Host ("  X " + $t.testName) -ForegroundColor Red
+            if ($t.Output -and $t.Output.ErrorInfo -and $t.Output.ErrorInfo.Message) {
+                $msg = $t.Output.ErrorInfo.Message
+                if ($msg.Length -gt 200) { $msg = $msg.Substring(0, 200) + "..." }
+                Write-Host ("    " + $msg) -ForegroundColor Yellow
+            }
+        }
+    }
+}
+Write-Host "=======================================" -ForegroundColor Cyan
+Write-Host "  Hint: <leader>riF = Failed anzeigen" -ForegroundColor DarkGray
+]], trx_path, test_dir, max_rounds)
+
+      local file = io.open(script_path, 'w')
+      if file then file:write(script); file:close() end
+
+      local Terminal = require('toggleterm.terminal').Terminal
+      local term = Terminal:new({
+        cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+        direction = 'horizontal',
+        close_on_exit = false,
+        count = 44,
+      })
+      term:toggle()
+      vim.notify('[DCSRE] Retry-Modus: bis zu ' .. max_rounds .. ' Runden (Threads aus xunit.runner.json)...', vim.log.levels.INFO)
+  end)
+end, { desc = '[R]un [I]ntegration [R]etry | Flaky-Filter: N Runden, nur noch-fehlgeschlagene' })
+
 -- <leader>riC - Run Integration Clean (Docker prune + rebuild test project)
 vim.keymap.set('n', '<leader>riC', function()
   if vim.g.project_name ~= 'DCSRE' then
