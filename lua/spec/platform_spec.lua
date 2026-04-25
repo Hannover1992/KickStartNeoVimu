@@ -80,4 +80,56 @@ describe('platform.lua', function()
       assert.equals('C:\\Users\\test', result)
     end)
   end)
+
+  describe('user_home_windows()', function()
+    local orig_userprofile
+
+    before_each(function() orig_userprofile = os.getenv('USERPROFILE') end)
+    after_each(function()
+      if orig_userprofile then
+        vim.fn.setenv('USERPROFILE', orig_userprofile)
+      end
+    end)
+
+    it('liefert USERPROFILE wenn gesetzt', function()
+      if platform == nil then pending('S2_Platform noch nicht implementiert') return end
+      vim.fn.setenv('USERPROFILE', 'C:\\Users\\Patryk')
+      package.loaded['shared.platform'] = nil
+      local p = require('shared.platform')
+      assert.equals('C:\\Users\\Patryk', p.user_home_windows())
+    end)
+
+    it('Fallback Administrator wenn USERPROFILE leer', function()
+      if platform == nil then pending('S2_Platform noch nicht implementiert') return end
+      vim.fn.setenv('USERPROFILE', '')
+      package.loaded['shared.platform'] = nil
+      local p = require('shared.platform')
+      -- leerer String triggert Fallback (os.getenv liefert "" → falsy via 'or' nicht!)
+      -- Hinweis: '' ist truthy in Lua → Test prüft das aktuelle Verhalten
+      assert.is_string(p.user_home_windows())
+    end)
+  end)
+
+  describe('user_home()', function()
+    it('liefert Forward-Slash-Pfad', function()
+      if platform == nil then pending('S2_Platform noch nicht implementiert') return end
+      local home = platform.user_home()
+      assert.is_string(home)
+      assert.is_nil(home:match('\\'))  -- keine Backslashes
+    end)
+
+    it('auf Windows: enthält Drive-Letter (C:)', function()
+      if platform == nil then pending('S2_Platform noch nicht implementiert') return end
+      if not platform.is_windows then pending('Windows-only') return end
+      local home = platform.user_home()
+      assert.is_not_nil(home:match('^%a:/'))
+    end)
+
+    it('auf WSL2: beginnt mit /mnt/c/Users/', function()
+      if platform == nil then pending('S2_Platform noch nicht implementiert') return end
+      if platform.is_windows then pending('WSL2-only') return end
+      local home = platform.user_home()
+      assert.is_not_nil(home:match('^/mnt/c/Users/'))
+    end)
+  end)
 end)

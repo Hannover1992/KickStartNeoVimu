@@ -179,7 +179,10 @@ vim.keymap.set('n', '<leader>rsc', function()
     return drive:upper() .. ':\\'
   end):gsub('/', '\\')
   local claude_dir = win_path .. '\\.claude'
-  local script = 'C:\\Users\\Administrator\\Documents\\Work\\Code2\\DCSRE_Azure\\OmniCommand\\.claude\\new-research-project.ps1'
+  -- Konfigurabel via vim.g.dcsre_azure_script; Default: <USERPROFILE>\Documents\Work\Code2\DCSRE_Azure\...
+  local script = vim.g.dcsre_azure_script
+    or ((os.getenv('USERPROFILE') or 'C:\\Users\\Administrator')
+        .. '\\Documents\\Work\\Code2\\DCSRE_Azure\\OmniCommand\\.claude\\new-research-project.ps1')
   local Terminal = require('toggleterm.terminal').Terminal
   local setup = Terminal:new({
     cmd = 'powershell.exe -ExecutionPolicy Bypass -File "' .. script .. '" -TargetPath "' .. win_path .. '"; pause',

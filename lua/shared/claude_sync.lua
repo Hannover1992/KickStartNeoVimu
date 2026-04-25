@@ -1,17 +1,21 @@
 -- lua/shared/claude_sync.lua
 -- Synct projekt-spezifisches .claude aus AgentsArchive in den Projekt-Root.
--- Routing: DCSRE → .claude_DCSRE | CENCOCD → .claude_CenCoCo
+-- Routing: DCSRE → .claude | CENCOCD → .claude_CenCoCo
 -- Wird beim Start (init_windows.lua) nach project.detect() aufgerufen.
 --
 -- Wie /_obsidianSync: Pfad-Pattern → Vault, nur hier: Project-Name → .claude_Variant
 
 local M = {}
 
-local ARCHIVE_BASE = 'C:\\Users\\Administrator\\Documents\\Projekt\\AgentsArchive'
+-- Portabel via USERPROFILE; Fallback auf Administrator-Pfad für Bestand.
+local ARCHIVE_BASE = (os.getenv('USERPROFILE') or 'C:\\Users\\Administrator')
+  .. '\\Documents\\Projekt\\AgentsArchive'
 
--- Routing-Tabelle: vim.g.project_name → .claude_Variant im AgentsArchive
+-- Routing-Tabelle: vim.g.project_name → .claude Variant im AgentsArchive
+-- DCSRE: .claude (Basis-Ordner, kein Suffix)
+-- CENCOCD: .claude_CenCoCo (projekt-spezifischer Suffix)
 local ROUTING = {
-  DCSRE   = ARCHIVE_BASE .. '\\.claude_DCSRE',
+  DCSRE   = ARCHIVE_BASE .. '\\.claude',
   CENCOCD = ARCHIVE_BASE .. '\\.claude_CenCoCo',
 }
 
@@ -88,7 +92,7 @@ function M.sync_with_notify()
         -- robocopy: 0-7 = success (bit flags)
         if code <= 7 then
           vim.notify(
-            string.format('[claude_sync] %s → %s\\  (%s)', project_name, target, ARCHIVE_BASE:match('[^\\]+$') .. '\\.claude_' .. project_name:sub(1,1) .. project_name:sub(2):lower()),
+            string.format('[claude_sync] %s → %s\\  (aus %s)', project_name, target, source:match('[^\\]+$')),
             vim.log.levels.INFO
           )
         else

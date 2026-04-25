@@ -47,4 +47,23 @@ function M.wsl_to_windows(wsl_path)
   end):gsub('/', '\\')
 end
 
+-- User-Home Backslash-Form (für PowerShell und Windows-Pfad-Konkatenation).
+-- Liest USERPROFILE; Fallback Administrator-Pfad falls Env nicht gesetzt.
+---@return string  z.B. 'C:\Users\Patryk' oder 'C:\Users\Administrator'
+function M.user_home_windows()
+  return os.getenv('USERPROFILE') or 'C:\\Users\\Administrator'
+end
+
+-- User-Home Forward-Slash-Form, plattformabhängig.
+-- Auf Windows: USERPROFILE mit / statt \  (z.B. 'C:/Users/Patryk')
+-- Auf WSL2/Linux: '/mnt/c/Users/<USERNAME>' (USERNAME aus Env, sonst Administrator)
+---@return string
+function M.user_home()
+  if M.is_windows then
+    return (os.getenv('USERPROFILE') or 'C:\\Users\\Administrator'):gsub('\\', '/')
+  end
+  local user = os.getenv('USER') or os.getenv('USERNAME') or 'Administrator'
+  return '/mnt/c/Users/' .. user
+end
+
 return M

@@ -45,18 +45,19 @@ function M.detect()
   if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:match('cencoco') then
     -- CENCOCD Projekt
     vim.g.project_name = 'CENCOCD'
-    local base = platform.is_windows
-      and 'C:/Users/Administrator/Documents/Work/Kluger/cencoco'
-      or '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco'
+    local home_unix = platform.user_home()              -- 'C:/Users/<USER>' oder '/mnt/c/Users/<USER>'
+    local home_win  = platform.user_home_windows()      -- 'C:\Users\<USER>'
+    local user      = os.getenv('USER') or os.getenv('USERNAME') or 'Administrator'
+    local base = home_unix .. '/Documents/Work/Kluger/cencoco'
     vim.g.project_backend         = base .. '/src/Core/CenCoCo.Core.API'
     vim.g.project_frontend        = base .. '/src/Core/CenCoCo.Core.Blazor'
     vim.g.project_webhost         = base .. '/src/Core/CenCoCo.Core.API'
     vim.g.project_docker_root     = base .. '/src'
-    vim.g.project_docker_root_windows = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco\\src'
+    vim.g.project_docker_root_windows = home_win .. '\\Documents\\Work\\Kluger\\cencoco\\src'
     vim.g.project_git_base        = 'origin/main'
     vim.g.project_launch_profile  = 'https'
-    vim.g.project_root_windows    = 'C:\\Users\\Administrator\\Documents\\Work\\Kluger\\cencoco'
-    vim.g.project_root_wsl        = '/mnt/c/Users/Administrator/Documents/Work/Kluger/cencoco'
+    vim.g.project_root_windows    = home_win .. '\\Documents\\Work\\Kluger\\cencoco'
+    vim.g.project_root_wsl        = '/mnt/c/Users/' .. user .. '/Documents/Work/Kluger/cencoco'
     vim.g.project_tfs_commit_url  = nil
     vim.g.project_pr_url          = nil
 

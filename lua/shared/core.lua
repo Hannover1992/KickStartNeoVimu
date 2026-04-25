@@ -52,7 +52,14 @@ vim.api.nvim_create_autocmd('VimEnter', {
     local claude_dir = current_dir .. '/.claude'
 
     -- Support Windows, Git Bash, and WSL2 paths
+    -- Portabel via platform.user_home() (USERPROFILE/USERNAME) + Administrator-Fallback für Bestand
+    local _platform = require('shared.platform')
+    local _user = os.getenv('USER') or os.getenv('USERNAME') or 'Administrator'
     local archive_paths = {
+      _platform.user_home() .. '/Documents/Projekt/AgentsArchive/.claude',
+      '/c/Users/' .. _user .. '/Documents/Projekt/AgentsArchive/.claude',
+      '/mnt/c/Users/' .. _user .. '/Documents/Projekt/AgentsArchive/.claude',
+      -- Legacy-Fallback (rückwärtskompatibel):
       'C:/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
       '/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
       '/mnt/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
@@ -588,20 +595,15 @@ require('lazy').setup({
     opts = {
       legacy_commands = false, -- Use new command style (will be removed in next major release)
 
-      workspaces = {
-        {
-          name = 'DCSRE',
-          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/DCS' or '/mnt/c/Users/Administrator/Documents/DCS',
-        },
-        {
-          name = 'CenCoCo',
-          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/Obsydian/CenCoCo' or '/mnt/c/Users/Administrator/Documents/Obsydian/CenCoCo',
-        },
-        {
-          name = 'Brain',
-          path = vim.fn.has('win32') == 1 and 'C:/Users/Administrator/Documents/Brain' or '/mnt/c/Users/Administrator/Documents/Brain',
-        },
-      },
+      workspaces = (function()
+        local _platform = require('shared.platform')
+        local home = _platform.user_home()  -- 'C:/Users/<USER>' oder '/mnt/c/Users/<USER>'
+        return {
+          { name = 'DCSRE',   path = home .. '/Documents/DCS' },
+          { name = 'CenCoCo', path = home .. '/Documents/Obsydian/CenCoCo' },
+          { name = 'Brain',   path = home .. '/Documents/Brain' },
+        }
+      end)(),
 
       -- FIX: Neue Notizen im Vault-Root erstellen, nicht im "current_dir"
       -- Das war der Bug! Default war "current_dir" -> Notizen landeten im falschen Ordner
