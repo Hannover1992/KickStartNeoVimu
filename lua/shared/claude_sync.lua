@@ -1,6 +1,7 @@
 -- lua/shared/claude_sync.lua
 -- Synct projekt-spezifisches .claude aus AgentsArchive in den Projekt-Root.
--- Routing: DCSRE → .claude | CENCOCD → .claude_CenCoCo
+-- Routing: DCSRE → .claude_DCSRE | CENCOCD → .claude_CenCoCo | OMNICOMMAND → .claude_OmniCommand
+-- 3-Slot-Symmetrie (Schweizer-Uhrmacher 2026-05-07): kein impliziter `.claude`-Default mehr.
 -- Wird beim Start (init_windows.lua) nach project.detect() aufgerufen.
 --
 -- Wie /_obsidianSync: Pfad-Pattern → Vault, nur hier: Project-Name → .claude_Variant
@@ -12,11 +13,15 @@ local ARCHIVE_BASE = (os.getenv('USERPROFILE') or 'C:\\Users\\Administrator')
   .. '\\Documents\\Projekt\\AgentsArchive'
 
 -- Routing-Tabelle: vim.g.project_name → .claude Variant im AgentsArchive
--- DCSRE: .claude (Basis-Ordner, kein Suffix)
--- CENCOCD: .claude_CenCoCo (projekt-spezifischer Suffix)
+-- Symmetrie-Prinzip (Schweizer-Uhrmacher 2026-05-07): jedes Projekt hat
+-- eindeutigen Suffix. Kein impliziter Default mehr.
+-- DCSRE       → .claude_DCSRE       (NEU 2026-05-07; vorher .claude)
+-- CENCOCD     → .claude_CenCoCo
+-- OMNICOMMAND → .claude_OmniCommand (NEU 2026-05-07)
 local ROUTING = {
-  DCSRE   = ARCHIVE_BASE .. '\\.claude',
-  CENCOCD = ARCHIVE_BASE .. '\\.claude_CenCoCo',
+  DCSRE       = ARCHIVE_BASE .. '\\.claude_DCSRE',
+  CENCOCD     = ARCHIVE_BASE .. '\\.claude_CenCoCo',
+  OMNICOMMAND = ARCHIVE_BASE .. '\\.claude_OmniCommand',
 }
 
 -- Synct .claude_X → {project_root}\.claude via robocopy (non-blocking background)

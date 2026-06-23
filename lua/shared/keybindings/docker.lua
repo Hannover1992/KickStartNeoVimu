@@ -27,23 +27,27 @@ vim.keymap.set('n', '<leader>rDi', function()
   vim.notify('[' .. vim.g.project_name .. '] Starting Docker Infrastructure...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [I]nfrastructure | docker-up.ps1 / docker compose up' })
 
--- Docker All: Start ALL services (Profile=all) - DCSRE only
+-- Docker All: Start ALL services (Profile=all) - DCSRE + CenCoCo
 vim.keymap.set('n', '<leader>rDa', function()
   local Terminal = require('toggleterm.terminal').Terminal
-  if vim.g.project_name ~= 'DCSRE' then
-    vim.notify('Docker All is only for DCSRE project', vim.log.levels.WARN)
+  local cmd
+  if vim.g.project_name == 'DCSRE' then
+    cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile \\"./.env.noproxy\\" -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
+  elseif vim.g.project_name == 'CENCOCD' then
+    cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; docker compose --profile app up -d --build"'
+  else
+    vim.notify('rDa nur fuer DCSRE/CenCoCo', vim.log.levels.WARN)
     return
   end
-  local cmd = 'powershell.exe -ExecutionPolicy Bypass -Command "Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; .\\docker-up.ps1 -EnvFile \\"./.env.noproxy\\" -Profile all -SkipTests; if ($?) { notify \'Docker All erfolgreich\' } else { notify \'Docker All fehlgeschlagen\' }"'
   local infra = Terminal:new({
     cmd = cmd,
     direction = 'horizontal',
     close_on_exit = false,
-    count = 23, -- Separate terminal ID for docker all
+    count = 23,
   })
   infra:toggle()
-  vim.notify('[DCSRE] Starting Docker ALL (full environment)...', vim.log.levels.INFO)
-end, { desc = '[R]un [D]ocker [A]ll | docker-up.ps1 -Profile all' })
+  vim.notify('[' .. vim.g.project_name .. '] Starting Docker ALL (full environment)...', vim.log.levels.INFO)
+end, { desc = '[R]un [D]ocker [A]ll | DCSRE: docker-up.ps1 -Profile all | CenCoCo: compose.all --profile all' })
 
 -- Docker Quick Down: Stop containers (keep volumes/images)
 vim.keymap.set('n', '<leader>rDr', function()

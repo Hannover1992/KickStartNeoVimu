@@ -60,6 +60,42 @@ vim.keymap.set('n', '<leader>rbw', function()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend WebHost...', vim.log.levels.INFO)
 end, { desc = '[R]un [B]ackend [W]ebhost | CENCOCD: dotnet run --launch-profile https | DCSRE: dotnet run --no-restore (https://localhost:5443)' })
 
+-- Run Backend WebHost in WATCH mode: auto-restart on Save (dotnet watch)
+-- DCSRE: --no-hot-reload (full restart) wegen DI/EF-Stabilitaet, ~5-10s pro Reload
+-- CENCOCD: Hot Reload default (Blazor profitiert davon)
+-- Terminal-Slot 25 separat von rbw (20), damit beide Varianten koexistieren.
+vim.keymap.set('n', '<leader>rbW', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local cmd
+  if vim.g.project_name == 'CENCOCD' then
+    if is_windows then
+      cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost ..
+        '\'; dotnet watch run --launch-profile https"'
+    else
+      cmd = 'cd ' .. vim.g.project_webhost .. ' && dotnet watch run --launch-profile https'
+    end
+  else
+    -- DCSRE: Custom URLs + --no-hot-reload fuer Predictability
+    if is_windows then
+      cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_webhost ..
+        '\'; $env:ASPNETCORE_URLS=\'https://localhost:5443;http://localhost:5080\'; ' ..
+        '$env:ASPNETCORE_ENVIRONMENT=\'Development\'; dotnet watch run --no-hot-reload"'
+    else
+      cmd = 'cd ' .. vim.g.project_webhost ..
+        ' && ASPNETCORE_URLS="https://localhost:5443;http://localhost:5080" ' ..
+        'ASPNETCORE_ENVIRONMENT=Development dotnet watch run --no-hot-reload'
+    end
+  end
+  local webhost = Terminal:new({
+    cmd = cmd,
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 25, -- Separate terminal ID fuer Watch-Mode (rbw nutzt 20)
+  })
+  webhost:toggle()
+  vim.notify('[' .. vim.g.project_name .. '] Backend WATCH (auto-restart on Save). Ctrl+C beendet, Ctrl+R force-restart.', vim.log.levels.INFO)
+end, { desc = '[R]un [B]ackend [W]atch | dotnet watch run (auto-restart on Save)' })
+
 -- Run Backend Setup: Execute FluentMigrator migrations (DCSRE only)
 vim.keymap.set('n', '<leader>rbs', function()
   if vim.g.project_name ~= 'DCSRE' then

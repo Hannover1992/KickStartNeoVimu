@@ -9,9 +9,18 @@
 
 ## 2026-03-08 — Manuell (Feature-Idee)
 
-- [ ] **rT* Test-Stufen-System (5 Stufen)**
-  - **Beschreibung:** Universelles Test-Stufen-Konzept: Unit→Integration→IsolatedDocker→BlazorSystem→E2E. Keybindings: `<leader>rTS` (Stage setzen), `rTr` (Run), `rTs` (Search/Telescope), `rTf` (Failed re-run). Zustand wird gespeichert, TRX-Infrastruktur auf alle 5 Stufen ausweiten. Preconditions pro Stage (Docker-Rebuild etc.) automatisch prüfen.
+- [x] **rT* Test-Stufen-System (5 Stufen)** — IMPLEMENTIERT 2026-03-14
+  - **Beschreibung:** Project-aware rT1-rT5 + rTR/rTF/rTS mit TRX-Infrastruktur. Beide Projekte gemappt.
+  - **Status:** Aufgenommen und umgesetzt. Alte ri*/re* als [DEPRECATED] Fallback.
+  - **DCSRE:** rT1=BE Unit, rT2=FE Unit(Jest), rT3=IntMock(38T), rT4=IntDB(8T), rT5=E2E(Cypress)
+  - **CenCoCo:** rT1=Unit, rT2=Integration, rT3=IsolatedDocker, rT4=BlazorSystem, rT5=E2E(Playwright)
+  - **TRX:** rt-latest.trx (getrennt von altem it-latest.trx), rTR=Retry, rTF=Failed, rTS=Search
+  - **Offen:** rT6 (alle Stufen sequentiell mit Cold Start) — siehe neuer Eintrag unten
+
+## 2026-03-14 — Manuell (Feature-Ideen aus rT*-Implementierung)
+
+- [ ] **rT6: Alle Stufen sequentiell (Cold Start)**
+  - **Beschreibung:** Ein Befehl der rT1→rT2→rT3→rT4→rT5 nacheinander ausfuehrt. Stoppt bei Fehler. Optionaler Cold Start (Docker Reset + Image Rebuild vor Stufe 3+). Project-aware.
   - **Priorität:** MITTEL
   - **TC-Nähe:** Keybindings / Test-Infrastruktur
-  - **Kontext:** CenCoCo README.md (`tests/README.md`) hat die 5 Stufen + PowerShell-Befehle fertig definiert. DCSRE-Mapping noch offen. Konzept steht, noch nicht getestet/implementiert.
-  - **Quelle:** User-Idee, Voice-Transkript 2026-03-08
+  - **Quelle:** User-Idee, 2026-03-14 (waehrend rT*-Implementierung)

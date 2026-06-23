@@ -35,6 +35,58 @@ function M.find_dcsre_root(path)
   return nil
 end
 
+-- Findet den OmniCommand-Worktree-Root ausgehend von einem Pfad.
+-- Worktree-Struktur: Documents/Projekt/OmniCommand/<worktree-name>/  (z.B. OmniCommand, OmniCommand2)
+---@param path string  Startpfad (z.B. cwd), Forward- oder Backslash
+---@return string|nil  Normalisierter Pfad (Forward-Slashes) oder nil
+function M.find_omnicommand_root(path)
+  path = path:gsub('\\', '/')
+
+  -- Strategie 1: Pattern auf .../Documents/Projekt/OmniCommand/<worktree>/...
+  local root = path:match('(.*/Documents/Projekt/OmniCommand/[^/]+)')
+  if root then
+    return root
+  end
+
+  -- Strategie 2: Aufwaerts suchen — Parent muss "OmniCommand" sein (Container)
+  local check_path = path
+  while check_path and #check_path > 3 do
+    local parent = check_path:match('(.+)/[^/]+$')
+    if parent and parent:match('/Documents/Projekt/OmniCommand$') then
+      return check_path
+    end
+    check_path = parent
+  end
+  return nil
+end
+
+-- Findet den CenCoCo-Worktree-Root ausgehend von einem Pfad.
+-- Worktree-Struktur: Kluger/cencoco/<worktree-name>/  (z.B. cencoco, 88-E2E_Analyse, BL-XXX)
+-- Container `Kluger/cencoco/` ist eindeutig genug — kein src/-Marker noetig
+-- (Branches koennen unterschiedliche Layouts haben, z.B. Doku-only-Branches).
+---@param path string  Startpfad (z.B. cwd), Forward- oder Backslash
+---@return string|nil  Normalisierter Pfad (Forward-Slashes) oder nil
+function M.find_cencoco_root(path)
+  path = path:gsub('\\', '/')
+
+  -- Strategie 1: Pattern auf .../Kluger/cencoco/<worktree>/...
+  local root = path:match('(.*/Kluger/cencoco/[^/]+)')
+  if root then
+    return root
+  end
+
+  -- Strategie 2: Aufwaerts — Parent muss "Kluger/cencoco" sein (Container)
+  local check_path = path
+  while check_path and #check_path > 3 do
+    local parent = check_path:match('(.+)/[^/]+$')
+    if parent and parent:match('/Kluger/cencoco$') then
+      return check_path
+    end
+    check_path = parent
+  end
+  return nil
+end
+
 -- Erkennt das aktuelle Projekt und setzt alle vim.g.project_* Globals.
 -- Muss VOR lazy.setup() aufgerufen werden!
 -- Verifiziert: init.lua Zeilen 229–268
@@ -42,24 +94,49 @@ function M.detect()
   local cwd = vim.fn.getcwd()
   vim.g.project_name = 'UNKNOWN'
 
-  if cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:match('cencoco') then
-    -- CENCOCD Projekt
-    vim.g.project_name = 'CENCOCD'
-    local home_unix = platform.user_home()              -- 'C:/Users/<USER>' oder '/mnt/c/Users/<USER>'
-    local home_win  = platform.user_home_windows()      -- 'C:\Users\<USER>'
-    local user      = os.getenv('USER') or os.getenv('USERNAME') or 'Administrator'
-    local base = home_unix .. '/Documents/Work/Kluger/cencoco'
-    vim.g.project_backend         = base .. '/src/Core/CenCoCo.Core.API'
-    vim.g.project_frontend        = base .. '/src/Core/CenCoCo.Core.Blazor'
-    vim.g.project_webhost         = base .. '/src/Core/CenCoCo.Core.API'
-    vim.g.project_docker_root     = base .. '/src'
-    vim.g.project_docker_root_windows = home_win .. '\\Documents\\Work\\Kluger\\cencoco\\src'
-    vim.g.project_git_base        = 'origin/main'
-    vim.g.project_launch_profile  = 'https'
-    vim.g.project_root_windows    = home_win .. '\\Documents\\Work\\Kluger\\cencoco'
-    vim.g.project_root_wsl        = '/mnt/c/Users/' .. user .. '/Documents/Work/Kluger/cencoco'
-    vim.g.project_tfs_commit_url  = nil
-    vim.g.project_pr_url          = nil
+  -- WICHTIG: Reihenfolge ist spezifisch → allgemein.
+  -- OmniCommand zuerst, weil Pfade wie .../DCSRE_Azure/OmniCommand/ sonst
+  -- als DCSRE fehl-matchen würden (Schweizer-Uhrmacher PL-P).
+  if cwd:match('OmniCommand') then
+    -- OMNICOMMAND Projekt — Worktree-Root dynamisch finden
+    -- Container: Documents/Projekt/OmniCommand/, Worktrees: OmniCommand/, OmniCommand2/, BL-XXX/
+    local oc_root = M.find_omnicommand_root(cwd)
+    if oc_root then
+      vim.g.project_name = 'OMNICOMMAND'
+      vim.g.project_git_base = 'origin/main'
+      vim.g.project_tfs_commit_url = nil
+      vim.g.project_pr_url         = nil
+      if platform.is_windows then
+        vim.g.project_root_windows = platform.to_windows_path(oc_root)
+      else
+        vim.g.project_root_windows = platform.wsl_to_windows(oc_root)
+      end
+      vim.g.project_root_wsl = oc_root:gsub('^C:', '/mnt/c'):gsub('\\', '/')
+    end
+
+  elseif cwd:match('Kluger') or cwd:match('CENCOCD') or cwd:match('CenCoCo') or cwd:match('cencoco') then
+    -- CENCOCD Projekt — Worktree-Root dynamisch finden
+    -- Struktur: Kluger/cencoco/<worktree-name>/  (z.B. cencoco2, BL-XXX-feature, ...)
+    local cencoco_root = M.find_cencoco_root(cwd)
+    if cencoco_root then
+      vim.g.project_name            = 'CENCOCD'
+      vim.g.project_backend         = cencoco_root .. '/src/Core/CenCoCo.Core.API'
+      vim.g.project_frontend        = cencoco_root .. '/src/Core/CenCoCo.Core.Blazor'
+      vim.g.project_webhost         = cencoco_root .. '/src/Core/CenCoCo.Core.API'
+      vim.g.project_docker_root     = cencoco_root .. '/src'
+      vim.g.project_git_base        = 'origin/main'
+      vim.g.project_launch_profile  = 'https'
+      if platform.is_windows then
+        vim.g.project_root_windows        = platform.to_windows_path(cencoco_root)
+        vim.g.project_docker_root_windows = platform.to_windows_path(cencoco_root) .. '\\src'
+      else
+        vim.g.project_root_windows        = platform.wsl_to_windows(cencoco_root)
+        vim.g.project_docker_root_windows = platform.wsl_to_windows(cencoco_root) .. '\\src'
+      end
+      vim.g.project_root_wsl        = cencoco_root:gsub('^C:', '/mnt/c'):gsub('\\', '/')
+      vim.g.project_tfs_commit_url  = nil
+      vim.g.project_pr_url          = nil
+    end
 
   elseif cwd:match('DCSRE') then
     -- DCSRE Projekt — Root dynamisch finden

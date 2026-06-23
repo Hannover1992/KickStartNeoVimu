@@ -128,6 +128,249 @@ vim.keymap.set('n', '<leader>reo', function()
   vim.notify('[DCSRE] Opening Cypress UI...', vim.log.levels.INFO)
 end, { desc = '[R]un [E]2E [O]pen | npm run cypress:open:systemtest' })
 
+-- E2E by Tag: prompt fuer Ticket-Nr -> Telescope mit allen @DCSRE-XXXX-getaggten Feature-Files
+-- Tab = multi-select, Enter = run alle gewaehlten, <C-h> = headed mode
+vim.keymap.set('n', '<leader>ret', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
+
+  vim.ui.input({ prompt = 'DCSRE Ticket-Nr (z.B. 1944 oder DCSRE-1944): ' }, function(input)
+    if not input or input == '' then return end
+    local tag
+    if input:match('^%d+$') then
+      tag = '@DCSRE-' .. input
+    elseif input:match('^@') then
+      tag = input
+    elseif input:match('^DCSRE%-') then
+      tag = '@' .. input
+    else
+      tag = '@DCSRE-' .. input
+    end
+
+    local e2e_path = cypress_path .. '\\e2e'
+    local ps_cmd = string.format(
+      'powershell.exe -NoProfile -Command "Get-ChildItem -Path \'%s\' -Filter *.feature -Recurse | Select-String -Pattern \'%s\' -List | Select-Object -ExpandProperty Path"',
+      e2e_path,
+      tag
+    )
+    local raw = vim.fn.systemlist(ps_cmd)
+
+    local cypress_fwd = cypress_path:gsub('\\', '/')
+    local prefix = cypress_fwd .. '/'
+    local results = {}
+    for _, line in ipairs(raw) do
+      local trimmed = (line or ''):gsub('\r', ''):match('^%s*(.-)%s*$')
+      if trimmed and trimmed ~= '' then
+        local fwd = trimmed:gsub('\\', '/')
+        local rel = vim.startswith(fwd, prefix) and fwd:sub(#prefix + 1) or fwd
+        local display = rel:gsub('^e2e/', ''):gsub('%.feature$', '')
+        table.insert(results, {
+          path = trimmed,
+          rel_path = rel,
+          display = display,
+        })
+      end
+    end
+
+    if #results == 0 then
+      vim.notify('Keine Feature-Files mit Tag ' .. tag .. ' gefunden.', vim.log.levels.WARN)
+      return
+    end
+
+    table.sort(results, function(a, b) return a.display < b.display end)
+
+    local pickers = require('telescope.pickers')
+    local finders = require('telescope.finders')
+    local conf = require('telescope.config').values
+    local actions = require('telescope.actions')
+    local action_state = require('telescope.actions.state')
+
+    local function build_and_run(prompt_bufnr, headed)
+      local picker = action_state.get_current_picker(prompt_bufnr)
+      local multi = picker:get_multi_selection()
+      actions.close(prompt_bufnr)
+
+      local selected = {}
+      if #multi > 0 then
+        for _, sel in ipairs(multi) do
+          table.insert(selected, sel.value.rel_path)
+        end
+      else
+        local single = action_state.get_selected_entry()
+        if single then
+          table.insert(selected, single.value.rel_path)
+        end
+      end
+
+      if #selected == 0 then
+        vim.notify('Nichts ausgewaehlt', vim.log.levels.WARN)
+        return
+      end
+
+      local spec_arg = table.concat(selected, ',')
+      local headed_flag = headed and ' --headed' or ''
+      local cmd = string.format(
+        'powershell.exe -Command "Set-Location \'%s\'; npx cypress run%s --spec \'%s\'"',
+        cypress_path,
+        headed_flag,
+        spec_arg
+      )
+
+      local mode_label = headed and 'HEADED' or 'HEADLESS'
+      vim.notify(string.format('[DCSRE] %s %s: %d Spec(s)', tag, mode_label, #selected), vim.log.levels.INFO)
+
+      local Terminal = require('toggleterm.terminal').Terminal
+      local e2e_term = Terminal:new({
+        cmd = cmd,
+        id = headed and 31 or 30,
+        direction = 'horizontal',
+        close_on_exit = false,
+      })
+      e2e_term:toggle()
+    end
+
+    pickers.new({}, {
+      prompt_title = string.format('E2E %s (%d) | Tab=multi, Enter=run, <C-h>=headed', tag, #results),
+      finder = finders.new_table({
+        results = results,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry.display,
+            ordinal = entry.display,
+            path = entry.path,
+          }
+        end,
+      }),
+      sorter = conf.generic_sorter({}),
+      previewer = conf.file_previewer({}),
+      attach_mappings = function(prompt_bufnr, map)
+        actions.select_default:replace(function() build_and_run(prompt_bufnr, false) end)
+        map('i', '<C-h>', function() build_and_run(prompt_bufnr, true) end)
+        map('n', '<C-h>', function() build_and_run(prompt_bufnr, true) end)
+        return true
+      end,
+    }):find()
+  end)
+end, { desc = '[R]un [E]2E by [T]ag | Prompt DCSRE-Nr -> Telescope tagged .feature files' })
+
+-- E2E by Tag HEADED (single spec): prompt fuer Ticket-Nr -> Telescope mit @DCSRE-XXXX
+-- Enter = die FOKUSSIERTE Spec im sichtbaren Browser (--headed)
+-- Bewusst kein Multi-Select - genau eine Spec zum Debuggen mit den Augen.
+vim.keymap.set('n', '<leader>reT', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('E2E Tests only available for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local cypress_path = get_cypress_path_windows()
+  if not cypress_path then
+    vim.notify('Could not determine Cypress path', vim.log.levels.ERROR)
+    return
+  end
+
+  vim.ui.input({ prompt = 'DCSRE Ticket-Nr (z.B. 1944): ' }, function(input)
+    if not input or input == '' then return end
+    local tag
+    if input:match('^%d+$') then
+      tag = '@DCSRE-' .. input
+    elseif input:match('^@') then
+      tag = input
+    elseif input:match('^DCSRE%-') then
+      tag = '@' .. input
+    else
+      tag = '@DCSRE-' .. input
+    end
+
+    local e2e_path = cypress_path .. '\\e2e'
+    local ps_cmd = string.format(
+      'powershell.exe -NoProfile -Command "Get-ChildItem -Path \'%s\' -Filter *.feature -Recurse | Select-String -Pattern \'%s\' -List | Select-Object -ExpandProperty Path"',
+      e2e_path,
+      tag
+    )
+    local raw = vim.fn.systemlist(ps_cmd)
+
+    local cypress_fwd = cypress_path:gsub('\\', '/')
+    local prefix = cypress_fwd .. '/'
+    local results = {}
+    for _, line in ipairs(raw) do
+      local trimmed = (line or ''):gsub('\r', ''):match('^%s*(.-)%s*$')
+      if trimmed and trimmed ~= '' then
+        local fwd = trimmed:gsub('\\', '/')
+        local rel = vim.startswith(fwd, prefix) and fwd:sub(#prefix + 1) or fwd
+        local display = rel:gsub('^e2e/', ''):gsub('%.feature$', '')
+        table.insert(results, {
+          path = trimmed,
+          rel_path = rel,
+          display = display,
+        })
+      end
+    end
+
+    if #results == 0 then
+      vim.notify('Keine Feature-Files mit Tag ' .. tag .. ' gefunden.', vim.log.levels.WARN)
+      return
+    end
+
+    table.sort(results, function(a, b) return a.display < b.display end)
+
+    local pickers = require('telescope.pickers')
+    local finders = require('telescope.finders')
+    local conf = require('telescope.config').values
+    local actions = require('telescope.actions')
+    local action_state = require('telescope.actions.state')
+
+    pickers.new({}, {
+      prompt_title = string.format('E2E %s HEADED (%d) | Enter = 1 Spec im Browser', tag, #results),
+      finder = finders.new_table({
+        results = results,
+        entry_maker = function(entry)
+          return {
+            value = entry,
+            display = entry.display,
+            ordinal = entry.display,
+            path = entry.path,
+          }
+        end,
+      }),
+      sorter = conf.generic_sorter({}),
+      previewer = conf.file_previewer({}),
+      attach_mappings = function(prompt_bufnr, _map)
+        actions.select_default:replace(function()
+          local entry = action_state.get_selected_entry()
+          actions.close(prompt_bufnr)
+          if not entry then
+            vim.notify('Nichts ausgewaehlt', vim.log.levels.WARN)
+            return
+          end
+          local spec = entry.value.rel_path
+          local cmd = string.format(
+            'powershell.exe -Command "Set-Location \'%s\'; npx cypress run --headed --no-exit --spec \'%s\'"',
+            cypress_path,
+            spec
+          )
+          vim.notify(string.format('[DCSRE] %s HEADED: %s', tag, entry.value.display), vim.log.levels.INFO)
+          local Terminal = require('toggleterm.terminal').Terminal
+          local e2e_term = Terminal:new({
+            cmd = cmd,
+            id = 31,
+            direction = 'horizontal',
+            close_on_exit = false,
+          })
+          e2e_term:toggle()
+        end)
+        return true
+      end,
+    }):find()
+  end)
+end, { desc = '[R]un [E]2E by [T]ag HEADED | 1 Spec im sichtbaren Browser' })
+
 -- === Integration Tests (TRX Infrastructure) ===
 
 -- Helper function to modify xunit.runner.json maxParallelThreads
@@ -715,10 +958,21 @@ vim.keymap.set('n', '<leader>rif', function()
   -- Find all *Tests*.cs files, excluding obj/ directories
   local all_files = vim.fn.globpath(test_root, '**/*Tests*.cs', false, true)
   local test_files = {}
+  -- ROBUSTER Prefix-Strip: beide Seiten auf Forward-Slash normalisieren.
+  -- Vorher: file:gsub(test_root:gsub('\\','\\\\')..'\\', '') — Lua-Pattern mit
+  -- doppelten Backslashes matchte nicht gegen Single-Backslashes in globpath-Ergebnis,
+  -- daher landete der FULL PATH im Display → unbrauchbarer Filter.
+  local prefix_fwd = (test_root:gsub('\\', '/')) .. '/'
   for _, file in ipairs(all_files) do
-    if not file:match('\\obj\\') then
-      local rel = file:gsub(test_root:gsub('\\', '\\\\') .. '\\', '')
-      local display = rel:gsub('\\', '/'):gsub('%.cs$', '')
+    local file_fwd = file:gsub('\\', '/')
+    if not file_fwd:match('/obj/') then
+      local rel
+      if vim.startswith(file_fwd, prefix_fwd) then
+        rel = file_fwd:sub(#prefix_fwd + 1)
+      else
+        rel = file_fwd
+      end
+      local display = rel:gsub('%.cs$', '')
       table.insert(test_files, { path = file, rel = rel, display = display })
     end
   end
@@ -777,7 +1031,8 @@ vim.keymap.set('n', '<leader>rif', function()
         -- Build filter: FullyQualifiedName~ClassName1|FullyQualifiedName~ClassName2
         local filters = {}
         for _, sel in ipairs(selected) do
-          local class_name = sel.rel:match('([^\\]+)%.cs$')
+          -- rel ist jetzt forward-slash-normalisiert (siehe rel-fix oben)
+          local class_name = sel.rel:match('([^/\\]+)%.cs$')
           if class_name then
             table.insert(filters, 'FullyQualifiedName~' .. class_name)
           end

@@ -43,56 +43,35 @@ vim.api.nvim_create_autocmd('SwapExists', {
   end,
 })
 
--- [[ Auto-copy .claude folder ]]
--- If .claude folder doesn't exist in current git repo, copy from AgentsArchive
--- This ensures Claude Code project settings are available in new worktrees/projects
-vim.api.nvim_create_autocmd('VimEnter', {
-  callback = function()
-    local current_dir = vim.fn.getcwd()
-    local claude_dir = current_dir .. '/.claude'
-
-    -- Support Windows, Git Bash, and WSL2 paths
-    -- Portabel via platform.user_home() (USERPROFILE/USERNAME) + Administrator-Fallback für Bestand
-    local _platform = require('shared.platform')
-    local _user = os.getenv('USER') or os.getenv('USERNAME') or 'Administrator'
-    local archive_paths = {
-      _platform.user_home() .. '/Documents/Projekt/AgentsArchive/.claude',
-      '/c/Users/' .. _user .. '/Documents/Projekt/AgentsArchive/.claude',
-      '/mnt/c/Users/' .. _user .. '/Documents/Projekt/AgentsArchive/.claude',
-      -- Legacy-Fallback (rückwärtskompatibel):
-      'C:/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
-      '/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
-      '/mnt/c/Users/Administrator/Documents/Projekt/AgentsArchive/.claude',
-    }
-
-    -- Find which archive path exists
-    local archive_dir = nil
-    for _, path in ipairs(archive_paths) do
-      if vim.fn.isdirectory(path) == 1 then
-        archive_dir = path
-        break
-      end
-    end
-
-    -- Check if we're in a git repo (either .git directory OR .git file for worktrees)
-    local is_git_repo = vim.fn.isdirectory(current_dir .. '/.git') == 1 or vim.fn.filereadable(current_dir .. '/.git') == 1
-
-    -- Only copy if: .claude doesn't exist AND we're in a git repo AND archive exists
-    if archive_dir and vim.fn.isdirectory(claude_dir) == 0 and is_git_repo then
-      -- Use platform-appropriate copy command
-      if vim.fn.has('win32') == 1 then
-        -- Windows: use PowerShell Copy-Item (xcopy/robocopy have issues in different shells)
-        local win_src = archive_dir:gsub('/', '\\')
-        local win_dst = claude_dir:gsub('/', '\\')
-        vim.fn.system('powershell.exe -Command "Copy-Item -Path \'' .. win_src .. '\' -Destination \'' .. win_dst .. '\' -Recurse -Force"')
-      else
-        -- Unix: use cp -r
-        vim.fn.system({ 'cp', '-r', archive_dir, claude_dir })
-      end
-      vim.notify('.claude kopiert von AgentsArchive', vim.log.levels.INFO)
-    end
+-- [[ Windows MAX_PATH Fix fuer Diffview ]]
+-- Diffview-Buffer-Namen kombinieren ".git/worktrees/<long-worktree>/<sha-prefix>/<deep-path>"
+-- und sprengen damit Windows' 260-Zeichen-Limit beim Swap-File. Resultat:
+-- "E303: Unable to open swap file" → "Failed to create diff buffer".
+-- Fix: Swap fuer alle diffview://-Buffer global deaktivieren (sind eh read-only Diff-Views).
+vim.api.nvim_create_autocmd({ 'BufNew', 'BufAdd', 'BufReadPre' }, {
+  pattern = { 'diffview://*', 'diffview:*' },
+  callback = function(args)
+    pcall(function() vim.bo[args.buf].swapfile = false end)
   end,
 })
+
+-- Swap-Directory auf kurzen Pfad legen (defense in depth — kürzt jeden Swap-Pfad
+-- um ~50 Zeichen gegenueber dem default ~/AppData/Local/nvim-data/swap/).
+-- Das doppelte // am Ende: encode full path in swap filename (verhindert Kollisionen).
+if vim.fn.has('win32') == 1 then
+  local short_swap = 'C:/.nvim-swp'
+  if vim.fn.isdirectory(short_swap) == 0 then
+    pcall(vim.fn.mkdir, short_swap, 'p')
+  end
+  vim.opt.directory = short_swap .. '//'
+end
+
+-- [[ Auto-copy .claude folder — ENTFERNT 2026-05-07 (Schweizer-Uhrmacher PL-R) ]]
+-- Frueherer VimEnter-Autocmd las AgentsArchive/.claude (ohne Suffix) als Bootstrap-Fallback.
+-- Mit der 3-Slot-Symmetrie (DCSRE/.claude_DCSRE, CENCOCD/.claude_CenCoCo, OMNICOMMAND/.claude_OmniCommand)
+-- und Loeschung von AgentsArchive/.claude zeigte der Bootstrap auf nicht-existente Pfade.
+-- Sync wird jetzt ausschliesslich von claude_sync.lua erledigt (project_name-bewusst, robocopy /E /XO).
+-- Fuer UNKNOWN-Projekte: kein Sync (konsistent zur Symmetrie-Doktrin).
 
 -- [[ Project-specific terminal background color ]]
 -- Changes terminal background based on project path:
@@ -167,6 +146,13 @@ vim.o.breakindent = true
 -- Save undo history
 vim.o.undofile = true
 
+-- Swap-Files global aus: Diffview-Buffer (diffview://...) sprengen auf Windows
+-- den MAX_PATH-260-Limit beim Swap-Pfad → E303 "Unable to open swap file" →
+-- "Failed to create diff buffer". Lua-Autocmds koennen das nicht abfangen,
+-- weil der Swap-Crash INSIDE des nvim_buf_set_name C-Calls passiert, bevor
+-- BufFilePre/BufFilePost feuern. Recovery uebernimmt undofile (Zeile 147).
+vim.o.swapfile = false
+
 -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
 vim.o.ignorecase = true
 vim.o.smartcase = true
@@ -208,6 +194,14 @@ vim.o.scrolloff = 10
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
 vim.o.confirm = true
+
+-- Performance: verhindert Treesitter/Syntax-Highlighter-Aborts bei grossen Diffs.
+-- redrawtime: max ms fuer Screen-Redraw bevor Syntax-HL abgeschaltet wird (default 2000).
+-- synmaxcol: Zeilen-Spalten-Limit fuer Syntax-HL — fixt Angular/HTML-Templates mit langen Lines.
+-- maxmempattern: KB fuer Regex-Speicher (default 1000).
+vim.opt.redrawtime    = 10000
+vim.opt.synmaxcol     = 500
+vim.opt.maxmempattern = 5000
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
@@ -513,6 +507,33 @@ require('lazy').setup({
     },
   },
 
+  -- Diffview explicit setup (vorher nur Neogit-Dependency mit Defaults).
+  -- Fix fuer "Failed to create diff buffer" bei grossen HTML/Angular-Templates:
+  -- enhanced_diff_hl=false und Treesitter-Abschaltung pro Diff-Buffer verhindern
+  -- den synchronen TS-Parse-Crash bei 3-way merge view ueber 1500+ Zeilen.
+  {
+    'sindrets/diffview.nvim',
+    cmd = { 'DiffviewOpen', 'DiffviewClose', 'DiffviewRefresh', 'DiffviewFileHistory', 'DiffviewToggleFiles' },
+    opts = {
+      diff_binaries = false,
+      enhanced_diff_hl = false,
+      use_icons = true,
+      view = {
+        default      = { layout = 'diff2_horizontal', disable_diagnostics = true },
+        merge_tool   = { layout = 'diff3_horizontal', disable_diagnostics = true },
+        file_history = { layout = 'diff2_horizontal', disable_diagnostics = true },
+      },
+      hooks = {
+        diff_buf_read = function(bufnr)
+          -- Treesitter pro Diff-Buffer aus (verhindert Race bei grossen Files)
+          pcall(vim.treesitter.stop, bufnr)
+          -- LSP-Diagnostics aus (Diff-Buffer braucht keine)
+          pcall(vim.diagnostic.enable, false, { bufnr = bufnr })
+        end,
+      },
+    },
+  },
+
   -- Markdown Preview mit Mermaid Support (Browser-based)
   -- Industry standard: 7,540+ GitHub stars
   {
@@ -522,11 +543,6 @@ require('lazy').setup({
     build = 'cd app && npm install',
     init = function()
       vim.g.mkdp_filetypes = { 'markdown' }
-      -- Auto-close preview when switching buffers (0 = keep open, 1 = auto-close)
-      vim.g.mkdp_auto_close = 0
-      -- Theme: 'dark' oder 'light'
-      vim.g.mkdp_theme = 'dark'
-
       -- Auto-close preview when switching buffers (0 = keep open, 1 = auto-close)
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
@@ -599,9 +615,10 @@ require('lazy').setup({
         local _platform = require('shared.platform')
         local home = _platform.user_home()  -- 'C:/Users/<USER>' oder '/mnt/c/Users/<USER>'
         return {
-          { name = 'DCSRE',   path = home .. '/Documents/DCS' },
-          { name = 'CenCoCo', path = home .. '/Documents/Obsydian/CenCoCo' },
-          { name = 'Brain',   path = home .. '/Documents/Brain' },
+          { name = 'DCSRE',       path = home .. '/Documents/DCS' },
+          { name = 'CenCoCo',     path = home .. '/Documents/Obsydian/CenCoCo' },
+          { name = 'Brain',       path = home .. '/Documents/Brain' },
+          { name = 'OmniCommand', path = home .. '/Documents/OmniCommand' },
         }
       end)(),
 
@@ -1219,6 +1236,7 @@ require('lazy').setup({
         stages = 'fade_in_slide_out', -- Animation style
         timeout = 3000, -- Display time (ms)
         background_colour = '#000000',
+        top_down = false, -- false = unten-rechts (statt Default oben-rechts)
         icons = {
           ERROR = '',
           WARN = '',
@@ -1336,17 +1354,40 @@ require('lazy').setup({
 
       -- Debug configurations for C#/.NET
       -- Workflow: 1) Start server with <leader>rbw  2) Attach debugger with <leader>xc
+      --
+      -- Auto-Detect findet WebHost-PID in 2 Stufen:
+      --   1. Native .exe Prozess by Name (am häufigsten — `dotnet run` baut eine
+      --      VDEK.DCSP.WebHost.exe als Child-Prozess die direkt die Assembly hostet)
+      --   2. Falls nicht da: WMI-Fallback ueber CommandLine in dotnet.exe-Prozessen
+      --      (z.B. `dotnet watch` Setups oder reines `dotnet exec`)
+      -- Funktioniert beim DCSRE-Workflow `<leader>rbw` zuverlaessig, weil dotnet
+      -- run im Bauen die VDEK.DCSP.WebHost.exe erzeugt und ausfuehrt.
+      local function find_webhost_pid()
+        local marker = (vim.g.project_name == 'CENCOCD') and 'CenCoCo.Core.API' or 'VDEK.DCSP.WebHost'
+        local ps_cmd =
+          'powershell.exe -NoProfile -Command "' ..
+          '$p = Get-Process -Name \'' .. marker .. '\' -EA SilentlyContinue | Select-Object -First 1 -ExpandProperty Id; ' ..
+          'if (-not $p) { $p = (Get-CimInstance Win32_Process -Filter \\"Name=\'dotnet.exe\'\\" | ' ..
+          'Where-Object { $_.CommandLine -like \'*' .. marker .. '*\' } | ' ..
+          'Select-Object -First 1 -ExpandProperty ProcessId) }; ' ..
+          '$p"'
+        local out = vim.fn.system(ps_cmd):gsub('%s+', '')
+        return tonumber(out), marker
+      end
+
       dap.configurations.cs = {
         {
           type = 'coreclr',
-          name = 'Attach - WebHost (auto-detect)',
+          name = 'Attach - WebHost (auto-detect by assembly)',
           request = 'attach',
           processId = function()
-            -- Auto-detect the WebHost process
-            local pick = require('dap.utils').pick_process
-            return pick({
-              filter = vim.g.project_name == 'CENCOCD' and 'CenCoCo.Core.API' or 'VDEK.DCSP.WebHost',
-            })
+            local pid, marker = find_webhost_pid()
+            if pid then
+              vim.notify(string.format('[DAP] Auto-attach an dotnet PID %d (CommandLine match: %s)', pid, marker), vim.log.levels.INFO)
+              return pid
+            end
+            vim.notify(string.format('[DAP] Keine dotnet.exe mit %s in CommandLine - laeuft <leader>rbw? Fallback zu Picker.', marker), vim.log.levels.WARN)
+            return require('dap.utils').pick_process({ filter = 'dotnet' })
           end,
         },
         {
@@ -1801,7 +1842,21 @@ require('lazy').setup({
       end, { desc = '[S]earch [I]ssues (current file only)' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
-      vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
+      -- Buffers-Picker mit Delete-Funktion.
+      -- Loeschen:  <M-d> (Alt+d, Telescope-Default, Insert-Mode) ODER dd (Normal-Mode).
+      -- Tab = multi-select, dann Alt+d / dd loescht alle markierten. Picker bleibt offen.
+      -- <C-d> bleibt absichtlich preview_scrolling_down (nicht ueberschrieben).
+      vim.keymap.set('n', '<leader><leader>', function()
+        builtin.buffers({
+          sort_mru = true,
+          ignore_current_buffer = false,
+          attach_mappings = function(_, map)
+            local actions = require('telescope.actions')
+            map('n', 'dd', actions.delete_buffer)
+            return true
+          end,
+        })
+      end, { desc = '[ ] Find existing buffers (Alt+d/dd = delete)' })
 
       -- Slightly advanced example of overriding default behavior and theme
       vim.keymap.set('n', '<leader>/', function()

@@ -51,6 +51,11 @@
 - [x] spec: KickStartNeoVim-SPEC.md (Variante A empfohlen, Bug B-001 dokumentiert)
 - [x] gap: KickStartNeoVim-GAP.md (20 GAPs, 15 MUSS, ~7% Fortschritt)
 
+## Knowledge-Base
+| Thema | Status | Pfad | Datum |
+|-------|--------|------|-------|
+| Project-Aware-Architektur | fertig | .claude/wissen/Project-Aware-Architektur_Wissen.md | 2026-03-14 |
+
 ## Key Findings
 - Verifizierte LOC: 2900 shared / 350 Windows / 40 Linux / 30 is_windows Ternary
 - 52x powershell.exe (intentional wegen VPN), 12x is_windows Variable
