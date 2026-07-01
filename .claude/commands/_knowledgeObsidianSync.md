@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Knowledge → Obsidian Vault Sync (SUPERSEDED)
 
 **HINWEIS:** Dieses Command wurde durch `/_W_obsidianSync` ersetzt.
@@ -29,7 +33,7 @@ das Feature-Note bidirektional.
 +===============================================================+
 |                                                                |
 |  LIEST (Input):                                                |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |       → Ermittle alle abgeschlossenen Knowledge-Sektionen      |
 |    2. .claude/wissen/*_Wissen.md                               |
 |       → Die fertigen Wissen-Dokumente (Synthese)               |
@@ -131,7 +135,7 @@ https://projekte.itsg.de/browse/DCSRE-881 #story
 ### Schritt 0: Manifest lesen + Wissen-Dateien finden
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md
 2. Finde alle "Knowledge: {THEMA}" Sektionen mit Status "abgeschlossen"
 3. Finde die zugehoerigen .claude/wissen/{THEMA}_Wissen.md Dateien
 4. Pruefe: Existiert die Datei? Ist sie nicht leer?

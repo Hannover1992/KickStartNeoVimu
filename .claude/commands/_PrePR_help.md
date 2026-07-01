@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Pre-PR Quality Gates - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Pre-PR Quality Gate (/_Pre_PR*) Commands.
@@ -7,6 +11,58 @@ Zeige die Uebersicht der Pre-PR Quality Gate (/_Pre_PR*) Commands.
 ```
 /_PrePR_help
 ```
+
+---
+
+## POSITION IN DER PIPELINE-REISE (3er-Doppel-Sicht, NEU 2026-05-24)
+
+> **Cross-Reference:** Vollstaendige Reise + Geister-Tabelle: `/_help` TEIL 10
+> Methodik: `.claude/INSTRUCTION_full_scan_2026-05-24.md`
+
+**Wo sitzt /_Pre_PR_orchestrate in der Gesamt-Reise?**
+
+```
+/_BDF_orchestrate EMPTY-Handler (alle Items DONE, testRun_done=true)
+                                  │
+                                  ▼
+                              ★G#9 → /_PostBatch_orchestrate
+                                          │
+                                          │ Tests + Commit
+                                          ▼
+                              ★G#10 → /_Pre_PR_orchestrate (9 Quality Gates PARALLEL)
+                                          │
+                                          │ Build + Test + Battle-Test + Self-Test
+                                          ▼
+                              ★G#11 → /_BDF_orchestrate (Loop next BL)
+                                       oder Terminal-Exit (alle BLs DONE)
+```
+
+**3er-Doppel-Fenster:**
+
+| Position | Vertrag                          | Lese-Fokus                          |
+|----------|----------------------------------|-------------------------------------|
+| [N-1]    | `/_PostBatch_orchestrate`        | POSTBATCH_PIPELINE_STATE.batch_done + BDF_NEXT_TRIGGER |
+| [N  ]    | `/_Pre_PR_orchestrate`           | LIEST + SCHREIBT (Quality-Reports + Auto-Fixes) |
+| [N+1]    | `/_BDF_orchestrate` Phase 2      | BACKLOG_STATE + naechster Item-Pick |
+
+**Geister-Beteiligung:**
+
+- **Input-Geist G#10:** `/_PostBatch → /_Pre_PR_orchestrate` (nach Test + Commit GREEN)
+- **Intra-Geister (9 Gates PARALLEL):** alle Gate-Worker in 1 Message gespawnt — kein sequenzieller Sub-Geist zwischen ihnen, nur ein JOIN am Ende
+- **Output-Geist G#11:** `/_Pre_PR → /_BDF (Loop next BL)` — **⚠ BL-NEW Finding T86 CRITICAL-3:** H11 Auto-Loop derzeit BROKEN
+
+**Modi-Variation:**
+
+- **execute (Default):** Auto-Fix + Build + Test (Phase 4-5)
+- **report (--prePr=report):** Read-only Scan → Presentation → interaktive Queue → Auto-Learn Meta (Phase 4-7)
+
+**Step-Anzahl im 1-Pipeline-Durchlauf:**
+
+- Phase 0a/0/0b → Phase 1/2 → 9 Gates parallel → Phase 3/3.5 → 4/4b/4c/4d → 5/5a/5b/6/7
+- 0 eigene Berater (alle Logik in Sub-Commands)
+- 9 Quality-Gate-Skills: `_Pre_PR_Tests`, `_Pre_PR_Naming`, `_Pre_PR_Cleanup`, `_Pre_PR_Dokumentation`, `_Pre_PR_Konstanten`, `_Pre_PR_Logging`, `_Pre_PR_Architektur`, `_Pre_PR_Analyzer`, `_Pre_PR_Migration`
+- Phase 4d SkillLoadSelfTest (BL-159) — Mega-Agent-Detection via audit.jsonl
+- Phase 4c Pattern-Battle-Test (BL-NEW-7?) — DRAFT-Pattern → PROMOTED bei 9-Gate-Pass
 
 ---
 

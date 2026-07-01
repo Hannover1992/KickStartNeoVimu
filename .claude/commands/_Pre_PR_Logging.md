@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Logging
 description: Pre-PR Logging Quality Gate - Prueft Logging-Konventionen im Branch-Diff
+type: building-block
 ---
 
 # /_Pre_PR_Logging
@@ -19,7 +20,7 @@ description: Pre-PR Logging Quality Gate - Prueft Logging-Konventionen im Branch
 +------------------------------------------------------------------+
 | INPUT:                                                           |
 |   - Git Branch Diff (develop...HEAD)                            |
-|   - .claude/meta/codeKonvention/logging.md                      |
+|   - {META}/codeKonvention/logging.md                      |
 |   - Codebase *.cs Dateien                                       |
 +------------------------------------------------------------------+
 | OUTPUT:                                                          |
@@ -74,9 +75,9 @@ FileProcessor.cs:88: Log.Error($"Failed to process {fileName}");
 
 ## Schritt 1: Konventions-Regeln lesen
 
-Lese `.claude/meta/codeKonvention/logging.md`
+Lese `{META}/codeKonvention/logging.md`
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/logging.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/logging.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
 Extrahiere alle Regeln (R1-R5) mit:
 - Schwere (BLOCKER / WARNUNG / INFO)

@@ -2,25 +2,14 @@
 
 ```yaml
 status: active
-version: 1.1.0
+version: 1.3.0
 created: 2026-02-21
-updated: 2026-02-27
+updated: 2026-03-30
 op: FeatureFinish
 phase: Cleanup
-type: command
+type: satellite
 chain_position: final
 team_based: false
-changelog: |
-  v1.1.0 (2026-02-27): Schritt 0 PUSH_STATUS Guard hinzugefuegt (F04, W158).
-        Verhindert Feature-Abschluss ohne abgeschlossenen Wissens-Push.
-        Guard: --skip-push-guard Flag, Manifest-PUSH_STATUS Pruefung,
-        Prefix-Match mit FALSE POSITIVE Schutz ("NOT COMPLETED" → kein Match).
-        Hintergrund-Text W158 integriert.
-  v1.0.0 (2026-02-21): Initialer Entwurf. Einfacher Command (kein Orchestrator).
-        4 Schritte: Status-Check → Offene Items (HiL) →
-        Konsistenz-Check → Bereit fuer naechstes Feature.
-        Liest _manifest, _parking-lot, Task.md, Model.
-        Batch-Modus fuer >5 offene Items (AskUserQuestion multiSelect).
 ```
 
 ---
@@ -45,16 +34,24 @@ changelog: |
 | KEIN HiL fuer den Abschluss selbst — aber HiL fuer offene Items!    |
 |                                                                        |
 | LIEST:                                                                 |
-|   .claude/analysis/_manifest.md       (Phase, Coverage, SRS)          |
-|   .claude/analysis/_parking-lot.md    (offene [ ] Items)              |
-|   .claude/Task.md                     (offene ECs/TCs)                |
-|   .claude/models/{NAME}_Model.md      (offene W{n})                   |
+|   {VAULT}/_manifest.md                (Phase, Coverage, SRS)          |
+|   {VAULT}/_parking-lot.md             (offene [ ] Items)              |
+|   {VAULT}/Task.md                     (offene ECs/TCs)                |
+|   {VAULT}/.../Model/{NAME}_Model.md  (offene W{n}, BL-045)            |
+|     FALLBACK: .claude/models/{NAME}_Model.md                          |
 |                                                                        |
 | SCHREIBT:                                                              |
-|   .claude/analysis/_manifest.md       (PHASE=READY)                   |
-|   .claude/analysis/_parking-lot.md    (Items aktualisiert)            |
-|   .claude/Task.md                     (ECs als erledigt/verworfen)    |
-|   .claude/models/{NAME}_Model.md      (W{n} als erledigt/verworfen)  |
+|   {VAULT}/_manifest.md                (PHASE=READY)                   |
+|   {VAULT}/_parking-lot.md             (Items aktualisiert)            |
+|   {VAULT}/Task.md                     (ECs als erledigt/verworfen)    |
+|   {VAULT}/.../Model/{NAME}_Model.md  (W{n} als erledigt/verworfen)   |
+|     FALLBACK: .claude/models/{NAME}_Model.md                          |
+|                                                                        |
+| MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                       |
+|   Pattern A: Reiner State-Write — kein Protokoll-Eintrag              |
+|   SCHREIBT STATE: PHASE=READY (Einzeiler)                             |
+|   SCHREIBT NICHT: _manifest_protokoll.md                              |
+|   (PUSH_STATUS Guard liest _manifest.md State — unveraendert W10)    |
 +======================================================================+
 ```
 
@@ -69,7 +66,7 @@ changelog: |
    → JA: Guard uebersprungen (bewusste Ausnahme). Logge im Manifest.
    → NEIN: Weitermachen
 
-2. Lies .claude/analysis/_manifest.md
+2. Lies {VAULT}/_manifest.md
 3. Suche "PUSH_STATUS:" Zeile im Manifest
 
 4. PUSH_STATUS == "COMPLETED"? (exakte Gleichheitspruefung, kein Substring-Match)
@@ -78,14 +75,20 @@ changelog: |
    FALSE POSITIVE vermeiden: "PUSH_STATUS: NOT COMPLETED" → kein Match (prueft NICHT ob "COMPLETED" irgendwo enthalten ist)
    → NEIN / nicht vorhanden:
      FEHLER: "PUSH_STATUS nicht COMPLETED."
-     "        Starte erst: /_W_push_temp auto"
+     "        BL-050 Vault-First: Synthese-Artefakte (Model, Spec, Gap,"
+     "        SC-Pipeline) werden DIREKT in Vault geschrieben."
+     "        Push ist nur noch noetig fuer RAG-Ingest + lokale Artefakte."
+     "        Option A: /_W_push_temp auto  (RAG-Ingest + verbleibende)"
+     "        Option B: --skip-push-guard   (reine Vault-First-Features)"
      "        Danach: /_finish erneut aufrufen"
      → Zeige letzten PUSH_STATUS-Wert (falls vorhanden)
      → ABBRUCH
 ```
 
-**Hintergrund (W158):** Ohne Push geht Feature-Wissen verloren.
-Das naechste Feature kann Erkenntnisse nicht via `/_W_fetch` finden.
+**Hintergrund (W158, aktualisiert BL-050):** Bei Vault-First-Features
+liegen Synthese-Artefakte bereits im Vault. Push ist primaer fuer
+RAG-Ingest und lokale Artefakte (.claude/) relevant.
+Bei reinen Vault-First-Features kann `--skip-push-guard` verwendet werden.
 
 ---
 
@@ -96,7 +99,7 @@ Lies folgende Dateien und zaehle offene Items:
 ### 1.1 Manifest lesen
 
 ```
-Lies .claude/analysis/_manifest.md
+Lies {VAULT}/_manifest.md
 Extrahiere:
   - NAME (falls nicht als Parameter gegeben)
   - PHASE
@@ -108,7 +111,7 @@ Extrahiere:
 ### 1.2 Parking-Lot lesen
 
 ```
-Lies .claude/analysis/_parking-lot.md
+Lies {VAULT}/_parking-lot.md
 Zaehle:
   - [ ] Items (offen)
   - [x] Items (erledigt)
@@ -119,7 +122,7 @@ Sammle alle [ ] Items als Liste.
 ### 1.3 Task.md lesen
 
 ```
-Lies .claude/Task.md (falls vorhanden)
+Lies {VAULT}/Task.md (falls vorhanden)
 Zaehle:
   - Offene ECs (Erfolgskriterien ohne ✅)
   - Offene TCs (Test Cases ohne ✅)
@@ -160,6 +163,32 @@ AUSGABE:
 ```
 
 Falls 0 offene Items → Springe zu Schritt 3.
+
+---
+
+## Schritt 2.0: Dark Factory Guard
+
+**PFLASTER 2026-06-11 (BL-295 AK-5, Live-Bug DCSRE-1944):** Ob die offenen Items autonom geparkt
+werden (kein AskUserQuestion) oder per HiL abgefragt werden, entscheidet AUSSCHLIESSLICH der
+`hil`-Param (Session-Params via BL-174-Resolver). `GLOBAL_MODUS` ist KEIN HiL-Proxy mehr
+(PL-S2-06: BDF/Modus und HiL sind ORTHOGONAL). Der alte `OR GLOBAL_MODUS IN [...]`-Disjunkt
+koppelte das Auto-Park an den Modus — entfernt; `hil=off` ist die einzige Quelle (deckt
+small_dark_factory UND big_dark_factory ueber den hil-Param ab).
+
+```
+hil_param = resolve(hil)   # off | cycle | phase | manual
+             # BL-174: py -3 .claude/scripts/session_params_resolver.py resolve --param=hil --bl-id={BL_ID}
+             # Fallback {VAULT}/_session_params.md **HiL:**
+
+IF hil_param == "off":
+  # Dark Factory Modus: Offene Items automatisch PARKEN (nicht loeschen)
+  # Items bleiben als [ ] in _parking-lot.md (unveraendert)
+  N = Anzahl offener [ ] Items aus Schritt 1
+  Logge: "Dark Factory Guard: {N} offene Items automatisch GEPARKT (hil=off)"
+  → Springe zu Schritt 3 (KEIN AskUserQuestion)
+# ALT (BUG, ersetzt): IF GLOBAL_HIL == "off" OR GLOBAL_MODUS IN ["small_dark_factory", "big_dark_factory"]
+# -> GLOBAL_MODUS war HiL-Proxy (Orthogonalitaets-Verletzung PL-S2-06).
+```
 
 ---
 
@@ -241,17 +270,35 @@ Pro Item basierend auf User-Entscheidung:
 
 ## Schritt 3: .claude/* Konsistenz-Check
 
-### 3.1 Models pruefen
+### 3.1 Models pruefen (BL-045 Vault-First)
 
 ```
+# PRIMAER: Vault-Pfade scannen (BL-045)
+Vault-Root via vault-routing.json (5-stufig)
+BL_SLUG = aus _backlog_index.md oder Manifest
+
+Fuer jede Datei in {VAULT}/Backlog/{BL_SLUG}/Model/*.md:
+  - Hat sync-Block? (Obsidian Sync Metadaten)
+  - Ist finalisiert? (status: final im Frontmatter)
+  - Hat Vault-Frontmatter? (type, feature, bl-item, tags)
+
+# FALLBACK (Legacy): .claude/models/*.md
 Fuer jede Datei in .claude/models/*.md:
   - Hat sync-Block? (Obsidian Sync Metadaten)
   - Ist finalisiert? (status: final im Frontmatter)
 ```
 
-### 3.2 Synthese pruefen
+### 3.2 Synthese pruefen (BL-045 Vault-First)
 
 ```
+# PRIMAER: Vault-Pfade scannen (BL-045)
+Fuer jeden Typ in [Spec, Gap, K-Score]:
+  Fuer jede Datei in {VAULT}/Backlog/{BL_SLUG}/{Typ}/*.md:
+    - Hat Frontmatter? (YAML-Block am Anfang)
+    - Ist Status gesetzt? (final/partial/draft)
+    - Hat Vault-Frontmatter? (type, feature, bl-item, tags)
+
+# FALLBACK (Legacy): .claude/analysis/synthese/
 Fuer jede Datei in .claude/analysis/synthese/{NAME}-*.md:
   - Hat Frontmatter? (YAML-Block am Anfang)
   - Ist Status gesetzt? (final/partial/draft)
@@ -291,6 +338,122 @@ AUSGABE:
 Falls Inkonsistenzen: Team Lead behebt sie automatisch (Frontmatter ergaenzen,
 Phase korrigieren). Bei stale Teams: Melde dem User.
 
+### 3.6 Backup-Verzeichnisse bereinigen (Cleanup-Hook, CaseStudy MV-2d)
+
+.backup_{DATE}/ Verzeichnisse sind obsolet sobald git die Aenderungen hat:
+
+```
+BACKUP_DIRS = Glob(".claude/commands/.backup_*/")
+
+IF COUNT(BACKUP_DIRS) == 0:
+  → SKIP (keine Backup-Verzeichnisse vorhanden)
+
+IF COUNT(BACKUP_DIRS) > 10:
+  → HiL: "{COUNT} Backup-Verzeichnisse gefunden. Loeschen? (j/n)"
+
+Fuer jedes DIR in BACKUP_DIRS:
+  DATEIEN = Glob(DIR + "/*")
+  Loesche DIR rekursiv
+  Log: "Geloescht: {DIR} ({COUNT(DATEIEN)} Dateien)"
+
+Log: "Backup-Cleanup: {COUNT(BACKUP_DIRS)} Verzeichnisse entfernt"
+Log: "Hinweis: Geloeschte Dateien erscheinen in 'git status' als deleted."
+```
+
+**Sicherheit:** 0 Risiko — alle Dateien sind git-tracked (verifiziert: .backup_20260206/
+mit 6 Dateien, kein .gitignore-Eintrag). Loeschung ist auf Dateisystem-Ebene, git
+commit erfolgt durch User separat.
+
+---
+
+## Schritt 3.7: PL→Pre-PR Selbstlern-Loop Guard (RF-CS-013)
+
+**Zweck:** Scanne abgeschlossene PL-Items → finde Muster die Pre-PR haette erkennen muessen → `/_PrePR_Update_Meta` automatisch ausfuehren.
+
+```
+# ═══ GUARD: PL→Pre-PR Selbstlern-Loop (RF-CS-013, Selbstlernende Metadaten) ═══
+# NON-BLOCKING: FAIL von _PrePR_Update_Meta blockiert NICHT den Abschluss
+
+1. Lies {VAULT}/_parking-lot.md
+   Sammle alle [x] DONE Items (abgeschlossen im aktuellen Feature-Kontext)
+   → N_DONE = Anzahl [x] Items
+
+2. Falls N_DONE == 0:
+   → SKIP (kein Lernpotential, Guard ueberspringen)
+
+3. Pro [x] Item: Klassifiziere den Fix-Typ:
+
+   FORM/SYNTAX:
+     Indikatoren: Umlaute, Encoding, Naming, Cleanup, Logging,
+                  Formatierung, Konstanten, XML-Doc, Magic Strings
+     → Liste: FORM_ITEMS
+
+   ARCHITEKTUR:
+     Indikatoren: Pattern, Datenfluss, Controller-Logik, Interface,
+                  DI, Schicht-Verletzung, Abhaengigkeit
+     → Liste: ARCH_ITEMS
+
+   CODE-FIX (kein Learning noetig):
+     Indikatoren: Bug, Logik-Fehler, Null-Check, Exception, Test-Fix
+     → Liste: CODE_ITEMS (ignorieren)
+
+4. Falls COUNT(FORM_ITEMS) > 0:
+   Logge: "[SELBSTLERN] {COUNT(FORM_ITEMS)} PL-Items zeigen Pre-PR Metadaten-Luecken"
+   Logge: "  Items: {KOMMA_LISTE_KURZTITEL}"
+   Fuehre aus: Skill(skill="_PrePR_Update_Meta")
+   → Bei Fehler: Logge "[SELBSTLERN] _PrePR_Update_Meta fehlgeschlagen — nicht blockierend"
+   → Weiter (NON-BLOCKING)
+
+5. Falls COUNT(ARCH_ITEMS) > 0:
+   Logge: "[SELBSTLERN] {COUNT(ARCH_ITEMS)} PL-Items zeigen Pattern Library Luecken"
+   Logge: "  (Pattern Library Guard handelt das separat — Guard 2)"
+   → Kein automatischer Trigger hier
+
+6. Falls COUNT(FORM_ITEMS) == 0 AND COUNT(ARCH_ITEMS) == 0:
+   Logge: "[SELBSTLERN] Keine Metadaten-Luecken erkannt (nur CODE-FIX Items)"
+```
+
+**Hintergrund (RF-CS-013):** Das System lernt NICHT aus wiederholten Fehlern wenn PL-Items nie ausgewertet werden. Dieser Guard schliesst den Lern-Loop: Projekt → PL-Items → Guard → Metadaten-Update → naechstes Projekt profitiert.
+
+---
+
+## Schritt 3.8: Pattern Library Validation (Selbstlernende Metadaten)
+
+> **INV-EINSCHUB (AK-F-4, AK-F-7, BL-153): M-5 Einschub-Marker**
+> Dieser Schritt 3.8 ist ein INV-EINSCHUB nach dem bestehenden Schritt 3.7 —
+> bestehende Schritte werden NICHT veraendert.
+>
+> **AK-F-7 (BL-153): KEIN automatischer `_PT_extract --parking-lot-walk` Hook hier.**
+> Die M1-Walk-Pattern-Extraktion ist MANUELL: Nach Feature-Abschluss kann der User
+> `/_PT_extract --parking-lot-walk` explizit aufrufen um neue Patterns aus dem
+> Parking-Lot zu extrahieren. Automatischer Hook ist verboten (INV-D4).
+
+**Zweck:** Pruefe ob Patterns waehrend dieser Feature-Implementierung validiert wurden. Hat sich ein Pattern bewaehrt? Grenzen dokumentieren, battle-tested Patterns promoten.
+
+```
+# ═══ GUARD: Pattern Library Validation (Selbstlernende Metadaten) ═══
+# Pruefe ob Patterns waehrend dieser Feature-Implementierung validiert wurden
+#
+# Scan-Logik:
+#   1. Lies Libraries/PatternLibrary/_index.md (Vault-basiert, BL-153)
+#      IF Libraries/PatternLibrary/ nicht existiert → SKIP (Pattern Library nicht initialisiert)
+#      LEGACY: .claude/patterns/ wird nicht mehr verwendet (Vault-Migration BL-153)
+#   2. Finde Patterns mit status: "dirty" oder "unbattle-tested"
+#   3. Pro Pattern:
+#      - Wurde es in diesem Feature verwendet? (Suche in Commit-Diff oder Manifest)
+#      - Wenn JA und erfolgreich → status: "battle-tested" vorschlagen
+#      - Wenn JA und gescheitert → Pattern-Grenzen dokumentieren
+#      - Wenn NEIN → status bleibt (kein Urteil moeglich)
+#   4. Katalog erstellen:
+#      Logge: "[PATTERN-VALIDATION] {N} Patterns geprueft, {M} battle-tested, {K} Grenzen gefunden"
+#   5. Bei HiL=on: AskUserQuestion mit Katalog fuer finale Entscheidung
+#      Bei HiL=off: Auto-accept (battle-tested Patterns automatisch promoten)
+#
+# NON-BLOCKING: Guard blockiert NICHT den Abschluss
+```
+
+**Hintergrund:** Ein Pattern wird "dirty" markiert wenn es erstmalig eingesetzt wird, aber nie wieder validiert. Dieser Guard schliesst die Luecke: nach jedem Feature wird geprueft ob sich das Pattern bewaehrt hat — oder ob Grenzen (Minima/Maxima) aus Evidenzen zu dokumentieren sind.
+
 ---
 
 ## Schritt 4: Bereit fuer naechstes Feature
@@ -298,7 +461,7 @@ Phase korrigieren). Bei stale Teams: Melde dem User.
 ### 4.1 Manifest updaten
 
 ```
-Aktualisiere .claude/analysis/_manifest.md:
+Aktualisiere {VAULT}/_manifest.md:
   PHASE: READY
   NAECHSTER_SCHRITT: (leer)
   VORHERIGES FEATURE: {NAME} (ABGESCHLOSSEN, SRS {SRS}, {ZYKLEN} Zyklen, {DATUM})

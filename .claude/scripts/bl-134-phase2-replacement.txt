@@ -1,0 +1,36 @@
+## PHASE 2: WORKING (BL-134 Topologie-Korrektur)
+
+> **BL-134 Topologie-Cut (2026-04-25):** Phase 2 ist EIN executionDispatch-Aufruf,
+> KEIN ITEM_LOOP mehr. Modus wird einmal pro Batch in Phase 1 entschieden.
+> Sub-Pipelines (I/SC/WP/TDD) erhalten Batch-Param und iterieren intern sequentiell
+> (Pflaster, echter Refactor in BL-135-138).
+
+### SCHRITT 2.1: executionDispatch routet je nach Modus
+
+```
+Skill(_SDF_berater_executionDispatch, args="{NAME}")
+```
+
+executionDispatch liest `DF_BATCH_STATE.modus` (PRIMAER) und routet `batch=items_to_process`
+an die passende Sub-Pipeline (siehe `_SDF_berater_executionDispatch.md` SCHRITT 1
+fuer M1..M9 Mapping).
+
+**Recovery:** Bei Crash + Re-Trigger erkennt resumeGuard `batch_status==STARTED`,
+skipped Phase 0+1, executionDispatch verarbeitet ab erstem nicht-DONE Item via
+`DF_BATCH_STATE.item_done[]` (BL-134 AK-9).
+
+### SCHRITT 2.2: Recalibrate-Guard (M1-Skip)
+
+```
+IF DF_BATCH_STATE.modus != "M1":
+  Skill(_SDF_berater_recalibrate, args="{NAME} --modus={DF_BATCH_STATE.modus}")
+```
+
+(BL-014 ADR: M1 Inline rechtfertigt nicht Recalibrate-Overhead.)
+
+### SCHRITT 2.3: Worker-FAIL-Pruefung
+
+Bei `BERATER_OUTPUTS.executionDispatch.status == "FAIL_*"`:
+- Logge Error
+- Setze `df_status = ABORTED`
+- EXIT

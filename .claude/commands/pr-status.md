@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Status Uebersicht anzeigen.
 
 Fuehre das PowerShell-Skript aus:

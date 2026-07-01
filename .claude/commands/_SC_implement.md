@@ -1,9 +1,22 @@
+---
+type: building-block
+depends_on:
+  - _SC_hypothese
+feeds_into:
+  - _SC_ergebnis
+related:
+  - _I_codeAtomic
+---
+
 # /_SC_implement
 
 Du fuehrst die geplanten Code-Aenderungen durch.
 
 **Scope-Validierung (v2.0+):**
-Genau 1 IC pro Durchgang. Soft-Limits (5 Dateien, 100 LOC) als Warnung.
+Genau 1 IC pro Durchgang. 3-stufige LOC-Schwellen:
+  >100 LOC → Empfehlung: /_I_orchestrate erwaegen (kein Stop, kein Hard-Limit)
+  >200 LOC → WARNUNG
+  >200 LOC + Dateien>5 → ESKALATION: Moduswechsel zu /_I_orchestrate (Symbiose-Modus)
 Verifikations-Anleitung mit 3-5 konkreten Test-Schritten PFLICHT.
 
 **NEU (v2.2): Horizontale Suche (ALT-System Phase 2.2 Integration)**
@@ -31,7 +44,7 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
+║    1. {VAULT}/_manifest.md                                      ║
 ║    2. .claude/analysis/synthese/{NAME}-HYPOTHESEN.md ◄── MUSS EXISTIEREN║
 ║       NEU: Enthaelt Verifikations-Kriterium (V1-V5, PASS/FAIL)         ║
 ║       NEU: Enthaelt Scope-Deklaration (IC, Dateien, LOC)                ║
@@ -49,7 +62,7 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 ║       → Sektion "Durchgefuehrte Aenderungen" hinzufuegen                 ║
 ║       → Sektion "Verifikations-Anleitung" hinzufuegen (PFLICHT, HO-10)  ║
 ║       → Status auf "BEREIT ZUM TESTEN" setzen                            ║
-║    3. .claude/analysis/_manifest.md (aktualisieren)                      ║
+║    3. {VAULT}/_manifest.md (aktualisieren)                      ║
 ║                                                                          ║
 ║  NEUE Qualitaetskriterien (Kap. 3.3):                                   ║
 ║    ┌─────────────────────┬──────┬──────┬──────────┬──────────────────┐   ║
@@ -57,8 +70,9 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 ║    ├─────────────────────┼──────┼──────┼──────────┼──────────────────┤   ║
 ║    │ ICs pro Durchgang   │VERSCH│ HO   │ Genau 1  │ STOP → _SC_hypothese│   ║
 ║    │ Dateien              │ OPT  │ SO   │ SL 5     │ WARNUNG          │   ║
-║    │ LOC netto            │ OPT  │ SO   │ SL 100   │ WARNUNG          │   ║
-║    │ Beide Soft-Limits    │ PC2  │ SO   │ Gleichz. │ STOP → _SC_hypothese│   ║
+║    │ LOC > 100            │ OPT  │ SO   │ SL 100   │ EMPFEHLUNG (kein Stop)  │
+    ║    │ LOC > 200            │ OPT  │ SO   │ SL 200   │ WARNUNG          │   ║
+║    │ LOC>200 + Dat.>5    │ PC2  │ SO   │ Gleichz. │ ESKALATION → /_I_orchestrate (Symbiose)│   ║
 ║    │ Verifikations-Anl.   │VERSCH│ HO   │ PFLICHT  │ 3-5 Test-Schritte│   ║
 ║    └─────────────────────┴──────┴──────┴──────────┴──────────────────┘   ║
 ║                                                                          ║
@@ -66,6 +80,12 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 ║    [_SC_hypothese] ──▶ [_SC_implement] ──▶ [_SC_ergebnis]               ║
 ║    Liest Output von _SC_hypothese (Verif. + Scope + Plan),              ║
 ║    schreibt Code + Verifikations-Anleitung + aktualisiert HYPOTHESEN     ║
+║                                                                          ║
+║  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                        ║
+║    Pattern A: Reiner State-Write — kein Protokoll-Eintrag               ║
+║    SCHREIBT STATE: MANIFEST_SPLIT_SC_IMPLEMENT, sc_status (Einzeiler)  ║
+║    SCHREIBT NICHT: _manifest_protokoll.md                               ║
+║    (Protokoll-Eintraege via _SC_orchestrate Phase 3.3.0 Rollover)       ║
 ║                                                                          ║
 ║  MCP INTEGRATION (OPTIONAL, Uncle Bob Clean Code):                       ║
 ║    - mcp__cleancoder__query() fuer TDD + Patterns + Refactoring         ║
@@ -89,7 +109,7 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Pruefe ob Phase _SC_hypothese abgeschlossen ist
    - Lies **SYSTEM-MODEL** aus der System-Konfiguration
@@ -132,9 +152,22 @@ Kein Schwierigkeits-Parameter. Implementation erfordert Fokus, nicht Breite.
 - Lies erwartete Dateien und LOC aus Scope-Deklaration
 - Pruefe:
   - Dateien > 5? → **WARNUNG** ausgeben (OPT/SO)
-  - LOC > 100? → **WARNUNG** ausgeben (OPT/SO)
-  - **BEIDE** gleichzeitig ueberschritten? → **STOP** (PC2/SO)
-    → "Beide Soft-Limits ueberschritten. Zurueck zu /_SC_hypothese fuer Scope-Verkleinerung."
+  - LOC > 100? → **EMPFEHLUNG**: /_I_orchestrate erwaegen (kein Stop, kein Hard-Limit)
+  - LOC > 200? → **WARNUNG** ausgeben (OPT/SO)
+  - **BEIDE** gleichzeitig ueberschritten? → **ESKALATION** (PC2/SO) # (Z5: RF-14)
+    → HiL-Prompt (auch bei HiL=off, da Eskalation):
+      "ESKALATION: LOC>{actual_LOC} UND Dateien>{actual_files} — zu gross fuer INLINE.
+       Empfehlung: Auf SYMBIOSE-Modus wechseln (/_I_orchestrate core).
+       [SYMBIOSE starten]  SC-Modus auf FULL wechseln, /_I_orchestrate {NAME} (scope_mode=core)
+       [TROTZDEM INLINE]   Weiter mit _SC_implement (auf eigene Gefahr, LOC ueberschritten)
+       [ABBRECHEN]         Implementation abbrechen, zurueck zu /_SC_hypothese"
+    → Bei SYMBIOSE starten:
+        Manifest: pipeline_mode = SC_SYMBIOSE_I_ACTIVE
+        SC_PIPELINE_STATE.sc_mode = FULL
+        EXIT: "Eskalation zu SYMBIOSE — Team Lead startet /_I_orchestrate {NAME}"
+    → Bei TROTZDEM INLINE: WEITER (Manifest-Notiz: "INLINE-Override: LOC={actual_LOC}")
+    → Bei ABBRECHEN: EXIT (kein Code geschrieben)
+    → KEIN Zurueck zu /_SC_hypothese — der Scope ist zu gross fuer INLINE.
 - **Override:** SOFT-OVERRIDE. Automatische Manifest-Notiz bei Override.
 
 ### 1c. Atomaritaets-Ausnahme (falls deklariert)
@@ -241,8 +274,17 @@ Fuer JEDE Ziel-Datei aus "Geplante Aenderungen" (HYPOTHESEN.md):
 | `*Service.cs` (in Backend) | BE-SVC |
 | `*Repository.cs` | BE-REPO |
 | `*Dto.cs` | BE-DTO |
+
+> **ARCH-Delta-11:** Suffix→Layer-Mapping ist DCSRE-Beispiel. Projekt-portables
+> Mapping via `python3 .claude/scripts/load_layers.py --format=json`.
+
 | `*.spec.ts` | TEST-UNIT |
 | `docker-compose*.yml` | INF-DOCK |
+| `*.md` in `commands/` | CMD-DOC |
+| `*.md` in `patterns/` | PATTERN-DOC |
+| `*.md` in `models/` | META-MODEL |
+| `*.md` in `meta/` | META-IMPL |
+| `*.md` in `merge-instructions/` | META-MERGE |
 
 ### 1.5b: Aehnliche Dateien im gleichen Layer finden (Glob)
 
@@ -264,6 +306,14 @@ Pro Ziel-Datei:
    - Waehle die 3 Dateien mit der hoechsten Namens-/Funktions-Aehnlichkeit
    - Priorisiere Dateien mit aehnlichem Funktions-Typ
      (z.B. fuer eine Detail-Komponente: andere Detail-Komponenten bevorzugen)
+
+4. **0-Treffer-Fallback:**
+   Wenn Glob-Suche 0 Treffer liefert:
+   - Kein Kandidat im Layer gefunden
+   - Farbe: RED, Score: 0.0, Blueprint: KEIN
+   - Protokolliere als "Layer leer oder Pattern neu"
+   - Fahre fort mit Schritt 1.5e (RED-Klassifikation direkt)
+   - Ueberspringe 1.5c und 1.5d (keine Kandidaten zum Analysieren)
 
 ### 1.5c: Pattern-Extraktion aus Kandidaten (Read + Grep)
 
@@ -311,6 +361,22 @@ Erhoehungen:
 Ergebnis: max(0, min(1, Score))
 ```
 
+**MD-Dokument-Scoring (Pattern Library, Commands, Models):**
+
+Fuer Kandidaten die MD-Dokumente sind (Layer CMD-DOC, PATTERN-DOC, META-MODEL,
+META-IMPL, META-MERGE) gelten zusaetzliche Score-Modifikationen:
+
+```
+MD-Dokument-spezifische Anpassungen:
+  +0.15 wenn Dokument eine VERTRAG/Input-Output Sektion hat
+  +0.1  wenn Dokument eine Beispiel-Sektion hat
+  -0.2  wenn Dokument nur Ueberschriften und keine Inhalte hat (Stub)
+
+Diese Anpassungen werden ZUSAETZLICH zu den Code-Reduktionen/Erhoehungen
+angewendet. Bei reinen MD-Dokumenten entfallen Code-spezifische Kriterien
+(zyklomatische Komplexitaet, Dependencies, Parameter/Return-Typ).
+```
+
 ### 1.5e: 3-Farb-Komplexitaets-Klassifikation
 
 Basierend auf dem besten Reuse-Score:
@@ -337,7 +403,17 @@ Summe 3-5:   ORANGE → Moderate Anpassung
 Summe >= 6:  RED    → Signifikante Custom-Arbeit
 ```
 
-### 1.5f: Blueprint auswählen und dokumentieren
+### 1.5f-pre: Pattern-ID Lookup
+
+Vor der Blueprint-Auswahl:
+
+1. Pruefe ob der beste Kandidat einen Pattern-Library-Eintrag hat:
+   - Grep in `.claude/patterns/_pl-index.md` nach dem Dateinamen oder Pattern-Namen
+2. Wenn gefunden: Pattern-Library-Match = `{Pattern-ID}`
+   - Fuege Pattern-ID in Blueprint-Dokumentation ein
+3. Wenn nicht gefunden: Pattern-Library-Match = `Kein Match (Kandidat fuer /_PT_extract)`
+
+### 1.5f: Blueprint auswaehlen und dokumentieren
 
 1. **Besten Kandidaten als Blueprint auswaehlen:**
    - Hoechster Reuse-Score
@@ -377,14 +453,41 @@ Summe >= 6:  RED    → Signifikante Custom-Arbeit
 - **Pattern-Library-Match:** {Pattern-ID oder "Kein Match"}
 ```
 
-### 1.5g: Pattern-Library aktualisieren (optional)
+### 1.5g: Pattern-Adoption-Entscheidung und Usage-Log
 
-Falls ein neues wiederkehrendes Pattern identifiziert wurde:
-- Notiere es als Kandidat fuer `.claude/patterns/_pattern-library.md`
-- Aktualisiere vorhandene Patterns mit neuen Beispiel-Referenzen
+Basierend auf Farbe und Pattern-Library-Match:
 
-**WICHTIG: Die Pattern-Library wird NUR aktualisiert wenn das Pattern
-erfolgreich angewendet wurde (nach /_SC_ergebnis mit PASS).**
+**GRAY (Score > 0.8) + Pattern-Library-Match vorhanden:**
+- Blueprint 1:1 uebernehmen
+- pattern-usage.log APPEND: `{datum} | {pattern-id} | {feature} | -- | VERIFIED | sc-implement`
+- WEITER zur Implementation (Schritt 2)
+
+**ORANGE (Score 0.5-0.8) ODER GRAY ohne Library-Match:**
+- Blueprint als Basis, eigene Logik ergaenzen
+- pattern-usage.log APPEND: `{datum} | {kandidat-id} | {feature} | -- | DRAFT | sc-implement`
+- WEITER zur Implementation (Schritt 2)
+
+**RED (Score < 0.5) ODER 0-Treffer:**
+- Custom-Implementation (Blueprint nur als Inspiration)
+- PT-TRIGGER-CHECK:
+  Existiert `.claude/commands/_PT_extract.md`?
+  - JA: PT-Trigger: `/_PT_extract` ausfuehren NACH Implementation
+    (Extrahiert das neue Pattern in DRAFT-Status)
+    Notiere in HYPOTHESEN.md: `PT-Trigger: AKTIV, Command: /_PT_extract`
+  - NEIN: PT-SKIP (Manifest-Vermerk: `PT_SKIP_W245_OFFEN`)
+    Notiere in HYPOTHESEN.md: `PT-Trigger: SKIP (W245 offen)`
+- pattern-usage.log APPEND: `{datum} | KEIN_PATTERN | {feature} | -- | KEIN_PATTERN | sc-implement`
+
+**pattern-usage.log Format:**
+- Datei: `.claude/wissen/pattern-usage.log`  # BL-065: removed — Vault-Sync via obsidianSync entfernt (archiviert)
+- Eintrag: `{YYYY-MM-DD} | {pattern-id-oder-KEIN_PATTERN} | {feature-name} | {cluster} | {STATUS} | {quelle}`
+- Erstelle Datei wenn nicht vorhanden.
+
+**Graceful Degradation:**
+Wenn `.claude/patterns/_pattern-library.md` nicht vorhanden:
+- Alle Schritte 1.5a-1.5g ueberspringen
+- Farbe: RED (Default, kein Blueprint)
+- Notiere: `Horizontale Suche: SKIP (Pattern Library nicht vorhanden)`
 
 ---
 
@@ -400,8 +503,8 @@ INPUT - LIES ZUERST DIESE DATEIEN:
 SCOPE-VALIDIERUNG (VOR Code-Aenderungen):
   - IC-Check: Genau 1 IC? → Falls >1: STOP (HO-09)
   - Dateien-Check: <= 5? → Warnung wenn ueberschritten
-  - LOC-Check: <= 100? → Warnung wenn ueberschritten
-  - Beide > Limit? → STOP, zurueck zu _SC_hypothese
+  - LOC-Check: <= 200? → Warnung wenn ueberschritten
+  - Beide > Limit? → ESKALATION: pipeline_mode=SC_SYMBIOSE_I_ACTIVE, /_I_orchestrate {NAME} (Symbiose core)
   - Atomaritaets-Ausnahme? → User-Signal falls deklariert
 
 AUFTRAG:
@@ -437,7 +540,7 @@ Nach Abschluss MUSST du {NAME}-HYPOTHESEN.md aktualisieren:
   |------|---------|--------------|--------|
   | IC | {aus Scope-Deklaration} | {tatsaechlich} | OK / ABWEICHUNG |
   | Dateien | {aus Scope-Deklaration} | {tatsaechlich} | OK / WARNUNG (>5) |
-  | LOC netto | {aus Scope-Deklaration} | {tatsaechlich} | OK / WARNUNG (>100) |
+  | LOC netto | {aus Scope-Deklaration} | {tatsaechlich} | OK / WARNUNG (>200) |
 
   ### Verifikations-Anleitung (PFLICHT, HO-10)
 

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Forschung: Knowledge Deep-Dive (Parallel zum Zyklus)
 
 Du fuehrst eine tiefgehende Wissens-Recherche zu einem spezifischen Technologie-Thema durch.
@@ -10,7 +14,7 @@ Dieses Command laeuft **PARALLEL** zum Hauptzyklus und blockiert keine andere Ph
 ```
 
 - **THEMA** (Pflicht): Das zu erforschende Technologie-Thema, z.B. `X509-Zertifikate`, `WCF-Binding`, `SFTP-Protokoll`
-- **Schwierigkeit** (Optional): Default `hard`
+- **Schwierigkeit** (Optional): Default `easy` (normal/hard nur bei explizitem Aufruf)
 
 ---
 
@@ -22,7 +26,7 @@ Dieses Command laeuft **PARALLEL** zum Hauptzyklus und blockiert keine andere Ph
 +===============================================================+
 |                                                                |
 |  LIEST (Input):                                                |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |    2. .claude/models/{NAME}_Model.md  <-- KONTEXT              |
 |       (Was ist unser System? Wo taucht das Thema auf?)         |
 |                                                                |
@@ -43,7 +47,7 @@ Dieses Command laeuft **PARALLEL** zum Hauptzyklus und blockiert keine andere Ph
 |      .claude/wissen/{THEMA}_Wissen.md                          |
 |                                                                |
 |    Manifest (IMMER):                                           |
-|      .claude/analysis/_manifest.md (Knowledge-Sektion)         |
+|      {VAULT}/_manifest.md (Knowledge-Sektion)         |
 |                                                                |
 |  PARALLEL:                                                     |
 |    Dieses Command blockiert KEINE Phase des Hauptzyklus.       |
@@ -90,7 +94,7 @@ Dieses Command laeuft **PARALLEL** zum Hauptzyklus und blockiert keine andere Ph
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME} des Hauptzyklus
    - Pruefe ob bereits ein {THEMA}_Wissen.md existiert
    - **Pruefe Knowledge-Sektion fuer {THEMA}** auf Wellen-Status
@@ -248,7 +252,7 @@ KOMMUNIKATIONSTHEORIE:
 
 ---
 
-## Ablauf: hard (Standard)
+## Ablauf: hard (nur bei explizitem Aufruf)
 
 ```
 Welle 1a: +---+ +---+ +---+ +---+ +---+ +---+ +---+

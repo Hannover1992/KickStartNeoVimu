@@ -1,8 +1,25 @@
+---
+type: building-block
+depends_on: []
+feeds_into:
+  - _SC_orchestrate
+  - _A_orchestrate
+related:
+  - _taskDefinition
+  - _model
+---
+
 # /_W_fetch
 
-**Status:** v3.0 (Wellen-Architektur + Schwierigkeitsstufen + Dual-Mode)
+**Status:** v5.1 (Graph-Traversal-Primary + Cache-Semantik + _vault_refs.md + Vault-Routing v2.0 + WARNING-Guard + 7 RAG-Collections + Worker-Vertraege + Ankerpunkt-Persistenz + Dual-Pfad Truth-Direktsuche BL-389)
 **Actor:** KNOWLEDGE-SCOUT
-**Zweck:** Bei Feature-Start existierendes Wissen + Models aus Obsidian UND RAG suchen und wiederverwenden
+**Zweck:** Bei Feature-Start existierendes Wissen via Graph-Traversal im Vault identifizieren, Referenz-Index erstellen, und lokalen Cache aktualisieren
+
+> **SEMANTIK-SHIFT v5.0 (RF-03):** Vault ist PRIMAER-QUELLE. Graph-Traversal ist der
+> primaere Modus. Lokale Kopien in .claude/models/ und .claude/wissen/ sind **CACHE**
+> (nicht Primaerquelle). Der Referenz-Index `_vault_refs.md` ist das primaere Ergebnis.
+> Agenten lesen bei Bedarf direkt aus dem Vault (via _vault_refs.md Pfade).
+> Cache-Refresh erfolgt NACH Graph-Traversal als Fallback fuer Offline/Performance.
 
 ---
 
@@ -20,16 +37,23 @@
 |    Semantisch verwandtes Wissen wird nicht gefunden             |
 |    weil nur exakte Tags/Namen gesucht werden.                  |
 |                                                                |
-|  KERN-PRINZIP:                                                 |
-|    VOR Feature-Start: Vault UND RAG durchsuchen.               |
-|    Was existiert → in .claude/ ziehen als Basis.               |
-|    Was fehlt → notieren fuer spaetere Erstellung.              |
+|  KERN-PRINZIP (v5.0 Graph-Traversal-Primary):                  |
+|    VOR Feature-Start: Vault-Graph traversieren + RAG suchen.   |
+|    Graph-Traversal ist PRIMAERER Modus.                        |
+|    Ergebnis: _vault_refs.md (Referenz-Index mit Vault-Pfaden). |
+|    Lokale Kopien (.claude/models/, .claude/wissen/) = CACHE.   |
+|    Cache-Refresh NACH Graph-Traversal (Offline/Performance).   |
 |    "Standing on the shoulders of giants."                      |
+|  [BL-236 AK-6] 3-Modi fokussierte Retrieval (heisse Themen     |
+|    statt Voll-Scan): (a) Anker-basiert (source_node Datei:Zeile|
+|    = Drift-Check-Punkt + Entry, da); (b) Git-historische        |
+|    Time-Achse (NEU); (c) Wissens-Graph-multi-step (Traversal,  |
+|    da). Routing nach Themen-Hitze, nicht Full-Scan.            |
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                             |
+|    1. {VAULT}/_manifest.md                             |
 |       → SYSTEM-MODEL, SCHWIERIGKEIT (Ceiling-Hierarchie)       |
-|    2. .claude/Task.md ODER User-Beschreibung                   |
+|    2. {VAULT}/Task.md ODER User-Beschreibung                   |
 |       → Themen/Keywords des neuen Features                     |
 |    3. MCP global_knowledge Collection                          |
 |       → Semantische Suche nach Themen-Keywords                 |
@@ -47,16 +71,27 @@
 |       → Vorheriges Feature-Note mit Links                      |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
-|    1. .claude/wissen/{THEMA}_Wissen.md (konsolidierte Basis)   |
-|    2. .claude/models/{THEMA}_Model.md (Kopie aus Vault)        |
-|    3. .claude/analysis/_manifest.md                            |
-|       → "## Wissens-Basis" Sektion mit Herkunft               |
-|       → Vault-Hits UND RAG-Hits mit Source + Score             |
+|    1. .claude/analysis/_vault_refs.md (Referenz-Index, PRIMAER)|
+|       → Vault-Pfade, Keywords, Scores, Relationen              |
+|       → Agenten lesen bei Bedarf direkt aus Vault via Pfade    |
+|    2. .claude/wissen/{THEMA}_Wissen.md (CACHE aus Vault)       |
+|    3. .claude/models/{THEMA}_Model.md (CACHE aus Vault)        |
+|    4. {bl_folder}/_manifest.md   (Pattern A: State, per-BL)   |
+|       → "## W_fetch Keyword-Pool" Sektion (State, bleibt)      |
+|       → W_FETCH_STATUS Einzeiler (State-Einzeiler)             |
+|    5. {VAULT}/_manifest_protokoll.md  (Pattern C:     |
+|       Protokoll-Eintrag)                                        |
+|       → W_FETCH Log: Wissens-Basis-Tabelle PREPEND             |
+|         (Vault-Hits, RAG-Hits, Score, Datum)                   |
+|       → Keyword-Pool bleibt State in _manifest.md (NICHT hier) |
 |                                                                |
-|  SCHREIBT (Output) - WELLEN-MODUS (bei normal/hard):           |
-|    Welle 1: drafts/{NAME}-fetch-D{NN}-{fokus}.md              |
-|    Welle 2: drafts/{NAME}-fetch-filter.md                      |
-|    Welle 3: Konsolidierung (Synthese)                          |
+|  SCHREIBT (Output) - abhaengig von Worker-Rolle:               |
+|    Kartograph D{NN}:                                           |
+|      drafts/{NAME}-fetch-D{NN}-{fokus}.md                     |
+|    Filter:                                                     |
+|      drafts/{NAME}-fetch-filter.md                             |
+|    Konsolidierer:                                              |
+|      wissen/{THEMA}_Wissen.md + models/{THEMA}_Model.md       |
 |                                                                |
 |  SCHREIBT NICHT:                                               |
 |    - Vault-Dateien (nur LESEN, nicht aendern)                  |
@@ -67,12 +102,19 @@
 |    [/_W_fetch] → [/_taskDefinition] → [/_model] → ...          |
 |    (Ganz am Anfang, VOR allem anderen)                         |
 |                                                                |
-|  VAULT-PFAD (konfigurierbar):                                  |
-|    1. Environment: $OBSIDIAN_VAULT_PATH                        |
-|    2. Fallback: Manifest "## Obsidian Sync" VAULT-Wert         |
-|    3. Default Linux: /home/uczen/Documents/DCS                 |
-|    4. Default Windows: C:\Users\Administrator\Documents\DCS    |
-|    Falls Vault nicht erreichbar → NUR RAG-Suche (degraded)     |
+|  VAULT-PFAD (5-stufig, vault-routing.json zuerst):             |
+|    1. vault-routing.json: linux_path/windows_path (Stufe 1)    |
+|    2. Environment: $OBSIDIAN_VAULT_PATH (Stufe 2)              |
+|    3. Fallback: Manifest "## Obsidian Sync" VAULT-Wert         |
+|    4. Default Linux: /home/uczen/Documents/DCS                 |
+|    5. Default Windows: C:\Users\Administrator\Documents\DCS    |
+|    Falls NICHTS gefunden → SCHRITT W: WARNING-Guard            |
+|    (KEIN silent degraded mode — IMMER WARNING+FRAGE)           |
+|                                                                |
+|  RAG-COLLECTIONS (aus vault-routing.json):                     |
+|    Pattern-Match $PWD → MATCHED_RULE.rag_collections           |
+|    OmniCommand: 7 Collections (statt 2 hardcoded)              |
+|    Fallback (DEGRADED): global_knowledge + local_{FEATURE}     |
 |                                                                |
 +===============================================================+
 ```
@@ -81,87 +123,16 @@
 
 ## Verantwortlichkeit
 
-**KNOWLEDGE-SCOUT:** Sucht existierendes Wissen und stellt es bereit.
+**KNOWLEDGE-SCOUT:** Traversiert den Vault-Graph, erstellt Referenz-Index, aktualisiert lokalen Cache.
 
-**TUT:** Vault durchsuchen, RAG semantisch durchsuchen, Tag-Index nutzen,
-relevante Dokumente identifizieren, in .claude/ kopieren als Arbeits-Basis,
+**TUT:** Vault-Graph traversieren (PRIMAER), RAG semantisch durchsuchen, Tag-Index nutzen,
+relevante Dokumente identifizieren, _vault_refs.md Referenz-Index erstellen (PRIMAER-OUTPUT),
+lokalen Cache aktualisieren (.claude/models/, .claude/wissen/ als FALLBACK),
 Manifest dokumentieren.
 
 **NICHT:** Wissen erstellen, Models schreiben, Vault aendern, RAG aendern.
 
 ---
-
-## Schwierigkeits-Parameter
-
-| Schwierigkeit | Welle 1 (Kartographierung) | Welle 2 (Filterung) | Welle 3 (Entscheidung) | User-Input |
-|---------------|---------------------------|---------------------|----------------------|------------|
-| **easy** | --- (skip) | --- (skip) | 1 ceiling-Agent: Auto-Scan + Auto-Accept | KEIN (Auto-Accept, Score > 0.5) |
-| **normal** | 3 floor-Agents: Vault + RAG kartographieren | 1 middle-Agent: Relevanz filtern | 1 ceiling-Agent: Konsolidieren + User-Bestaetigung | User bestaetigt Auswahl |
-| **hard** | 5 floor-Agents: Breit kartographieren (Vault + RAG + Cross-Feature) | 3 middle-Agents: Relevanz + Qualitaet filtern | 1 ceiling-Agent: Konsolidieren + User-Bestaetigung | User bestaetigt Auswahl |
-
-**System-Model (aus Manifest):** Bestimmt welches Modell pro Welle laeuft.
-- opus: floor=haiku, middle=sonnet, ceiling=opus
-- sonnet: floor=haiku, middle=sonnet, ceiling=sonnet
-- haiku: floor=haiku, middle=haiku, ceiling=haiku
-
-**Ceiling-Hierarchie (W21):** W_fetch erbt Schwierigkeit vom Parent-Prozess.
-Falls Parent easy ist, darf W_fetch maximal easy sein (Sub-Prozess <= Parent).
-
----
-
-## Dual-Mode: Solo vs. Wellen-Worker
-
-**SOLO-MODUS** (User ruft direkt auf: `/_W_fetch {THEMA} normal`)
-- easy: Nur Welle 3 (du selbst, Auto-Scan + Auto-Accept)
-- normal: 3 Kartographierungs-Durchlaufe SEQUENTIELL, dann Filterung + Konsolidierung (du selbst)
-- hard: 5 Kartographierungen SEQUENTIELL → 3 Filterungen SEQUENTIELL → Konsolidierung
-- Schreibe Wellen-Dateien selbst, sequentiell, dann konsolidiere
-
-**WELLEN-WORKER-MODUS** (Orchestrator steuert, Task enthaelt "Welle X:")
-- Lies Task-Beschreibung um Rolle zu erkennen
-- "Welle 1: Kartographierung, Fokus: {fokus}, Agent-ID: D{NN}"
-  → Fuehre NUR Welle 1 aus. KEIN Spawning.
-  → Lese: Vault + RAG fuer zugewiesenen Fokus-Bereich
-  → Schreibe: .claude/analysis/drafts/{NAME}-fetch-D{NN}-{fokus}.md
-  → TaskUpdate completed + SendMessage an Team Lead
-- "Welle 2: Filterung"
-  → Fuehre NUR Welle 2 aus. KEIN Spawning.
-  → Lese: drafts/{NAME}-fetch-D*.md (ALLE Kartographierungen)
-  → Schreibe: .claude/analysis/drafts/{NAME}-fetch-filter.md
-  → TaskUpdate completed + SendMessage an Team Lead
-- "Welle 3: Konsolidierung"
-  → Fuehre NUR Welle 3 aus. KEIN Spawning.
-  → Lese: drafts/{NAME}-fetch-filter.md
-  → Schreibe: Wissen + Models + Manifest
-  → TaskUpdate completed + SendMessage an Team Lead
-- Kein Wellen-Hinweis → Solo-Modus (alles selbst machen)
-
-**VERTRAG (Wellen-Worker-Modus):**
-```
-+===============================================================+
-|  WELLEN-WORKER VERTRAG                                         |
-+===============================================================+
-|  Welle 1 Worker (Kartograph D{NN}):                            |
-|    LIEST:   Vault ({fokus}-Bereich) + RAG ({fokus}-Queries)    |
-|    LIEST:   _manifest.md "## W_fetch Keyword-Pool" (PFLICHT)   |
-|             → Keywords aus Pool verwenden, NICHT selbst         |
-|               extrahieren (verhindert Keyword-Drift, W14)      |
-|    SCHREIBT: drafts/{NAME}-fetch-D{NN}-{fokus}.md              |
-|    MELDET:  TaskUpdate completed + SendMessage team-lead        |
-|                                                                |
-|  Welle 2 Worker (Filter):                                      |
-|    LIEST:   drafts/{NAME}-fetch-D*.md (ALLE)                   |
-|    SCHREIBT: drafts/{NAME}-fetch-filter.md                     |
-|    MELDET:  TaskUpdate completed + SendMessage team-lead        |
-|                                                                |
-|  Welle 3 Worker (Konsolidierer):                               |
-|    LIEST:   drafts/{NAME}-fetch-filter.md                      |
-|    SCHREIBT: wissen/ + models/ + _manifest.md                  |
-|    MELDET:  TaskUpdate completed + SendMessage team-lead        |
-|                                                                |
-|  NIEMALS: Sub-Agents spawnen (kein Task-Tool in Worker-Modus)  |
-+===============================================================+
-```
 
 ---
 
@@ -171,11 +142,73 @@ Falls Parent easy ist, darf W_fetch maximal easy sein (Sub-Prozess <= Parent).
 
 ### Schritt 0a: Manifest lesen
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`
    - Leite Modell-Zuordnung pro Welle ab (Welle 1=floor, Welle 2=middle, Welle 3=ceiling)
    - Pruefe Ceiling-Hierarchie: Parent-Schwierigkeit >= W_fetch-Schwierigkeit
+
+### Schritt 0a.1: VAULT-ROUTING-LESE-MUSTER
+
+```
+SCHRITT 0a.1: VAULT-ROUTING-LESE-MUSTER
+─────────────────────────────────────────────
+R1: vault-routing.json lokalisieren
+    CONFIG_PATH=".claude/config/vault-routing.json"
+    Falls CONFIG_PATH nicht existiert → SCHRITT W (WARNING-Guard)
+
+R2: Pattern-Match gegen $PWD (case-insensitiv)
+    Fuer jede Regel in detection.rules (sortiert nach priority aufsteigend):
+      Falls $PWD enthaelt rule.pattern (case-insensitiv) → VAULT_KEY=rule.vault, MATCHED_RULE=rule; BREAK
+    Falls kein spezifischer Match → Wildcard-Regel (priority 999) verwenden
+
+R3: Vault-Pfad aufloesen (5-stufig)
+    Stufe 1: vaults[VAULT_KEY].linux_path (Linux) / windows_path (Windows) aus routing.json
+             Falls existiert + erreichbar (test -d + .obsidian/) → VAULT_PATH ✓
+    Stufe 2: $OBSIDIAN_VAULT_PATH (Env-Var)
+             Falls gesetzt + erreichbar → VAULT_PATH ✓
+    Stufe 3: Manifest '## Obsidian Sync' VAULT-Wert
+             Falls vorhanden + erreichbar → VAULT_PATH ✓
+    Stufe 4: Linux-Default /home/uczen/Documents/DCS → Falls erreichbar → VAULT_PATH ✓
+    Stufe 5: Windows-Default C:\Users\Administrator\Documents\DCS → Falls erreichbar → VAULT_PATH ✓
+    Falls alle Stufen scheitern → SCHRITT W (WARNING-Guard)
+
+R4: RAG_COLLECTIONS lesen
+    RAG_COLLECTIONS = MATCHED_RULE.rag_collections
+    (Ersetzt hardcoded Collection-Listen in Commands)
+```
+
+### Schritt W: WARNING-GUARD
+
+```
+SCHRITT W: WARNING-GUARD
+────────────────────────
+AUSLOESER A: vault-routing.json fehlt unter .claude/config/
+  → Ausgabe: "WARNING: vault-routing.json fehlt unter .claude/config/"
+  → "Vault-Pfad und RAG-Collections koennen nicht automatisch ermittelt werden."
+
+AUSLOESER B: Vault-Pfad nicht erreichbar (alle 5 Stufen in R3 fehlgeschlagen)
+  → Ausgabe: "WARNING: Vault-Pfad nicht erreichbar."
+  → "Konfigurierter Pfad: [VAULT_PATH falls bekannt, sonst 'unbekannt']"
+
+GEMEINSAMER ZWEIG:
+  Falls HiL=on:
+    FRAGE: "Darf ich in DEGRADED MODE weitermachen? (Y/N)"
+    Y → DEGRADED MODE aktiv (siehe unten)
+    N → STOP + "Bitte vault-routing.json unter .claude/config/ konfigurieren."
+
+  Falls HiL=off:
+    Lese Manifest DEGRADED_MODE
+    = "erlaubt"  → DEGRADED MODE aktiv
+    = "verboten" ODER nicht gesetzt → STOP
+      + "Autonomer Betrieb ohne funktionierendes Vault-Routing nicht erlaubt."
+      + "Bitte vault-routing.json konfigurieren oder DEGRADED_MODE: erlaubt im Manifest setzen."
+
+DEGRADED MODE (falls aktiviert):
+  _W_fetch:        RAG-Suche mit [global_knowledge, local_knowledge_{FEATURE}] (2 Standard-Collections)
+  _W_obsidianSync: Vault-Sync SKIP (nur Meldung: "Vault-Sync uebersprungen (DEGRADED MODE)")
+  _W_push:         Nur RAG-Ingest (kein Vault-Push)
+```
 
 ### Schritt 0b: Thema erkennen
 
@@ -186,6 +219,24 @@ Falls {THEMA} angegeben:
 Falls {FEATURE} angegeben:
   → Lies Task.md / User-Beschreibung
   → Feature-Name als erstes Keyword uebernehmen
+```
+
+### Schritt 0b.1: Domain-Hash Mechanismus (RF-SC-003, W246)
+
+**Zweck:** Feature-Namen enthalten oft fachspezifische Kuerzel die direkt als Collection-Key dienen.
+
+```
+Domain-Hash Algorithmus:
+  1. Feature-Name normalisieren: {FEATURE} → lowercase, Sonderzeichen entfernen
+     Beispiel: "DCSRE-881" → "dcsre881"
+  2. Collection-Key ableiten: "local_knowledge_{hash}"
+     Beispiel: "DCSRE-881" → "local_knowledge_dcsre881"
+  3. Fachspezifische Begriff-Injektion:
+     → Feature-Kuerzel direkt als hoechst-priorisiertes Keyword in Pool aufnehmen
+     → Domain-Prefix extrahieren (z.B. "DCSRE" aus "DCSRE-881") als Keyword
+     → Ticket-Nummer als Kontext-Keyword (z.B. "881")
+  4. RAG-Abfrage: MCP query(collection="local_knowledge_{hash}", ...)
+     → Exakter Collection-Key verhindert Cross-Feature-Kontamination
 ```
 
 ### Schritt 0c: Haiku-Keyword-Extraktion (W30-Fix)
@@ -233,10 +284,12 @@ AUFGABENBESCHREIBUNG:
 2. Tag-Index vollstaendig durchsuchen (breite Abdeckung)
 3. MCP extract_keywords() NUR als letzter Fallback (bekannt defekt, W30)
 
-### Schritt 0d: Tag-Index als Keyword-Seed
+### Schritt 0d: Tag-Index als Keyword-Seed (Index-First-Read, BL-242 AK-5/J13)
 
 ```
-Lies {VAULT}/_Tag-Index.md (falls Vault erreichbar)
+PRIMAER (Index-First, pre-computed — BL-242 AK-CTX-2): lies den vorab gebauten Index
+  - {VAULT}/_Tag-Index.md                                 (Tag→topic-Markdown-Index, batch_2/J9)
+  - .claude/output/retrieval_index/_keyword_index.json    (4-maschinelle-Indizes-Persistenz, batch_3/J12)
 
 Fuer jeden Haiku-Keyword:
   1. Exact-Match: "topic/{keyword}" im Tag-Index registriert?
@@ -245,11 +298,18 @@ Fuer jeden Haiku-Keyword:
      → JA: Zugehoeriges Tag uebernehmen
   3. Substring-Match: Keyword in Tag-Name enthalten (oder umgekehrt)?
      → JA: Tag uebernehmen
+  4. Keyword-Index-Hit (_keyword_index.json vorhanden): "{keyword}" als Schluessel registriert?
+     → JA: die verknuepften Knoten-Pfade als pre-computed Seed uebernehmen (KEIN Laufzeit-Glob/Walk noetig)
 
-Falls Vault nicht erreichbar:
-  → Schritt 0d SKIP (nur Haiku-Keywords verwenden)
-  → INFO: "Tag-Index nicht verfuegbar. Pool basiert nur auf Haiku."
+FALLBACK (graceful, Forward-Compat — KEIN Hard-Cut, Ca=147, PT-CMD-023):
+  Falls Index fehlt/veraltet ODER Vault nicht erreichbar:
+    → faelle auf den heutigen Laufzeit-Walk zurueck (Tag-Index-Durchsuchung wie bisher, nur Haiku-Keywords)
+    → kein Hard-Fail; INFO: "Pre-computed Index nicht verfuegbar. Fallback auf Laufzeit-Walk (nur Haiku/Tag-Seed)."
 ```
+
+**Szenario-Verify (M2-Disziplin, INV-Markdown-Engine-Bootstrap — kein Python-Test):**
+- **Szenario A (Index vorhanden):** `_Tag-Index.md` + `_keyword_index.json` existieren → Schritt 0d liest sie PRIMAER (Index-Hit, kein Graceful-Skip), nutzt Keyword-Index-Treffer als Seed.
+- **Szenario B (Index fehlt/stale):** Index nicht vorhanden/Vault nicht erreichbar → Schritt 0d faellt explizit auf den heutigen Laufzeit-Walk zurueck (Forward-Compat, kein Hard-Fail).
 
 ### Schritt 0e: Feature-spezifische Keywords aus Task.md
 
@@ -309,21 +369,146 @@ Manifest-Eintrag (IMMER, /compact-sicher):
 
 ---
 
-## Welle 1: Kartographierung (Haiku kartographiert)
+## Worker-Vertrag: Kartograph (Kartographierung)
 
 ### Zweck
 
 Breit suchen. Alles finden was zum Thema passt — ohne zu filtern.
-Haiku ist schnell und guenstig, perfekt fuer breite Kartographierung.
 
-### Kartographierungs-Bereiche (Fokus pro Agent)
+### Worker-Strategie 4-STUFEN (RF-WF-LIVE-2026-05-08, BL-161 Vorbote)
+
+**Status:** PFLICHT-Worker-Walk seit 2026-05-08. Live-Validierung im DCSRE-486 W_fetch-Lauf
+(28 Nodes, 47 Edges, 8 Disambiguierungen, easy=1 Opus-Worker, 5m 20s, 114k Tokens).
+
+**Begruendung:** Quick-Win VOR BL-161 (Vault-Quality-System voll implementiert). Strategie
+hat sich live bewaehrt waehrend Sanity-Dynamic-Run — als formaler Vertrag etabliert. Bei
+BL-161-Implementierung werden Stufen 1+2+3 durch pre-computed Indizes (Anker-Liste,
+Backlinks-Index, Tag-Index) beschleunigt; Stufe 4 (Edges-Pflicht) wird Standard.
+
+**4 Stufen IN REIHENFOLGE auszufuehren:**
+
+#### Stufe 1 — ANKER-FIRST (statt blind grep)
+
+Identifiziere Anker-Knoten BEVOR du Keywords suchst:
+- **Schwester-Story:** `Backlog/{PREFIX}-{N}-{aehnliches-thema}/2_Model/{NAME}_Model.md`
+- **Pattern-Library Anker:** `Libraries/PatternLibrary/_project/{LAYER}/_index.md`
+- **Topic-Anker:** Tag-Index → `topic/{KEYWORD}` exact lookup
+- **Crumbs-Anker:** `Backlog/{aktuelle-story}/Crumbs/*_findings_crumbs_master.md`
+
+Output: `anker_nodes: [path1, path2, ...]`. Min 1 Anker, sonst degraded-mode + WARNING.
+
+#### Stufe 2 — DISAMBIGUIERUNG-MAP (Synonyme aufloesen)
+
+Bevor Keywords ueber Vault geworfen werden, baue Synonym-Map.
+
+Beispiel aus DCSRE-486:
+- `"Validation"` → `["Validator", "DataAnnotations", "FluentValidation"]`
+- `"QDV"` → `["Qualitaetsdarstellung", "Versorgungsqualitaet", "QDVTP", "QDVS"]`
+- `"Akkordeon"` → `["Accordion", "section", "panel"]`
+- `"Selbstauskunft"` → `["Selbstauskunft", "QDVTP-Selbstauskunft", "PE-Selbstauskunft"]`
+
+Quelle: `Libraries/SemanticLibrary/_global/glossary.md` (falls vorhanden) + LLM-Reasoning
+(Worker erkennt Synonyme aus Anker-Files-Frontmatter + Body).
+
+Output: `disambig_map: {keyword: [synonyme]}`. Wird in Stufe 3+4 genutzt, NICHT in Stufe 1
+(Anker sind bereits semantisch eindeutig).
+
+#### Stufe 3 — GRAPH-TRAVERSAL (asymptotisch, loop-until-dry)
+
+Ausgehend von `anker_nodes` (Stufe 1):
+- **hop_0:** Anker selbst (Read)
+- **hop_1:** Aus hop_0 extrahiere `[[wikilinks]]` + `frontmatter.derived_from` + `frontmatter.related_features` + Body-Pfad-Referenzen
+- **hop_2+:** Wiederholen pro neuem CORE-Knoten — asymptotisch bis Konvergenz
+
+**Knotenklassifikation (AK-2):**
+- **CORE** = Hop-1-direkt-keyword-stark ODER >= 2 erreichende Kanten (confidence HIGH).
+  CORE-Knoten treiben Grounding und oeffnen weitere Hops (Expansion).
+- **BORDER** = peripher (1 schwache Kante, kein Keyword-Match). BORDER-Knoten sind
+  demoted — sie erscheinen als Anhang im Output, werden aber NIE geloescht.
+  Keine Expansion ab BORDER.
+
+**Asymptotische Termination (AK-1):**
+```
+SAFETY_CAP = 6  # modus-invarianter absoluter Sicherheits-Cap
+hop = 0
+while delta_core > 0 AND hop <= SAFETY_CAP:
+    entdecke neue Knoten → klassifiziere als CORE oder BORDER
+    delta_core = Anzahl NEUER CORE-Knoten in dieser Runde
+    IF delta_core == 0:
+        break  # loop-until-dry: keine neuen CORE-Knoten -> konvergiert
+    hop += 1
+```
+`delta_core` (nur CORE-Knoten) ist das Haupt-Terminations-Signal.
+`SAFETY_CAP=6` ist absoluter Backup-Cap (modus-invariant).
+Muster: dispatch_findings.js BL-235 (new_core_count, break bei delta==0, seen-Liste).
+
+Pruning:
+- **Top-N pro Hop:** N=5 bei easy, N=10 bei normal/hard
+- **Visited-Cache:** keine Doppel-Reads (bleibt erhalten — Endlos-Schutz, INV)
+- **Cross-Worker-Cache:** wenn andere W_fetch-Worker schon liefen, lese deren Output
+
+**Regression-Invarianten (AK-3):**
+- **INV-visited:** visited-Cache bleibt ueber alle Runden erhalten — kein Re-Visit moeglich (Endlos-Schutz).
+- **INV-BORDER-nie-geloescht:** BORDER-Knoten werden NIE geloescht, nur demoted. Sie bleiben im Graph als Anhang.
+- **INV-grounding-only-deepen:** Grounding wird nur vertieft (deepen) — bestehende Outputs
+  (anker_nodes/visited_nodes/EDGES-PFLICHT/confidence) bleiben. CORE-Knoten werden vertieft,
+  BORDER nicht. Kein Loeschen existierender Grounding-Ergebnisse.
+
+**Output:** CORE-Grounding getrennt von BORDER-Anhang.
+
+Aggregat: `visited_nodes = UNION(hop_0..hop_N)` (N <= SAFETY_CAP).
+
+#### Stufe 4 — GEZIELTE KEYWORD-GLOB (mit Synonymen)
+
+Fuer JEDES Keyword + Synonyme aus Stufe 2:
+- **Glob:** `{VAULT}/**/*{keyword|synonym}*.md`
+- **Tag-Index:** `topic/{keyword|synonym}`
+- **Grep -r:** ueber Vault (Volltext, mit Snippets)
+
+Score-Boost: Hits die AUCH in `visited_nodes` (Stufe 3) → confidence=HIGH.
+Max-Hits-Pro-Keyword: 20 (sonst Kontext-Overflow).
+
+#### EDGES-PFLICHT (RF-WF-EDGES, NEU 2026-05-08)
+
+Jedes Finding (W{n} oder Vault-Hit) MUSS Edges referenzieren — kein nackter Bullet-Point:
+
+```yaml
+W4:
+  text: "Listen-Serialisierung: JsonSerializer fuer Mapping in DataMappingProfile.cs L237-262"
+  source_node: ".../Sources/Backend/.../DataMappingProfile.cs:237-262"
+  derived_from:
+    - "Backlog/DCSRE-94-.../2_Model/QDVS_Model.md (Schwester-Story Anker)"
+  supporting_edges:
+    - "Libraries/PatternLibrary/_project/BE-MAP/listen-serialisierung.md"
+    - "Crumbs/...findings_crumbs_master.md (line 47)"
+  confidence: HIGH  # in 3 Quellen bestaetigt
+```
+
+Mindest-Felder: `text`, `source_node`, `derived_from` (≥1 Anker), `confidence`.
+
+#### RAG-Toggle Fallback (BL-Stub-RAG-Toggle Vorbote)
+
+- **`rag=false` (Default)** ODER **MCP CleanCoder DISCONNECTED**:
+  - SKIP RAG-Stufen (D03, D04 in Kartographierungs-Fokus-Bereiche)
+  - Fokus: Vault-only mit 4-Stufen-Strategie oben
+  - Logge: `[A_WFETCH] RAG=off — Vault-only mode (4-Stufen-Strategie aktiv)`
+- **`rag=true` UND MCP available**:
+  - Vault-Stufen + RAG-Stufen kombiniert
+  - Vault-Hits gewichten staerker (lokal validierter, frischer Stand)
+
+Live-Beweis: DCSRE-486-Lauf 2026-05-08 mit `rag=false` (impliziert via MCP-Disconnect),
+4-Stufen-Strategie hat 15 W{n} extrahiert + 13/15 confirmed in <6min mit 1 Opus-Worker.
+
+---
+
+### Kartographierungs-Fokus-Bereiche
 
 | Agent | Fokus | Suchbereich |
 |-------|-------|-------------|
 | D01 | vault-models | Vault: *_Model.md, *_Wissen.md, Tag-Index topic/{THEMA} |
 | D02 | vault-features | Vault: Feature-Notes, _parking-lot.md, Prev-Feature Links |
-| D03 | rag-global | RAG: global_knowledge Collection, alle Keywords |
-| D04 | rag-local | RAG: local_knowledge_{FEATURE} + verwandte Collections |
+| D03 | rag-global | RAG: global_knowledge Collection, alle Keywords (aus RAG_COLLECTIONS Schritt 0a.1) |
+| D04 | rag-local | RAG: alle RAG_COLLECTIONS (aus vault-routing.json Schritt 0a.1) |
 | D05 | cross-feature | Vault + RAG: Verwandte Features, semantische Nachbarn (nur hard) |
 
 **Bei normal:** D01, D02, D03 (3 Agents)
@@ -334,13 +519,19 @@ Haiku ist schnell und guenstig, perfekt fuer breite Kartographierung.
 
 ```
 1. Vault-Kartographierung (D01, D02):
-   VAULT-VERFUEGBARKEIT pruefen:
-     1. $OBSIDIAN_VAULT_PATH gesetzt? → Verwende diesen Pfad
-     2. Manifest "## Obsidian Sync" -> VAULT-Wert? → Verwende diesen Pfad
-     3. Default: Linux=/home/uczen/Documents/DCS, Windows=C:\...\DCS
-     4. Nichts? → "Vault nicht erreichbar. Skip."
+   VAULT-VERFUEGBARKEIT pruefen (via Schritt 0a.1):
+     VAULT_PATH aus VAULT-ROUTING-LESE-MUSTER verwenden (5-stufig).
+     Falls VAULT_PATH nicht gesetzt → SCHRITT W (WARNING-Guard).
 
    Falls Vault erreichbar:
+     Vault-Index als Kompass (W32, RF-08):
+       → Lies .claude/analysis/_vault_index.md (falls vorhanden)
+       → Index enthaelt: Vault-Pfad, Typ, Feature, Updated, Nachbar-Links
+       → Nutze Index fuer gezielte Navigation statt blinden Glob
+       → Identifiziere Nachbar-Knoten via Feature-Match und Typ-Match
+       → Max 1-Hop Nachbarn lesen (Kontextfenster-Limit)
+       → Falls Index fehlt: Graceful Degradation (Glob + Tag-Index wie bisher)
+
      Tag-Index durchsuchen:
        → topic/{THEMA} → welche Dokumente tragen diesen Tag?
        → Synonym-Check (z.B. "SSL" → topic/Zertifikate)
@@ -399,13 +590,17 @@ Haiku ist schnell und guenstig, perfekt fuer breite Kartographierung.
        → Gibt es Parking-Lot Items dazu?
 
 2. RAG-Kartographierung (D03, D04):
-   Fuer jedes Keyword:
-     → MCP query(collection="global_knowledge", query_text={KW}, limit=10)
-     → Ergebnisse mit Score, metadata, source_file sammeln
+   RAG_COLLECTIONS aus Schritt 0a.1 verwenden (vault-routing.json).
+   Falls DEGRADED MODE: Fallback auf [global_knowledge, local_knowledge_{FEATURE}].
 
-   Lokale Collections:
+   Fuer jede Collection in RAG_COLLECTIONS:
+     Fuer jedes Keyword:
+       → MCP query(collection="{COLLECTION}", query_text={KW}, limit=10)
+       → Ergebnisse mit Score, metadata, source_file sammeln
+
+   Zusaetzlich lokale Collections pruefen:
      → MCP list_collections()
-     → local_knowledge_{FEATURE} falls existent
+     → local_knowledge_{FEATURE} falls existent UND nicht bereits in RAG_COLLECTIONS
      → MCP query(collection="local_knowledge_{FEATURE}", query_text={KW}, limit=5)
 
 3. Cross-Feature Kartographierung (D05, nur hard):
@@ -413,11 +608,41 @@ Haiku ist schnell und guenstig, perfekt fuer breite Kartographierung.
    → Identifiziere thematische Ueberlappungen mit anderen Features
    → Dokumentiere Cross-Feature Links
 
+3a. Graph-Traversal (RF-03, PRIMAER-MODUS v5.0) — W{n}-Abhaengigkeiten traversieren:
+
+   **SEMANTIK v5.0:** Graph-Traversal ist der PRIMAERE Suchmodus (nicht additiv).
+   Stufen 1-3 (oben) identifizieren Start-Knoten. Graph-Traversal erweitert
+   die Treffermenge ueber Vault-interne Relationen. Das Ergebnis fliesst in
+   _vault_refs.md (Referenz-Index) als PRIMAER-OUTPUT.
+
+   WENN Vault erreichbar UND co-created-with / cycle-cluster Frontmatter in Vault-Dateien:
+
+   GRAPH-TRAVERSAL Algorithmus (max 2 Hops):
+     1. Start-Knoten: Dateien mit direktem Keyword-Match (Stufe 1/2/3 oben)
+     2. 1-Hop Nachbarn: Lies Frontmatter jedes Start-Knotens
+        → "co-created-with:" Links → Nachbar-Dateien als Kandidaten
+        → "cycle-cluster:" Label → Alle Dateien mit demselben Cluster als Kandidaten
+        → "backlinks:" (falls vorhanden) → Rueckwaerts-Links verfolgen
+     3. 2-Hop Nachbarn: Fuer jeden 1-Hop Kandidaten → erneut Frontmatter lesen
+        (MAX 2 Hops, dann stoppen — sonst Explosion bei dichten Graphen)
+     4. Score Decay: 1-Hop: base_score * 0.7, 2-Hop: base_score * 0.5
+     5. Graceful Degradation: Falls kein co-created-with/cycle-cluster im Frontmatter
+        → Graph-Traversal SKIP ("Graph-Metadaten nicht vorhanden, nur direkte Treffer")
+
 AUSGABE pro Agent:
   drafts/{NAME}-fetch-D{NN}-{fokus}.md mit:
-  - Gefundene Dokumente (Pfad, Typ, Score, Tags)
+  - Gefundene Dokumente (Pfad, Typ, Score, Tags, match_keywords)
   - Chunk-Zusammenfassungen (bei RAG)
   - Empfehlung: "RELEVANT" / "GRENZWERTIG" / "IRRELEVANT"
+
+  KEYWORD-DOKUMENTATION (PFLICHT pro Treffer):
+    Notiere pro Treffer die 2-5 Keywords die den Match ausgeloest haben.
+    → Vault-Treffer: Keywords die im Dateinamen/Tag-Index/Frontmatter gematcht haben
+    → RAG-Treffer: Keywords die im query_text zum Score beigetragen haben
+    → Cross-Feature: Keywords die die thematische Verbindung herstellen
+    → Eintrag in Spalte "match_keywords" der Gefundene-Dokumente-Tabelle
+    → Format: kommasepariert, lowercase (z.B. "rag, wissen, koaleszenz")
+    → WARNUNG wenn match_keywords leer: "Kein Keyword-Match dokumentiert"
 ```
 
 ### Kartographierungs-Output Format
@@ -439,8 +664,8 @@ status: final
 
 ## Gefundene Dokumente
 
-| # | Dokument | Typ | Source | Score | Tags | Empfehlung |
-|---|----------|-----|--------|-------|------|------------|
+| # | Dokument | Typ | Source | Score | Tags | match_keywords | Empfehlung |
+|---|----------|-----|--------|-------|------|----------------|------------|
 
 ## Chunk-Details (RAG)
 
@@ -460,7 +685,7 @@ status: final
 
 ---
 
-## Welle 2: Filterung (Sonnet filtert)
+## Worker-Vertrag: Filter (Filterung)
 
 ### Zweck
 
@@ -508,6 +733,24 @@ kann Qualitaet + Relevanz besser bewerten.
    FINAL SCORE:
      final_score = clamp(base_score + bonuses - penalties, 0.0, 1.0)
 
+3a. Knapsack-Scoring (RF-SC-003, W246) — Priorisierung bei Budget-Grenzen:
+
+   KNAPSACK-PROBLEM: Wenn mehr Kandidaten als Budget (Token-Limit, Zeit-Budget),
+   priorisiere nach Wert-Gewicht-Verhaltnis:
+
+   DIMENSIONEN:
+     Relevanz    = final_score (0.0-1.0, aus 3. oben)
+     Proximity   = Naehe zum Feature-Kontext (0.0-1.0)
+                   1.0 = same-Feature, 0.7 = same-Domain, 0.3 = cross-domain
+     Freshness   = Aktualitaet (0.0-1.0)
+                   1.0 = < 30 Tage, 0.7 = < 6 Monate, 0.3 = > 6 Monate
+
+   KNAPSACK-SCORE:
+     knapsack_score = (Relevanz * 0.5) + (Proximity * 0.3) + (Freshness * 0.2)
+
+   ANWENDUNG: Bei > 10 Kandidaten → Top-N nach knapsack_score auswaehlen.
+   Bei <= 10 Kandidaten → knapsack_score als Tiebreaker bei Gleichstand.
+
 4. Filter-Schwellen (auf final_score anwenden):
      → Score >= 0.5: EMPFOHLEN (in Ausgabe aufnehmen)
      → Score 0.3-0.5: GRENZWERTIG (erwaehnen, nicht automatisch uebernehmen)
@@ -517,9 +760,10 @@ kann Qualitaet + Relevanz besser bewerten.
 
    | # | Dokument | Typ | Source | Score | Aktion-Empfehlung |
    |---|----------|-----|--------|-------|-------------------|
-   | 1 | X_Model.md | model | BOTH | 0.87 | KOPIEREN |
-   | 2 | Y_Wissen.md | knowledge | Vault | 0.72 | KOPIEREN |
+   | 1 | X_Model.md | model | BOTH | 0.87 | REFERENZ+CACHE |
+   | 2 | Y_Wissen.md | knowledge | Vault | 0.72 | REFERENZ+CACHE |
    | 3 | Z-E42.txt | - | RAG:global | 0.55 | REFERENZ |
+   (v5.0: REFERENZ+CACHE = Eintrag in _vault_refs.md + lokale Cache-Kopie)
 ```
 
 ### Filter-Output Format
@@ -557,7 +801,7 @@ status: final
 
 ---
 
-## Welle 3: Entscheidung + Konsolidierung (Opus entscheidet)
+## Worker-Vertrag: Konsolidierer (Entscheidung + Konsolidierung)
 
 ### Zweck
 
@@ -574,63 +818,90 @@ Bei normal/hard:
   4. User bestaetigt oder aendert Auswahl
 
 Bei easy (Auto-Accept, W27):
-  1. Vault + RAG DIREKT durchsuchen (keine Welle 1/2)
-     → Tag-Index + Glob + MCP query()
+  1. Vault-Graph DIREKT traversieren + RAG suchen (keine Welle 1/2)
+     → Tag-Index + Glob + Graph-Traversal + MCP query()
   2. Auto-Accept: Score >= 0.5 → automatisch uebernehmen
   3. KEIN User-Input (prozessbegleitend, paralleler Worker)
-  4. Nur KOPIEREN, nie fragen
+  4. _vault_refs.md erstellen (PRIMAER) + Cache-Refresh (FALLBACK)
 
 Fuer jedes bestaetigte/akzeptierte Dokument:
 
-  VAULT-Hits (Source = "Vault" oder "BOTH"):
-    → Kopiere von Vault nach .claude/:
-      Model → .claude/models/{THEMA}_Model.md
-      Wissen → .claude/wissen/{THEMA}_Wissen.md
-      Linux: cp "{VAULT}/{DATEI}" ".claude/models/{DATEI}"
+  SCHRITT A: _vault_refs.md Referenz-Index erstellen (PRIMAER-OUTPUT v5.0):
+    → Schreibe .claude/analysis/_vault_refs.md (Format siehe unten)
+    → Enthaelt Vault-Pfade, Keywords, Scores, Relationen
+    → Agenten koennen bei Bedarf DIREKT aus Vault lesen (via Pfade)
+    → _vault_refs.md ist das PRIMAERE Ergebnis von W_fetch
 
-    → Frontmatter ergaenzen:
-      source: vault
-      fetched: {DATUM}
-      original-feature: {HERKUNFT}
+  SCHRITT B: Cache-Refresh (FALLBACK, nach Graph-Traversal):
+    VAULT-Hits (Source = "Vault" oder "BOTH"):
+      → Cache-Kopie von Vault nach .claude/ (Semantik: CACHE, nicht Primaerquelle):
+        Model → .claude/models/{THEMA}_Model.md
+        Wissen → .claude/wissen/{THEMA}_Wissen.md
+        Linux: cp "{VAULT}/{DATEI}" ".claude/models/{DATEI}"
+      → ZWECK: Backward-Kompatibilitaet fuer 66+ Downstream-Commands
+        die .claude/models/ und .claude/wissen/ lesen
+      → Frontmatter ergaenzen:
+        source: vault-cache         # v5.0: "vault-cache" statt "vault" (Semantik-Shift)
+        fetched: {DATUM}
+        original-feature: {HERKUNFT}
+        vault_ref: "{VAULT}/{DATEI}" # v5.0: Rueck-Referenz zum Vault-Original
+        verifikation_status: AUSSTEHEND
+        letzter_abgleich: {DATUM}
+        abgleich_methode: "---"
 
-  RAG-only Hits (Source = "RAG:*"):
-    → NICHT als Datei kopieren (nur Chunks verfuegbar)
-    → Als Referenz in Manifest listen
-    → "Chunks abrufbar via MCP query()"
+    RAG-only Hits (Source = "RAG:*"):
+      → NICHT als Datei kopieren (nur Chunks verfuegbar)
+      → Als Referenz in _vault_refs.md UND Manifest listen
+      → "Chunks abrufbar via MCP query()"
 
   Parking-Lot Items (falls relevant):
-    → In .claude/_parking-lot.md uebernehmen (APPEND)
-```
+    → In {VAULT}/_parking-lot.md uebernehmen (APPEND)
 
-### Manifest-Wellen-Tracking (nach JEDER Welle, /compact-sicher)
+  ANKERPUNKT-PERSISTENZ (nach Konsolidierung, VOR Manifest-Schreiben):
 
-```
-NACH JEDER abgeschlossenen Welle Manifest aktualisieren (R7 Resumability):
+    Zweck: Persistente Verbindungsknoten zwischen dem neuen Feature und
+    existierendem Wissen fuer spaetere Graph-Traversals (_W_modelSplit Schritt 0.5).
 
-  ## W_fetch Wellen-Fortschritt
-  **PHASE:** /_W_fetch {THEMA} {SCHWIERIGKEIT}
-  **WELLE:** {1|2|3} abgeschlossen, {naechste} ausstehend
-  **NAECHSTER SCHRITT:** Welle {N+1} starten (oder Konsolidierung)
+    1. Kandidaten sammeln:
+       → Alle Treffer mit Score >= 0.40 aus Welle 2/3 (bzw. easy: direkte Suche)
+       → Jeder Kandidat braucht: file, match_score, match_keywords
 
-  ### Schritt 0 (Keywords) - {Datum}
-  - [x] Keywords extrahiert: {N} Keywords via Haiku + Tag-Seed
-  - [x] Pool im Manifest dokumentiert (## W_fetch Keyword-Pool)
+    2. Relation-Klassifikation per R1-R5-DEFAULT Heuristik:
+       R1: Keyword-Overlap >= 2 UND score >= 0.70 → THEMATISCH_VERWANDT
+       R2: source=BOTH UND score >= 0.65         → THEMATISCH_VERWANDT
+       R3: Haupt-Model (kein Feature-Kuerzel im Dateinamen) UND score >= 0.50 → UEBERGEORDNET
+       R4: split-into im Ziel-Frontmatter vorhanden → UEBERGEORDNET
+       R5: hop >= 1 (Graph-Traversal Treffer)     → CO_CREATED
+       DEFAULT: score >= 0.50                      → THEMATISCH_VERWANDT
 
-  ### Welle 1 (Kartographierung) - {Datum}
-  - [x] D01-{fokus}.md
-  - [x] D02-{fokus}.md
-  - [x] D03-{fokus}.md
-  - [ ] D04-{fokus}.md (nur hard)
-  - [ ] D05-{fokus}.md (nur hard)
+       Prioritaet: R1 > R2 > R3 > R4 > R5 > DEFAULT (erste zutreffende Regel gewinnt)
 
-  ### Welle 2 (Filterung) - {Datum}
-  - [x] {NAME}-fetch-filter.md
+    3. User-Korrektur (normal/hard):
+       → Praesentiere Tabelle mit Vorschlaegen:
+         | # | Datei | Score | Keywords | Relation (Vorschlag) | Korrektur? |
+         |---|-------|-------|----------|----------------------|------------|
+       → User kann Relation aendern oder Eintraege entfernen
+       Bei easy: Auto-Accept (keine User-Interaktion)
 
-  ### Welle 3 (Konsolidierung) - {Datum}
-  - [x] Wissen + Models kopiert, Manifest finalisiert
+    4. Soft Limit: Max 5 Ankerpunkte (nach match_score absteigend sortiert)
+       → Bei >= 6 Kandidaten: WARNUNG ">{N} Ankerpunkte, Top-5 nach Score behalten"
+       → Top-5 behalten, Rest verwerfen (mit WARNUNG-Ausgabe)
 
-Dieses Tracking ermoeglicht /compact zwischen Wellen ohne Zustandsverlust.
-Vorbild: _SC_observe.md Manifest-Tracking Pattern.
+    5. Validierung (pro Ankerpunkt):
+       → file: PFLICHT (relativer Pfad zur Quelldatei)
+       → match_score: PFLICHT, 0.0-1.0 (Float)
+       → relation: PFLICHT, Wert aus Enum {THEMATISCH_VERWANDT, UEBERGEORDNET, UNTERGEORDNET, CO_CREATED}
+       → match_keywords: PFLICHT-CHECK — leer = WARNUNG "Kein Keyword-Match dokumentiert" (kein Block)
+       → match_wn, hop, source, merged_into: OPTIONAL (Default-Werte wenn nicht vorhanden)
+
+    6. Schreibe "## W_fetch Ankerpunkte" Sektion in Manifest (YAML-Block)
+       → Positionierung: NACH "## Wissens-Basis", VOR etwaigem SC_PIPELINE_STATE
+       → Format: siehe Manifest-Template unten (EP-4)
+
+    7. Graceful Degradation:
+       → Keine Treffer mit Score >= 0.40 → anchor_nodes: [] (leere Liste)
+       → Sektion "## W_fetch Ankerpunkte" IMMER schreiben (auch bei leerem Array)
+       → INFO: "Keine Ankerpunkte identifiziert. anchor_nodes: []"
 ```
 
 ### Manifest + Zusammenfassung (IMMER, auch bei easy)
@@ -654,74 +925,227 @@ Manifest aktualisieren:
   **Collections durchsucht:** {Liste mit Chunk-Anzahlen}
   **RAG-only Referenzen:** {K} Dokumente (nur via MCP query() abrufbar)
 
+  ## W_fetch Ankerpunkte
+  **Erstellt:** {DATUM}
+  **Anzahl:** {N} Ankerpunkte (Soft Limit: 5)
+  **Lifecycle:** Geschrieben von _W_fetch Welle 3, Gelesen von _W_modelSplit Schritt 0.5
+
+  anchor_nodes:
+    - file: "{relativer_pfad_zur_quelldatei}"
+      match_score: {0.0-1.0}
+      relation: "{THEMATISCH_VERWANDT|UEBERGEORDNET|UNTERGEORDNET|CO_CREATED}"
+      match_keywords: ["{kw1}", "{kw2}", ...]
+      # --- Optional ---
+      match_wn: "{W{n}-Referenz falls vorhanden}"
+      hop: {0|1|2}           # 0=direkt, 1=1-Hop Nachbar, 2=2-Hop
+      source: "{Vault|RAG|BOTH}"
+      merged_into: false      # Default false, wird von _W_modelSplit auf true gesetzt
+
+  **Relation-Enum Schwellen:**
+    THEMATISCH_VERWANDT: score >= 0.70 (Keyword-Overlap >= 2 ODER source=BOTH)
+    UEBERGEORDNET:       score >= 0.50 (Haupt-Model ODER split-into vorhanden)
+    UNTERGEORDNET:       score >= 0.60 (Sub-Model, abgeleitetes Dokument)
+    CO_CREATED:          score >= 0.40 (Graph-Traversal hop >= 1)
+
 AUSGABE:
-  "Wissens-Basis fuer {FEATURE} aufgebaut."
-  "{N} Models, {M} Wissens-Dokumente, {K} Parking-Items uebernommen."
-  "{R} RAG-Referenzen notiert (abrufbar via MCP query)."
+  "Wissens-Basis fuer {FEATURE} via Graph-Traversal aufgebaut."
+  "_vault_refs.md erstellt: {N} Vault-Referenzen, {R} RAG-Referenzen."
+  "Cache aktualisiert: {N} Models, {M} Wissens-Dokumente in .claude/."
+  "{K} Parking-Items uebernommen."
   "Naechster Schritt: /_taskDefinition (Aufgabe definieren)"
 ```
 
 ---
 
-## Ablauf: Easy (Auto-Scan + Auto-Accept)
+## _vault_refs.md Referenz-Index Format (v5.0, RF-03)
 
-```
-         ┌──────────────────────┐
-WELLE 3  │  1 ceiling-Agent     │  ──LIEST──▶ Vault + RAG (direkt)
-ONLY     │  Auto-Scan           │  ──FILTERT──▶ Score >= 0.5 → ACCEPT
-         │  Auto-Accept (W27)   │  ──SCHREIBT──▶ wissen/ + models/ + manifest
-         └──────────────────────┘
+**Pfad:** `.claude/analysis/_vault_refs.md`
+**Erstellt von:** /_W_fetch (Welle 3 Konsolidierer bzw. easy-Modus)
+**Gelesen von:** Alle Downstream-Commands die Vault-Wissen benoetigen
+**Semantik:** Primaeres Ergebnis von W_fetch. Zeigt auf Vault-Originale (nicht lokale Kopien).
 
-Kein User-Input. Perfekt fuer prozessbegleitenden Einsatz als paralleler Worker.
+```markdown
+---
+type: vault-reference-index
+feature: {FEATURE}
+created: {YYYY-MM-DD}
+w_fetch_version: v5.0
+vault_path: {VAULT_PATH}
+---
+
+# Vault Reference Index: {FEATURE}
+
+## Referenzen
+
+| # | Vault-Pfad (absolut) | Typ | Score | Keywords | Relation | Hop | Source | Cache-Pfad |
+|---|---------------------|-----|-------|----------|----------|-----|--------|------------|
+| 1 | {VAULT}/Models/X_Model.md | model | 0.87 | kw1, kw2 | THEMATISCH_VERWANDT | 0 | BOTH | .claude/models/X_Model.md |
+| 2 | {VAULT}/Wissen/Y_Wissen.md | wissen | 0.72 | kw3 | UEBERGEORDNET | 1 | Vault | .claude/wissen/Y_Wissen.md |
+
+## RAG-Referenzen (kein Vault-Pfad)
+
+| # | Collection | Query | Score | Chunk-Summary |
+|---|-----------|-------|-------|---------------|
+| 1 | global_knowledge | {KW} | 0.65 | {Zusammenfassung} |
+
+## Traversal-Graph
+
+{Optionale Mermaid-Darstellung der Hop-Beziehungen}
+
+## Metadaten
+
+- **Gesamt Referenzen:** {N}
+- **Vault-Hits:** {V}
+- **RAG-Hits:** {R}
+- **Max Hop:** {0|1|2}
+- **Graph-Traversal:** {JA|NEIN (kein Frontmatter)}
 ```
+
+**Lifecycle:**
+- Erstellt bei /_W_fetch (einmalig pro Feature-Start)
+- Gelesen von Downstream-Commands als Vault-Wegweiser
+- Aktualisiert bei erneutem /_W_fetch (Ueberschreiben)
+- Archiviert bei /_finish
 
 ---
 
-## Ablauf: Normal
-
-```
-Welle 1:  ┌───┐ ┌───┐ ┌───┐
-KARTOGR.  │ D │ │ D │ │ D │  ──LIEST──▶ Vault + RAG (je nach Fokus)
-(Haiku)   └─┬─┘ └─┬─┘ └─┬─┘  ──SCHREIBT──▶ drafts/{NAME}-fetch-D*.md
-            └─────┼─────┘
-                  │
-             [/compact moeglich]
-                  │
-                  ▼
-Welle 2:  ┌──────────────────┐
-FILTER    │  1 middle-Agent   │  ──LIEST──▶ drafts/{NAME}-fetch-D*.md
-(Sonnet)  │  Deduplizieren    │  ──SCHREIBT──▶ drafts/{NAME}-fetch-filter.md
-          └────────┬─────────┘
-                   │
-                   ▼
-Welle 3:  ┌──────────────────┐
-ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-filter.md
-(Opus)    │  User bestaetigt  │  ──SCHREIBT──▶ wissen/ + models/ + manifest
-          └──────────────────┘
-```
-
 ---
 
-## Ablauf: Hard
+## Dual-Pfad Truth-Direktsuche (BL-389, v5.1 — additiv)
+
+> **ADDITIV:** Dieser Abschnitt ergaenzt die bestehende Model/Wissen-Navigation (Stufen 1-4,
+> Graph-Traversal, RAG). Die Truth-Direktsuche ist ein ZWEITER, unabhaengiger Pfad.
+> Kein bestehender Such-Schritt wird veraendert oder ersetzt.
+
+### Konzept: Zwei koexistierende Such-Pfade
 
 ```
-Welle 1:  ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐
-KARTOGR.  │D01│ │D02│ │D03│ │D04│ │D05│  ──LIEST──▶ Vault + RAG + Cross-Feature
-(Haiku)   └─┬─┘ └─┬─┘ └─┬─┘ └─┬─┘ └─┬─┘  ──SCHREIBT──▶ drafts/{NAME}-fetch-D*.md
-            └─────┼─────┼─────┼─────┘
-                  │     │     │
-             [/compact moeglich]
-                  │     │     │
-                  ▼     ▼     ▼
-Welle 2:  ┌───┐ ┌───┐ ┌───┐
-FILTER    │F01│ │F02│ │F03│  ──LIEST──▶ drafts/{NAME}-fetch-D*.md (ALLE)
-(Sonnet)  └─┬─┘ └─┬─┘ └─┬─┘  ──SCHREIBT──▶ drafts/{NAME}-fetch-filter-F*.md
-            └─────┼─────┘
-                  ▼
-Welle 3:  ┌──────────────────┐
-ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-filter-F*.md
-(Opus)    │  User bestaetigt  │  ──SCHREIBT──▶ wissen/ + models/ + manifest
-          └──────────────────┘
+PFAD 1 (bestehend, unveraendert):
+  Model-View-Navigation (Stufe 1/2/3/4 + Graph-Traversal)
+  ├── Einstieg: Vault-Models (*_Model.md), Tag-Index, Wissen-Dokumente
+  ├── Geeignet: wenn Kontext/Domain bekannt (z.B. "Wissen/RAG/KoaleszenzModel")
+  └── Output: _vault_refs.md + Cache (.claude/models/, .claude/wissen/)
+
+PFAD 2 (NEU, BL-389):
+  Truth-Direktsuche auf Atomen (truth_search.py)
+  ├── Einstieg: thematische Query → keyword-basierter Atom-Index
+  ├── Geeignet: thematische Suche ohne Model-Kenntnis (skaliert auf 1000s Wahrheiten)
+  └── Output: [{path, bl_id, vault_origin, node_type, score}, ...] ranked
+```
+
+### Wann welcher Pfad
+
+| Situation | Empfohlener Pfad |
+|-----------|-----------------|
+| Domain/Model-Name bekannt (z.B. "RAG", "Vault-Routing") | Pfad 1 (Model-View-Navigation) |
+| Thematische Suche ohne Model-Kenntnis (z.B. "Fehlerbehandlung bei Vault-Ausfall") | Pfad 2 (Truth-Direktsuche) |
+| Grosser Corpus mit 1000s atomarer Wahrheiten | Pfad 2 (skaliert via Inverted-Index) |
+| Kombination gewuenscht | Beide Pfade nacheinander, Union der Ergebnisse |
+
+### Truth-Direktsuche — Ablauf (Pfad 2)
+
+```
+SCHRITT T1: Query formulieren
+  Eingabe: thematischer Freitext (z.B. "Fehlerbehandlung Vault-Ausfall DEGRADED")
+
+SCHRITT T2: Keywords extrahieren
+  truth_keywords.extract_keywords(query)
+  → deterministische keyword-Liste (Stopwords/Kurzwoerter gefiltert)
+  → gleicher Input = gleicher Output (deterministische Extraktion)
+
+SCHRITT T3: Atom-Index aufloesen (Index-First + Walk-Fallback)
+  Option A — Index vorhanden (primaer, BL-242-Muster):
+    build_retrieval_index.build_truth_atom_index(roots)
+    → liest _keyword_index.json (pre-computed, {keyword: [{path,bl_id,vault_origin,node_type}]})
+    → Kein Laufzeit-Walk noetig
+
+  Option B — Index fehlt/veraltet (graceful Fallback):
+    truth_search._build_atom_index_from_roots(roots)
+    → Live-Walk via os.walk(root) ueber type:truth-Dateien
+    → YAML-Frontmatter parsen (Block-Sequence-Unterstuetzung)
+    → Inverted-Index live bauen
+    → INFO: "Pre-computed Index nicht verfuegbar. Fallback auf Live-Walk."
+
+SCHRITT T4: Suche ausfuehren
+  truth_search.search_truths(query, atom_index=...) ODER
+  truth_search.search_truths(query, roots=[...])
+  → Score-Akkumulation: Anzahl keyword-Matches pro Truth-Atom
+  → Ranking: absteigend score, Tie-Breaker alphabetisch nach path (deterministisch)
+  → Ergebnis: [{path, bl_id, vault_origin, node_type, score}, ...]
+  → [] bei leerem Index / keinen Matches / None-Eingaben (kein Crash)
+
+SCHRITT T5: Ergebnisse einordnen
+  → Truth-Atom-Pfade als zusaetzliche Vault-Referenzen in _vault_refs.md aufnehmen
+  → Score als Relevanz-Indikator (nicht normiert; absoluter keyword-Match-Count)
+  → Doppel-Hits (Atom UND Model) → Score-Boost (Pfad 1 + Pfad 2 zusammen)
+```
+
+### API-Referenz (truth_search.py)
+
+```python
+# Primaere Such-Funktion:
+from truth_search import search_truths
+
+# Option A: Vorberechneter Inverted-Index (primaer, schneller)
+results = search_truths(query, atom_index={keyword: [entries]})
+
+# Option B: Live-Walk ueber Vault-Roots (Fallback)
+results = search_truths(query, roots=["/pfad/zum/vault"])
+
+# Ergebnis-Format (absteigend nach score):
+# [{"path": "rel/pfad.md", "bl_id": "BL-XYZ", "vault_origin": "/root",
+#    "node_type": "truth", "score": 3}, ...]
+# [] bei no-match / leerer Query / leerem Index
+
+# Index-Builder:
+from build_retrieval_index import build_truth_atom_index
+
+atom_index = build_truth_atom_index(roots=["/pfad/zum/vault"])
+# → {keyword: [{path, bl_id, vault_origin, node_type}, ...]}
+
+# Keyword-Extraktion:
+from truth_keywords import extract_keywords
+
+keywords = extract_keywords("thematische Suche Vault Fehlerbehandlung")
+# → ["vault", "fehlerbehandlung", ...] (deterministisch, Stopwords gefiltert)
+```
+
+### Einschraenkungen + GATED-Hinweis
+
+```
+DETERMINISTISCH (verfuegbar jetzt, BL-389 batch_1-4):
+  - keyword-basierte Suche via extract_keywords + build_truth_atom_index
+  - Kein NLP, keine Netz-Abhaengigkeit
+  - Funktioniert ohne MCP/Embeddings
+
+GATED — Embeddings (B1, deferred bis cleancoder-MCP verfuegbar):
+  - Semantischer Embeddings-Index via cleancoder-MCP als optionaler dritter Pfad
+  - Voraussetzung: cleancoder-MCP in .mcp.json registriert
+  - Heute: RAG-Toggle-Fallback (rag=false / MCP DISCONNECTED → Vault-only-4-Stufen,
+    Schritt T3 Option B greift analog) deckt den Forward-Pfad ab
+  - KEINE Hard-Abhaengigkeit der deterministischen Suche (Pfad 2) von MCP
+  - Forward-Marker: Embeddings aktivierbar sobald cleancoder-MCP verfuegbar
+    (kein Umbau der bestehenden Dual-Pfad-Logik noetig — additiver dritter Pfad)
+```
+
+### Integration in W_fetch Ablauf
+
+```
+Schritt 0d (Tag-Index als Keyword-Seed) — Schritt T3 Option A PRIMAER:
+  _keyword_index.json (BL-242 AK-CTX-2) enthaelt bei verfuegbarem Truth-Atom-Index
+  auch die Truth-Atom-Keywords. Laufzeit-Walk (Schritt T3 Option B) als Fallback.
+
+Welle 3 Konsolidierer (_vault_refs.md):
+  Truth-Atom-Treffer (Pfad 2) als eigene Sektion aufnehmen:
+
+  ## Truth-Atom-Referenzen (Pfad 2, BL-389)
+  | # | Atom-Pfad | BL-ID | Score | node_type |
+  |---|-----------|-------|-------|-----------|
+  | 1 | rel/pfad.md | BL-XYZ | 3 | truth |
+  ...
+
+  → Ergibt additive Erweiterung des Referenz-Index (kein Ueberschreiben der
+    bestehenden Vault/RAG-Referenzen aus Pfad 1)
 ```
 
 ---
@@ -729,7 +1153,7 @@ ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-fi
 ## Abgrenzung
 
 ```
-/_W_fetch      = Wissen HOLEN (Feature-Start, Vault + RAG → .claude/)
+/_W_fetch      = Wissen TRAVERSIEREN (Feature-Start, Vault-Graph → _vault_refs.md + Cache)
 /_W_push_temp  = Wissen TEMPORAER PUSHEN (waehrend Feature, .claude/ → RAG local)
 /_W_push_global= Wissen GLOBAL PUSHEN (Feature-Ende, .claude/ → RAG global + Vault)
 /_W_modelSplit = Wissen EXTRAHIEREN (Feature-Ende, Model → thematische Teile)
@@ -755,8 +1179,10 @@ ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-fi
 ## Qualitaetskriterien
 
 - RAG-Suche ist IMMER verfuegbar (ChromaDB laeuft als Docker-Container)
-- Vault-Suche ist OPTIONAL (degraded mode ohne Vault)
-- Tag-Index bleibt PRIMAERE Vault-Suchquelle (Welle 1 erweitert um semantische Nachbarn)
+- Vault-Suche: WARNING-Guard bei fehlendem Vault (kein silent degraded mode)
+- Graph-Traversal ist PRIMAERER Modus (v5.0), Tag-Index + Glob als Start-Knoten-Identifikation
+- _vault_refs.md ist PRIMAER-OUTPUT (Referenz-Index), lokale Kopien sind CACHE
+- Downstream-Commands lesen weiterhin aus .claude/models/ + .claude/wissen/ (Cache, backward-kompatibel)
 - Keyword-Extraktion via Haiku-Prompt-Template (primaer, W30-Fix) + Tag-Index-Seed + Post-Processing
 - Easy-Mode: Auto-Accept (Score >= 0.5), KEIN User-Input (W27)
 - Normal/Hard: User entscheidet was uebernommen wird
@@ -767,7 +1193,6 @@ ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-fi
 - Parking-Lot Items pruefen (oft wertvolle Hinweise fuer neues Feature)
 - Plattform-agnostisch: Linux (cp, md5sum) und Windows (PowerShell)
 - Ceiling-Hierarchie: Sub-Prozess W_fetch <= Parent-Schwierigkeit (W21)
-- Dual-Mode: Solo (sequentiell) und Worker (Orchestrator steuert) (R10)
 
 ---
 
@@ -775,7 +1200,7 @@ ENTSCHEID │  1 ceiling-Agent  │  ──LIEST──▶ drafts/{NAME}-fetch-fi
 
 | Fehler | Ursache | Loesung |
 |--------|---------|---------|
-| Vault nicht erreichbar | Pfad nicht konfiguriert oder nicht gemountet | NUR RAG-Suche (degraded mode) |
+| Vault nicht erreichbar | Pfad nicht konfiguriert oder nicht gemountet | SCHRITT W: WARNING-Guard (FRAGE bei HiL=on, STOP bei HiL=off ohne DEGRADED_MODE) |
 | MCP query() fehlschlaegt | ChromaDB nicht erreichbar | Warnung, NUR Vault-Suche |
 | Collection nicht gefunden | global_knowledge oder local_knowledge_* existiert nicht | Skip mit Hinweis |
 | extract_keywords() fehlschlaegt | KeyBERT defekt (W30) | Haiku-basierte Keyword-Extraktion |

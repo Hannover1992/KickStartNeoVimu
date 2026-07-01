@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Zeigt die TFS-Commit-URLs fuer eine PR-Gruppe und generiert fertige PR-Antworten.
 
 $ARGUMENTS = Gruppen-Nummer (z.B. "1", "6")

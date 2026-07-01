@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Dokumentation
 description: Pre-PR Dokumentation Quality Gate - prueft XML-Dokumentation und Markdown-Struktur
+type: building-block
 ---
 
 # /_Pre_PR_Dokumentation
@@ -43,7 +44,7 @@ ECHTE UMLAUTE (ä, ö, ü, ß) MUESSEN BLEIBEN!
 ║  COMMAND: /_Pre_PR_Dokumentation                             ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                      ║
-║    1. .claude/meta/codeKonvention/dokumentation.md           ║
+║    1. {META}/codeKonvention/dokumentation.md           ║
 ║    2. Git Diff (develop...HEAD)                              ║
 ║    3. Alle *.cs und *.md Dateien im DIRTY-Scope              ║
 ║  SCHREIBT:                                                   ║
@@ -83,16 +84,17 @@ DIRTY-SCOPE: [Anzahl] Dateien gefunden
 **Aktion:** Konvention laden.
 
 ```bash
-cat .claude/meta/codeKonvention/dokumentation.md
+cat {META}/codeKonvention/dokumentation.md
 ```
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/dokumentation.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/dokumentation.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
 **Regeln extrahieren:**
 - R1: XML see-cref Referenzen (BLOCKER, kein Auto-Fix)
 - R2: Public Members XML-Dokumentation (WARNUNG, Auto-Fix TEILWEISE)
 - R3: Markdown-Struktur (WARNUNG, Auto-Fix TEILWEISE)
 - R4: Kryptische interne Referenzen in XML-Docs (WARNUNG, Auto-Fix JA)
+- R5: Ausgeschriebene Umlaute in XML-Kommentaren (FAIL, kein Auto-Fix)
 
 ---
 
@@ -309,6 +311,69 @@ RICHTIG (Reviewer versteht es SOFORT):
 
 ---
 
+### Task 1.5: Ausgeschriebene Umlaute in XML-Kommentaren finden (R5) (CaseStudy DCSRE-1430)
+
+**Aktion:** Alle CS-Dateien im DIRTY-Scope auf ASCII-Umlaute innerhalb von XML-Kommentar-Bloecken scannen.
+
+**Hintergrund:** In DCSRE-1430 mussten 6+ Dateien manuell gefixt werden (z.B. `Prueft→Prüft`, `durchlaeuft→durchläuft`). XML-Summaries MUESSEN echte Umlaute verwenden.
+
+**Scan-Bereich:** NUR innerhalb von `/// <summary>...</summary>`, `/// <param>`, `/// <returns>`, `/// <remarks>` und anderen XML-Doc-Bloecken. NICHT scannen: Code-Zeilen, Variablennamen, Methodennamen.
+
+**Pattern-Liste (haeufigste Faelle):**
+```
+# FAIL-Pattern → korrektes Umlaut
+Prueft|prueft          → Prüft|prüft
+Ueberprueft            → Überprüft
+ueberprueft            → überprüft
+Aendern|aendern        → Ändern|ändern
+Aenderung              → Änderung
+Loeschen|loeschen      → Löschen|löschen
+Rueckgabe|rueckgabe    → Rückgabe|rückgabe
+durchlaeuft            → durchläuft
+uebergibt              → übergibt
+Uebersicht             → Übersicht
+zurueck                → zurück
+fuer                   → für  (NUR in XML-Kommentaren, NICHT in Code)
+```
+
+**Regex-Pattern fuer Erkennung (nur in /// Zeilen):**
+```regex
+# Zeile ist ein XML-Kommentar (beginnt mit optionalem Whitespace + ///)
+^(\s*\/\/\/.*)(Prueft|prueft|Ueberprueft|ueberprueft|Aendern|aendern|Aenderung|Loeschen|loeschen|Rueckgabe|rueckgabe|durchlaeuft|uebergibt|Uebersicht|zurueck|\bfuer\b)
+```
+
+**Algorithmus:**
+1. Extrahiere alle Zeilen die mit `///` beginnen (XML-Doc-Zeilen)
+2. Pruefe jede Zeile gegen die Pattern-Liste
+3. Fuer jeden Treffer: FAIL-Finding mit konkretem Fix-Vorschlag erstellen
+4. Beachte: `fuer` nur flaggen wenn es als deutsches Wort vorkommt (nicht in Code-Identifier-Kontext innerhalb von `<see cref="..."/>`)
+
+**NICHT flaggen:**
+- Code-Identifier in `<see cref="..."/>` Tags (z.B. `<see cref="PrueftVerbindung"/>`)
+- Parameter-Namen in `<param name="...">` Attribut (der Name selbst, nicht der Inhalt)
+- Zeilen die kein `///` haben (normaler Code)
+
+**Output Task 1.5:**
+```
+[FAIL] Ausgeschriebene Umlaute in XML-Dokumentation (R5):
+  1. DateiabholungService.cs:45 — "Prueft ob die Verbindung aktiv ist"
+     Fix: "Prüft ob die Verbindung aktiv ist"
+  2. AbrufController.cs:112 — "durchlaeuft alle Eintraege"
+     Fix: "durchläuft alle Einträge"
+  3. ImportHelper.cs:78 — "Rueckgabe des Status-Objekts"
+     Fix: "Rückgabe des Status-Objekts"
+
+  Anzahl: 3 Stellen mit ASCII-Umlauten in XML-Kommentaren
+  Auto-Fix: NEIN (Entwickler muss manuell korrigieren — Kontext-Verstaendnis erforderlich)
+```
+
+**Wenn FAIL gefunden:**
+- Status = FAIL (nicht BLOCKER, aber Pflicht-Korrektur vor Merge)
+- Kein Auto-Fix (zu hohes Risiko fuer falsche Ersetzungen in Randfaellen)
+- Konkreten Fix-Vorschlag pro Fundstelle ausgeben (Datei + Zeile + Alt → Neu)
+
+---
+
 ## Welle 2: Synthese + Fix
 
 ### Fix 2.1: XML-Dokumentations-Gerueste einfuegen
@@ -488,12 +553,41 @@ Die folgenden see-cref Tags wurden entfernt und MÜSSEN wiederhergestellt werden
 
 ---
 
+### R5: Ausgeschriebene Umlaute in XML-Kommentaren (FAIL)
+
+**Status:** [PASS/FAIL]
+
+[Wenn FAIL:]
+Die folgenden XML-Kommentare enthalten ASCII-Umlaute und MUESSEN manuell korrigiert werden:
+
+1. **Datei:** DateiabholungService.cs, Zeile 45
+   ```diff
+   - /// Prueft ob die Verbindung aktiv ist
+   + /// Prüft ob die Verbindung aktiv ist
+   ```
+
+2. **Datei:** AbrufController.cs, Zeile 112
+   ```diff
+   - /// durchlaeuft alle Eintraege
+   + /// durchläuft alle Einträge
+   ```
+
+[Weitere Fundstellen...]
+
+**Naechste Schritte:**
+- Alle gemeldeten Stellen manuell im Editor korrigieren
+- Echte Unicode-Umlaute eintippen (ä, ö, ü, Ä, Ö, Ü, ß)
+- /_Pre_PR_Dokumentation erneut ausfuehren
+
+---
+
 ## Statistik
 
 - **Geloeschte see-cref Tags:** [N] (KRITISCH)
 - **Undokumentierte Members:** [N] (Auto-Fix angewendet)
 - **Markdown-Probleme:** [N] (Auto-Fix angewendet)
 - **TODO-Marker eingefuegt:** [N] (Entwickler-Action erforderlich)
+- **ASCII-Umlaute in XML-Kommentaren:** [N] (Manuell zu korrigieren)
 
 ---
 
@@ -511,9 +605,11 @@ bevor das Quality Gate PASS meldet.
 - Markdown-Formatierung konsistent
 - KEINE kryptischen internen Referenzen in XML-Docs (R4 = PASS)
 - Alle Summaries in einfachem Deutsch (beschreiben WAS die Funktion tut)
+- KEINE ASCII-Umlaute (ae, oe, ue, ss) in XML-Kommentaren (R5 = PASS)
 
 ### FAIL-Bedingungen
 - Mindestens ein geloeschter `<see cref=` Tag (R1 = BLOCKER)
+- Mindestens eine Stelle mit ASCII-Umlaut in XML-Kommentar (R5 = FAIL)
 
 ### Auto-Fix Grenzen
 - **JA:** XML-Geruest mit TODO-Marker

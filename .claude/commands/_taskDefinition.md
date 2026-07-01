@@ -1,3 +1,14 @@
+---
+type: building-block
+depends_on:
+  - _W_fetch
+feeds_into:
+  - _model
+  - _spec
+related:
+  - _SC_orchestrate
+---
+
 # Task-Definition: Aufgabe & Kruemmel sammeln
 
 Du definierst die Aufgabe und verarbeitest Rohmaterial zu strukturierten Kruemmeln (Crumbs).
@@ -21,17 +32,19 @@ Du definierst die Aufgabe und verarbeitest Rohmaterial zu strukturierten Kruemme
 ╠═══════════════════════════════════════════════════════════════╣
 ║                                                               ║
 ║  LIEST (Input):                                               ║
-║    1. .claude/analysis/_manifest.md (falls vorhanden)         ║
-║    2. .claude/Task.md (falls vorhanden)                       ║
+║    1. {VAULT}/_manifest.md (falls vorhanden)         ║
+║    2. {VAULT}/Task.md (falls vorhanden)                       ║
 ║    3. .claude/pileOfMud/* (Rohmaterial: PDFs, Screenshots,    ║
 ║       Diagramme, alte Models, Texte, Bilder)                  ║
 ║    4. .claude/models/{NAME}_Model.md (falls bereits vorh.)    ║
 ║    5. User-Input (Frage, Kontext, Anforderungen)              ║
 ║                                                               ║
 ║  SCHREIBT (Output) - PFLICHT:                                 ║
-║    1. .claude/Task.md (erstellen/aktualisieren)               ║
-║    2. .claude/crumbs/{NAME}_crumbs.md                         ║
-║    3. .claude/analysis/_manifest.md (aktualisieren)           ║
+║    1. {VAULT}/Task.md (erstellen/aktualisieren)               ║
+║       + quality_goals[]-Block (BL-380 AK-4, additiv,          ║
+║         INV-MODUS-1/5-sicher; KEIN modus-Write)               ║
+║    2. {VAULT}/Crumbs/{NAME}_crumbs.md (W14: Vault-First)     ║
+║    3. {VAULT}/_manifest.md (aktualisieren)           ║
 ║                                                               ║
 ║  PRE-CYCLE POSITION:                                          ║
 ║    [/_taskDefinition] ──▶ [/_spec]* ──▶ [/_model] ──▶ Zyklus  ║
@@ -39,12 +52,34 @@ Du definierst die Aufgabe und verarbeitest Rohmaterial zu strukturierten Kruemme
 ║    Sammelt Rohmaterial, strukturiert als Crumbs,              ║
 ║    bereitet Input fuer /_spec oder /_model vor                ║
 ║                                                               ║
+║  VAULT-PFAD (5-stufig, vault-routing.json):                    ║
+║    Identisch mit _W_fireTogether / _W_obsidianSync.           ║
+║    Crumbs-Zielordner: {VAULT}/Crumbs/                         ║
+║                                                               ║
 ║  COMPACT-SICHER:                                              ║
 ║    Task.md + Crumbs-Datei ueberleben /compact.               ║
-║    /_model liest Crumbs von Disk.                             ║
+║    /_model liest Crumbs von Disk (Vault-Pfad).               ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
+
+---
+
+## SOURCE-PROVENANCE-PROPAGATION (BL-160 AK-5)
+
+**INV-PROV-PROP-2:** Jeder Output-Datei MUSS source_provenance + provenance_chain Frontmatter-Block enthalten.
+
+**Pattern:**
+1. Lies Vorgaenger-Output (pileOfMud). Extrahiere predecessor.source_provenance + predecessor.provenance_chain.
+2. Bei Output-Schreibung (Task.md, Crumbs):
+   - source_provenance: kopiere von predecessor (gleiche Source-URL/PageId)
+   - provenance_chain: haenge neuen Layer-Eintrag an (layer=1, artifact=task_oder_crumbs_pfad, role="task", timestamp=ISO, derived_from=[predecessor_pfad])
+3. Bei mehreren Predecessors: provenance_chain.derived_from sammelt alle Vorgaenger.
+4. Wenn predecessor.source_provenance FEHLT (legacy): setze source_provenance={source: "legacy_pre_BL-160", source_kind: "legacy", fetched_at: ISO_NOW}.
+
+**Helper:** Verwende `.claude/scripts/propagate_provenance.py update <output_path>` nach Output-Schreibung — autoupdate predecessor.used_in (Hebb-bidir).
+
+**role-Mapping fuer diesen Skill:** `"task"`
 
 ---
 
@@ -53,7 +88,7 @@ Du definierst die Aufgabe und verarbeitest Rohmaterial zu strukturierten Kruemme
 Kruemmel sind **strukturierte Wissens-Fragmente** die aus Rohmaterial extrahiert werden:
 
 ```
-.claude/pileOfMud/                    .claude/crumbs/
+.claude/pileOfMud/                    {VAULT}/Crumbs/
 ├── architektur-zeichnung.png    ──▶  {NAME}_crumbs.md
 ├── confluence-export.pdf        ──▶    ├── Mermaid-Diagramme
 ├── user-story.txt               ──▶    ├── Anforderungen
@@ -61,7 +96,7 @@ Kruemmel sind **strukturierte Wissens-Fragmente** die aus Rohmaterial extrahiert
 ├── screenshot-sequenz.jpg       ──▶    ├── Sequenz-Flows
 └── kommentar-carsten.txt        ──▶    └── Offene Fragen
 
-ROHMATERIAL (unstrukturiert)          KRUEMMEL (strukturiert, Markdown+Mermaid)
+ROHMATERIAL (unstrukturiert)          KRUEMMEL (im Vault, Markdown+Mermaid)
 ```
 
 **Kernidee:** Aus einem "Haufen Schlamm" (pileOfMud) werden saubere Kruemmel, die das Model fuettern.
@@ -122,7 +157,7 @@ Keine Textbeschreibung. Keine Bildbeschreibung. Mermaid-Code.
 
 ## Was ist Task.md?
 
-`.claude/Task.md` ist die **globale Aufgaben-Definition**:
+`{VAULT}/Task.md` ist die **globale Aufgaben-Definition**:
 
 ```markdown
 # Task: {NAME}
@@ -153,6 +188,18 @@ Keine Textbeschreibung. Keine Bildbeschreibung. Mermaid-Code.
 {Vorab-Identifikation beteiligter Technologie-Bereiche, z.B.:}
 {- Netzwerk/SFTP, Zertifikate/TLS, Container/Docker, Datenbank/EF}
 {Hilft _model bei der initialen TC-Strukturierung}
+
+## quality_goals (QDSA-Antrieb, BL-380 AK-4 — A-Phase 0.6, additiv)
+{Top-Qualitaetsziele FRUEH erfasst — Input/Kontext, KEIN Modus. Siehe Schritt 1.5.}
+{INV-MODUS-1/5-sicher: KEIN recommended_modus/sdf_mode/sdf_mode_hint/expected_sdf_mode/mode_recommendation.}
+```yaml
+quality_goals:
+  - goal_id: QG-1
+    qualitaetsziel: "<Label>"
+    iso25010_achse: "<optional>"
+    priority_source: "paragraph_1_2 | srs_ranking | k_score_ranking"
+    priority_rank: 1
+```
 ```
 
 ---
@@ -161,20 +208,33 @@ Keine Textbeschreibung. Keine Bildbeschreibung. Mermaid-Code.
 
 **IMMER als Erstes -- BEVOR du den User fragst:**
 
-1. Lies `.claude/analysis/_manifest.md` falls vorhanden
+1. Lies `{VAULT}/_manifest.md` falls vorhanden
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`
    - Leite Modell-Zuordnung pro Welle ab (siehe Manifest → Modell-Zuordnung)
    - **NEU:** Lies **OFFENE TASKS** aus der Task-Sektion (falls vorhanden)
    - **NEU:** Lies **STAGNATION** Zaehler (falls vorhanden)
    - **NEU:** Lies **PHASE** -- wo steht der aktuelle Zyklus?
-2. Pruefe ob `.claude/Task.md` existiert
-3. Pruefe ob `.claude/models/{NAME}_Model.md` existiert (altes Model)
+2. Pruefe ob `{VAULT}/Task.md` existiert
+3. Pruefe ob Model existiert (PRIMAER Vault, FALLBACK lokal):
+   # PRIMAER: Vault (BL-065)
+   `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md`
+   # FALLBACK: lokal (Legacy)
+   # fallback-read: expected vault, using .claude/
+   ODER `.claude/models/{NAME}_Model.md`
    - **NEU:** Falls Model existiert: Lies Version, W{n}-Anzahl, Letzte Aktualisierung
    - **NEU:** Falls Model-Topologie existiert (`{NAME}_Model-Topologie.md`):
      Lies Teilmodel-Uebersicht, FOKUS-TC, SRS pro Teilmodel.
      Model-Topologie folgt dem Muster von `Topologie-OmniCommand.md`.
-4. Scanne `.claude/pileOfMud/` nach verfuegbarem Rohmaterial
+4. Scanne pileOfMud nach verfuegbarem Rohmaterial:
+   ## AK-2 Snapshot-Check BEGIN (BL-160, PL-AK2-4, PT-CMD-023 + PT-CMD-006)
+   - PRIMAER: `{bl_folder}/Sources/_pileOfMud_snapshot/` (Vault-First Snapshot-Pfad)
+     IF EXISTS AND nicht leer:
+       LOG: "Snapshot-Pfad gefunden fuer taskDefinition: {bl_folder}/Sources/_pileOfMud_snapshot/"
+       LESE: Snapshot-Dateien aus diesem Pfad (stabil, Repo-Pfade volatil)
+   - FALLBACK: `.claude/pileOfMud/` (bestehender Pfad, unveraendert)
+     ELSE: WARNING-LOG "Kein Snapshot fuer {slug} — Fallback: .claude/pileOfMud/"
+   ## AK-2 Snapshot-Check END
 5. Pruefe ob `.claude/analysis/synthese/{NAME}-ERGEBNIS*.md` existiert
    - **NEU:** Falls ja: Lies letzten SRS-Score + Stagnations-Zaehler
 6. **Entscheidungsbaum: NEUES Feature oder BESTEHENDES Feature?**
@@ -265,7 +325,7 @@ Empfohlene naechste Schritte:
    - Welcher Typ? (Recherche, Wissenschaftliche Frage, Implementierung, Bug-Fix)
    - Welche Erfolgskriterien?
    - Was ist NICHT im Scope?
-2. Schreibe `.claude/Task.md`
+2. Schreibe `{VAULT}/Task.md`
 
 ### 1b: Falls Task.md EXISTIERT (Task-Kontinuitaet)
 
@@ -298,6 +358,51 @@ Task.md erhaelt eine persistente Task-Liste die ueber Zyklen hinweg gepflegt wir
 **WICHTIG:** Die Task-Liste wird NIEMALS geloescht, nur erweitert.
 Erledigte Tasks bleiben als Historie sichtbar.
 Neue Tasks werden ANGEHAENGT, nicht eingeschoben.
+
+---
+
+## Schritt 1.5: QDSA-Antrieb — quality_goals[] frueh erfassen (A-Phase 0.6) — BL-380 AK-4
+
+**Zweck (QDSA = Quality-Driven-Scenario-Antrieb):** Die Top-Qualitaetsziele werden HIER frueh
+erfasst — VOR `_W_fetch` (INV-A-ORDER-1) — als strukturierter `quality_goals[]`-Block. Sie sind
+**Input/Kontext**, kein Modus. Downstream nutzen sie:
+- **W_fetch (A-Phase 2.5):** als **Such-Kontext** (welche Quellen/Achsen sind relevant).
+- **Szenario-Produktion (arc42-Berater §1.2/§10):** als **Gewichtung/Fokus** (welche ISO-25010-Achsen
+  betont werden, welche Top-Ziele >=1 `quality_scenario`-Node bekommen — Proportionalitaet, BL-380 AK-2).
+
+**Warum hier (W-QDSA-1-Adjudikation):** taskDefinition (Phase 0.6) laeuft als erster echter Berater
+VOR W_fetch und hat einen klaren Output-Vertrag. Eine eigene neue A-Phase waere riskanter
+(jede neue Phase ist skippbar → INV-MODUS-2-Exposition). Der `quality_goals[]`-Block wird **additiv**
+NEBEN `task_list`/`key_constraints` gestellt — der bestehende Task-Vertrag bleibt intakt.
+
+### Block-Schema (in `{VAULT}/Task.md` bzw. `1_Task/{BL-SLUG}_Task.md`)
+
+```yaml
+quality_goals:
+  - goal_id: QG-1
+    qualitaetsziel: "<Label aus arc42-§1.2 oder neu erfasst>"
+    iso25010_achse: "<z.B. Wartbarkeit | Zuverlaessigkeit | Leistungseffizienz>"  # optional
+    priority_source: "paragraph_1_2 | srs_ranking | k_score_ranking"
+    priority_rank: 1   # 1 = hoechste Prioritaet
+  - goal_id: QG-2
+    ...
+```
+
+### INV-MODUS-1/5-SICHER (HART — by construction)
+
+- **INV-MODUS-1:** `_taskDefinition` schreibt **NIE** `DF_BATCH_STATE.modus` (oder `batch_modes`).
+  Die Modus-Hoheit liegt ALLEIN bei SDF Phase 1.1 (`_SDF_berater_modusEntscheidung`).
+  `quality_goals[]` steuert downstream **Gewichtung/Fokus**, NIE den Modus — auch nicht indirekt
+  ueber ein abgeleitetes Feld.
+- **INV-MODUS-5:** Der `quality_goals[]`-Block (und jeder `quality_scenario`-Node) darf **KEINES**
+  der Verbotsfelder tragen: `recommended_modus`, `sdf_mode`, `sdf_mode_hint`, `expected_sdf_mode`,
+  `mode_recommendation`. Ein quality_goal, das einen Modus encodiert, ist ein **Naming-Bypass** und
+  wird vom Pre-Write-Hook (`guard_modus_writer.py`, BL-380-erweitert auf QDSA-Strukturen)
+  **GEBLOCKT** (exit!=0) — auch in Task-/Model-Dateien, nicht nur im Manifest.
+- **C3-Hoheit unberuehrt:** Nichts in diesem Schritt beruehrt die SDF-Phase-1.1-Modus-Entscheidung.
+
+> Merksatz: **quality_goals[] ist Truth/Input, kein Modus-Setzer.** Frueh erfasst, downstream
+> gewichtend — niemals den Modus bestimmend.
 
 ---
 
@@ -334,7 +439,7 @@ DRAFTS    │ D │ │ D │ │ D │  ──LIEST──▶ pileOfMud/* + Task
                   ▼
 Welle 2:  ┌─────────────┐
 SYNTHESE  │  DU, Hauptagent  │  ──LIEST──▶ drafts/{NAME}-crumbs-D*.md
-          │   (= DU)    │  ──SCHREIBT──▶ crumbs/{NAME}_crumbs.md
+          │   (= DU)    │  ──SCHREIBT──▶ {VAULT}/Crumbs/{NAME}_crumbs.md
           └─────────────┘
 ```
 
@@ -346,9 +451,14 @@ Jeder Drafter verarbeitet einen Teil des Rohmaterials:
 Du bist Drafter D{NN} fuer die Kruemmel-Extraktion von "{NAME}".
 
 INPUT - LIES ZUERST:
-  1. .claude/Task.md (Aufgabe verstehen)
+  1. {VAULT}/Task.md (Aufgabe verstehen)
   2. .claude/pileOfMud/{zugewiesene Dateien}
-  3. .claude/models/{NAME}_Model.md (falls vorhanden - altes Wissen)
+  3. Model (PRIMAER Vault, FALLBACK lokal, falls vorhanden - altes Wissen):
+     # PRIMAER: Vault (BL-065)
+     {VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md
+     # FALLBACK: lokal (Legacy)
+     # fallback-read: expected vault, using .claude/
+     ODER .claude/models/{NAME}_Model.md
 
 AUFTRAG: Extrahiere strukturierte Kruemmel aus dem Rohmaterial.
 
@@ -357,6 +467,11 @@ VERARBEITUNGSREGELN:
   - PDFs/Texte → Extrahiere Kern-Informationen als strukturierte Sektionen
   - Alte Models → Identifiziere was noch gueltig ist vs. veraltet
   - Kommentare → Extrahiere Anforderungen und offene Fragen
+  - INVARIANTE: Filterung JA, Komprimierung NEIN
+    → SAFT (Kern-Information) wird BEHALTEN und strukturiert
+    → RAND (Rauschen, Duplikate, Meta-Artefakte) wird GEFILTERT
+    → Gesamt-Informationsmenge bleibt gleich oder waechst (nie schrumpfen!)
+    → Transformierung erhaelt, Saeuberung reduziert — NUR Transformierung erlaubt
   HINWEIS: Screenshots wurden bereits in pileOfMud als Mermaid nachgebildet.
   Du musst sie NICHT nochmal konvertieren - lies sie direkt.
 
@@ -422,13 +537,28 @@ Lies ALLE Dateien in `.claude/analysis/drafts/{NAME}-crumbs-D*.md`
 
 ### Crumbs-Dokument Struktur
 
-**Pfad:** `.claude/crumbs/{NAME}_crumbs.md`
+**Pfad:** `{VAULT}/Crumbs/{NAME}_crumbs.md` (W14: Vault-First)
+
+**Vault-Pfad-Aufloesung:** Identisch mit _W_fireTogether (5-stufig, vault-routing.json).
+Falls Vault nicht erreichbar → WARNING-Guard (kein silent degraded mode).
 
 ```markdown
+---
+type: crumbs
+feature: {NAME}
+created: {YYYY-MM-DD}
+updated: {YYYY-MM-DD}
+source: .claude/pileOfMud/
+tags:
+  - type/crumbs
+  - feature/{NAME_SLUG}
+linked-feature: "[[{NAME}]]"
+---
+
 # Kruemmel: {NAME}
 
 **Datum:** YYYY-MM-DD
-**Task:** .claude/Task.md
+**Task:** {VAULT}/Task.md
 **Quellen:** {Anzahl} Dateien aus .claude/pileOfMud/
 
 ---
@@ -532,7 +662,7 @@ Falls kein bestehendes Model: "Kein bestehendes Model. /_model wird Erstinitiali
 **KONTINUITAET:** NEUES_FEATURE | BESTEHEND_NEUER_TASK | BESTEHEND_FORTSETZUNG
 
 ## Task
-- [x] .claude/Task.md (Aufgaben-Definition)
+- [x] {VAULT}/Task.md (Aufgaben-Definition)
 
 ## Aktiver Task
 - **Task-ID:** T{N}
@@ -544,7 +674,7 @@ Falls kein bestehendes Model: "Kein bestehendes Model. /_model wird Erstinitiali
 - [ ] T{K}: {Beschreibung} (Prioritaet: {HOCH|MITTEL|NIEDRIG})
 
 ## Kruemmel
-- [x] .claude/crumbs/{NAME}_crumbs.md ({Anzahl} Kruemmel aus {Anzahl} Quellen)
+- [x] {VAULT}/Crumbs/{NAME}_crumbs.md ({Anzahl} Kruemmel aus {Anzahl} Quellen, W14)
 
 ## Quellen (pileOfMud)
 - [x] .claude/pileOfMud/{datei1}
@@ -605,6 +735,7 @@ Das bestehende Model wird NICHT ueberschrieben - es wird als Input behandelt.
 - **NEU (v2.1):** Bei bestehendem Feature: Tasks priorisiert nach Proximity-Prinzip
 - **NEU (v2.1):** Bei abgeschlossenem Feature: Model-Finish/Split vorgeschlagen
 - **NEU (v2.1):** Task-Liste in Task.md gepflegt (NICHT geloescht, nur erweitert)
+- **NEU (v2.2):** Kruemmel-Invariante eingehalten: Filterung ja (SAFT/RAND), Komprimierung NEIN
 
 ---
 
@@ -615,6 +746,14 @@ Nach Abschluss:
 - **Sonst (Standard):** `/_model {NAME} [easy|normal|hard]`
 
 ---
+
+## Fire-Together Trigger (BL-027, RF-02 AK-02f)
+
+Nach Crumbs-Erstellung: Crumbs-Artefakt in Vault synchronisieren.
+```
+/_W_fireTogether {FEATURE} crumbs
+```
+Non-blocking: FAIL → WARNING, Pipeline faehrt fort.
 
 ## NOTIFY (Pflicht - Allerletzter Schritt)
 

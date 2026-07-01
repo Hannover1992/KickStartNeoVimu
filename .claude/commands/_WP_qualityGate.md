@@ -1,4 +1,4 @@
-﻿# /_WP_qualityGate - Chapter Quality Gate Orchestrator
+# /_WP_qualityGate - Chapter Quality Gate Orchestrator
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-10
 op: WritePaper
 phase: Core Transformation
-type: qualityGate
+type: building-block
 chain_position: qualityGate
 difficulty_scaling: true
 mcp_critical: partial

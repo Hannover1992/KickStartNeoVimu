@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Planning: 3-Wellen-Analyse der PR-Kommentare (ULTRATHINK).
 
 $ARGUMENTS = Gruppen-Nummern (z.B. "2,4,11") - optional, ohne = ALLE offenen Gruppen
@@ -56,7 +60,7 @@ Starte bis zu 5 Agenten parallel pro Batch. Warte auf Ergebnisse.
 
 ### Welle 2: Verification (Sonnet-Agenten, SEQUENTIAL)
 
-Fuer jede Gruppe mit Haiku-Ergebnis starte einen Task-Agent mit `subagent_type="general-sonnet-4"`:
+Fuer jede Gruppe mit Haiku-Ergebnis starte einen Task-Agent mit `subagent_type="general-sonnet"`:
 
 **Prompt:**
 ```

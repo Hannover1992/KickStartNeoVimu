@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Out of the Box - First Principles Debugging
 
 Wenn ein Problem hartnäckig ist und normale Lösungen nicht funktionieren, wende diesen Prozess an:

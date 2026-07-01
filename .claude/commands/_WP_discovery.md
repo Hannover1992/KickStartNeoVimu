@@ -1,4 +1,8 @@
-﻿# /_WP_discovery - Research Source Discovery
+---
+type: building-block
+---
+
+# /_WP_discovery - Research Source Discovery
 
 **STATUS:** v1.0.0 | 2026-02-08 | ACTIVE
 **AUTOR:** OmniCommand System

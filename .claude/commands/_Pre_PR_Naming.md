@@ -1,8 +1,12 @@
+---
+type: building-block
+---
+
 # /_Pre_PR_Naming - Naming-Konventionen Quality Gate
 
 **Pattern:** /_Pre_PR_* (Pre-PR Quality Gate)
 **Zweck:** Automatische Pruefung von Naming-Konventionen vor Pull Request
-**Basis:** `.claude/meta/codeKonvention/naming.md`
+**Basis:** `{META}/codeKonvention/naming.md`
 **Qualitaet:** NORMAL (Floor=sonnet, Ceiling=sonnet)
 
 ---
@@ -19,7 +23,7 @@
   - `report`: Detaillierter Report mit Beispielen
 
 **Kontext:**
-- `.claude/meta/codeKonvention/naming.md` (Regel-Quelle)
+- `{META}/codeKonvention/naming.md` (Regel-Quelle)
 - Git diff bzw. DIRTY-Files
 - C#-Projektdateien (*.cs)
 
@@ -434,7 +438,7 @@ IRREGULAR_PLURALS = {
 **Quality-Level:** NORMAL (sonnet/sonnet)
 
 **Abhaengigkeiten:**
-- `.claude/meta/codeKonvention/naming.md` (MUSS existieren - Falls nicht gefunden → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/naming.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1)
+- `{META}/codeKonvention/naming.md` (MUSS existieren - Falls nicht gefunden → FEHLER: "Knowledge-Datei {META}/codeKonvention/naming.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1)
 - Git (optional, fuer DIRTY-Scope)
 - C#-Projekt (*.cs-Dateien)
 

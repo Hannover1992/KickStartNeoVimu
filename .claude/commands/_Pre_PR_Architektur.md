@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Architektur
 description: Pre-PR Architektur Quality Gate - prueft Architektur-Konformitaet (Controller, Interfaces, Provider, Konfiguration, DI)
+type: building-block
 ---
 
 # /_Pre_PR_Architektur
@@ -22,7 +23,7 @@ description: Pre-PR Architektur Quality Gate - prueft Architektur-Konformitaet (
 ║  COMMAND: /_Pre_PR_Architektur                               ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                      ║
-║    1. .claude/meta/codeKonvention/architektur.md             ║
+║    1. {META}/codeKonvention/architektur.md             ║
 ║    2. Git Diff (develop...HEAD)                              ║
 ║    3. Codebase (Kontext: Controller, Interfaces, Provider)   ║
 ║  SCHREIBT:                                                   ║
@@ -66,12 +67,12 @@ DIRTY-SCOPE: [Anzahl] Architektur-relevante Dateien gefunden
 
 ```bash
 # Datei lesen
-cat .claude/meta/codeKonvention/architektur.md
+cat {META}/codeKonvention/architektur.md
 ```
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/architektur.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/architektur.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
-**Regeln:** Alle R1-R9, R12 werden aus der Knowledge-Datei gelesen. Siehe `.claude/meta/codeKonvention/architektur.md` fuer die vollstaendigen Regelbeschreibungen mit Severity und Auto-Fix Status.
+**Regeln:** Alle R1-R9, R12 werden aus der Knowledge-Datei gelesen. Siehe `{META}/codeKonvention/architektur.md` fuer die vollstaendigen Regelbeschreibungen mit Severity und Auto-Fix Status.
 
 ---
 

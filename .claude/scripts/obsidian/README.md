@@ -3,7 +3,7 @@
 **Version:** 2.0 (2026-02-01)
 **Projekt-agnostisch:** Funktioniert in DCSLESE, DCSRE, CenCoCo, Private/Brain
 
-Diese Scripts werden von `/_obsidianSync` verwendet um:
+Diese Scripts werden von `/_W_obsidianSync` verwendet um:
 1. Hashes zu berechnen (Redundanz-Vermeidung)
 2. Dateien mit Frontmatter zu syncen
 3. Topology-Guards auszufuehren
@@ -135,7 +135,7 @@ Diese Scripts sind **projekt-agnostisch**. Um sie in einem anderen Projekt zu nu
 
 1. Kopiere das gesamte `.claude/scripts/obsidian/` Verzeichnis
 2. Die Scripts benoetigen KEINE Anpassung (alle Pfade als Parameter)
-3. `/_obsidianSync` Command muss die richtigen Parameter uebergeben
+3. `/_W_obsidianSync` Command muss die richtigen Parameter uebergeben
 
 **Projekte:**
 - DCSRE: Vault → `C:\Users\...\DCS`

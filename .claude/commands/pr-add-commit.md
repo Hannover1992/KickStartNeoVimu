@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Existierenden Commit einer PR-Gruppe zuweisen.
 
 $ARGUMENTS = "Gruppen-Nummer Commit-Hash" (z.B. "1 abc123", "6 f8de0f5")

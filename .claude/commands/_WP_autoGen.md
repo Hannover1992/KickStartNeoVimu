@@ -1,4 +1,4 @@
-﻿# /_WP_autoGen - Gap-Driven Section Rewrite
+# /_WP_autoGen - Gap-Driven Section Rewrite
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-10
 op: WritePaper
 phase: Core Transformation
-type: Standard + MCP
+type: building-block
 chain_position: autoGen
 difficulty_scaling: true
 mcp_critical: false

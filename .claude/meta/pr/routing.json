@@ -1,0 +1,23 @@
+{
+  "platform": "azure-devops",
+  "organization": "ITSGGMBH",
+  "project": "AP0071 Daten Clearing Stelle Pflege",
+  "repository": "DCSRE",
+
+  "urls": {
+    "web": "https://dev.azure.com/ITSGGMBH/AP0071%20Daten%20Clearing%20Stelle%20Pflege/_git/DCSRE",
+    "api": "https://dev.azure.com/ITSGGMBH/AP0071%20Daten%20Clearing%20Stelle%20Pflege/_apis/git/repositories/DCSRE"
+  },
+
+  "auth": {
+    "credentialKey": "TFS_ITSG_PAT",
+    "method": "basic-pat"
+  },
+
+  "apiVersion": "7.1",
+
+  "paths": {
+    "stateDir": ".claude/analysis",
+    "activePr": ".claude/meta/pr/active-pr.json"
+  }
+}

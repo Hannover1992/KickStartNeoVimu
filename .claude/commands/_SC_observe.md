@@ -1,3 +1,14 @@
+---
+type: building-block
+depends_on:
+  - _model
+  - _gap
+feeds_into:
+  - _SC_modelMaintain
+related:
+  - _SC_qualityGate
+---
+
 # /_SC_observe
 
 **Status:** NEU v2.2 (ersetzt _analyse Sektion A)
@@ -14,16 +25,20 @@
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  LIEST (Input) - PFLICHT:                                                ║
 ║    1. _manifest.md                                                       ║
-║    2. models/{NAME}_Model.md (MUSS EXISTIEREN)                          ║
+║    2. {VAULT}/.../Model/{NAME}_Model.md (MUSS EXISTIEREN)              ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                          ║
 ║    3. synthese/{NAME}-GAP.md (falls vorhanden, Delta IST↔SOLL)         ║
 ║       ◄── NEU v3.0: Bekannte Gaps fuer gerichtete Observation          ║
 ║    4. synthese/{NAME}-ERGEBNIS{CYCLE}.md (falls Folge-Zyklus)          ║
 ║    5. Codebase (direkt via Glob/Grep/Read)                              ║
 ║    6. .claude/crumbs/{NAME}_crumbs.md (Crumbs aus A-Phase, falls vorh.) ║
 ║                                                                          ║
-║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    Welle 1: drafts/{NAME}-observe{CYCLE}-D01-{f}.md                     ║
-║    Welle 2: synthese/{NAME}-OBSERVE{CYCLE}.md                            ║
+║  SCHREIBT (Output) - abhaengig von Worker-Rolle:                         ║
+║    Observer-Drafter D{NN}:                                                ║
+║      drafts/{NAME}-observe{CYCLE}-D{NN}-{fokus}.md                      ║
+║    Observer-Synthesist (BL-050 Vault-First):                              ║
+║      PRIMAER: {VAULT}/Backlog/{BL_SLUG}/SC/{NAME}-OBSERVE{CYCLE}.md ║
+║      FALLBACK: {WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md       ║
 ║      → Sektion A: Findings (NUR aktueller Zyklus)                       ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - OPTIONAL:                                           ║
@@ -71,90 +86,7 @@ MODEL → ERGEBNIS{N-1} → **OBSERVE{N}** → QUALITYGATE{N} → HYPOTHESEN
 
 ---
 
-## Schwierigkeits-Parameter
-
-| Schwierigkeit | Drafts (Welle 1) | Synthese (Welle 2) |
-|---------------|------------------|---------------------|
-| **easy** | --- (skip) | 1 ceiling-Agent |
-| **normal** | 3 middle-Agents | 1 ceiling-Agent |
-| **hard** | 5 floor → 3 middle (2-stufige Draft-Struktur, keine Exploration) | 1 ceiling-Agent |
-
-**System-Model (aus Manifest):** Bestimmt welches Modell pro Welle laeuft.
-- opus: floor=haiku, middle=sonnet, ceiling=opus
-- sonnet: floor=haiku, middle=sonnet, ceiling=sonnet
-- haiku: floor=haiku, middle=haiku, ceiling=haiku
-
-**Hinweis:** Bei Wellen-Worker-Modus spawnt der Team Lead die Agents parallel.
-Im Solo-Modus fuehrst du Drafter-Durchlaufe sequentiell selbst aus.
-
----
-
-## Dual-Mode: Solo vs. Wellen-Worker
-
-**SOLO-MODUS** (User ruft direkt auf: `/_SC_observe {NAME} normal`)
-- easy: Nur Synthese (du selbst, kein Drafter)
-- normal: 3 Drafter-Durchlaufe SEQUENTIELL, dann Synthese (du selbst)
-- hard: 5 Explorer SEQUENTIELL → 3 Drafter SEQUENTIELL → Synthese
-- Schreibe Drafter-Dateien selbst, sequentiell, dann synthetisiere
-
-**WELLEN-WORKER-MODUS** (Orchestrator steuert, Task enthaelt "Welle X:")
-- Lies Task-Beschreibung via TaskGet um Rolle zu erkennen
-- "Welle 1: Drafts, Fokus: {fokus}, Agent-ID: D{NN}"
-  → Fuehre NUR Welle 1 aus. KEIN Spawning.
-  → Lese: models/{NAME}_Model.md + ERGEBNIS/GAP (falls vorhanden)
-  → Schreibe: .claude/analysis/drafts/{NAME}-observe{CYCLE}-D{NN}-{fokus}.md
-  → TaskUpdate completed + SendMessage an Team Lead
-- "Welle 2: Synthese"
-  → Fuehre NUR Welle 2 aus. KEIN Spawning.
-  → Lese: drafts/{NAME}-observe{CYCLE}-D*.md (ALLE)
-  → Schreibe: synthese/{NAME}-OBSERVE{CYCLE}.md
-  → TaskUpdate completed + SendMessage an Team Lead
-- Kein Wellen-Hinweis → Solo-Modus (alles selbst machen)
-
-**VERTRAG (Wellen-Worker-Modus):**
-```
-╔═══════════════════════════════════════════════════════════════════════════╗
-║  WELLEN-WORKER VERTRAG                                                    ║
-╠═══════════════════════════════════════════════════════════════════════════╣
-║  Welle 1 Worker (Drafter D{NN}):                                         ║
-║    LIEST:   .claude/models/{NAME}_Model.md (PFLICHT)                     ║
-║             .claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md (opt.)  ║
-║             .claude/analysis/synthese/{NAME}-GAP.md (opt.)              ║
-║    SCHREIBT: .claude/analysis/drafts/{NAME}-observe{CYCLE}-D{NN}-{f}.md ║
-║    MELDET:  TaskUpdate completed + SendMessage team-lead                  ║
-║                                                                           ║
-║  Welle 2 Worker (Synthesist):                                             ║
-║    LIEST:   .claude/analysis/drafts/{NAME}-observe{CYCLE}-D*.md (ALLE)  ║
-║    SCHREIBT: .claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md          ║
-║    MELDET:  TaskUpdate completed + SendMessage team-lead                  ║
-║                                                                           ║
-║  NIEMALS: Sub-Agents spawnen (kein Task-Tool in Worker-Modus)            ║
-╚═══════════════════════════════════════════════════════════════════════════╝
-```
-
----
-
-## Ablauf: Normal (Standard)
-
-```
-Welle 1:  ┌───┐ ┌───┐ ┌───┐
-DRAFTS    │ D │ │ D │ │ D │  ──LIEST──▶ MODEL + ERGEBNIS{N-1}
-          └─┬─┘ └─┬─┘ └─┬─┘  ──SCHREIBT──▶ drafts/{NAME}-observe{CYCLE}-D*.md
-            └─────┼─────┘
-                  │
-             [/compact moeglich]
-                  │
-                  ▼
-Welle 2:  ┌──────────────────────────┐
-SYNTHESE  │  Synthesist (1 ceiling)  │  ──LIEST──▶ drafts/{NAME}-observe{CYCLE}-D*.md
-          │  Sektion A                │  ──SCHREIBT──▶ synthese/{NAME}-OBSERVE{CYCLE}.md
-          └──────────────────────────┘
-          (Solo: DU selbst | Worker-Modus: Team Lead spawnt 1 Synthesist-Task)
-```
-
----
-
-## Welle 1: Drafts (Findings sammeln)
+## Worker-Vertrag: Observer-Drafter (Findings sammeln)
 
 ### Voraussetzung
 
@@ -183,8 +115,8 @@ Du bist Drafter D{NN} fuer die Observation von "{NAME}" (Cycle {N}).
 
 INPUT - LIES ZUERST DIESE DATEIEN:
   1. .claude/models/{NAME}_Model.md
-  2. .claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md (falls vorhanden)
-  3. .claude/analysis/synthese/{NAME}-GAP.md (falls vorhanden)
+  2. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md (falls vorhanden)
+  3. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-GAP.md (falls vorhanden)
 
 AUFTRAG: {Fokus-Beschreibung}
 
@@ -244,27 +176,12 @@ WICHTIG:
 | D03 | patterns | Cross-Cutting Concerns, Architektur-Patterns, Anomalien |
 | D04-D05 | (bei hard) | Externe Abhaengigkeiten, Gegen-Hypothesen |
 
-### Nach Welle 1: Manifest aktualisieren
-
-```markdown
-**PHASE:** _SC_observe{CYCLE}
-**WELLE:** 1 abgeschlossen, 2 ausstehend
-**NAECHSTER SCHRITT:** Welle 2 (Synthese) starten - liest drafts/{NAME}-observe{CYCLE}-D*.md
-
-### Drafts (_SC_observe{CYCLE} - Welle 1)
-- [x] .claude/analysis/drafts/{NAME}-observe{CYCLE}-D01-code-analyse.md
-- [x] .claude/analysis/drafts/{NAME}-observe{CYCLE}-D02-infrastruktur.md
-- [x] .claude/analysis/drafts/{NAME}-observe{CYCLE}-D03-patterns.md
-```
-
-**NACH dem Manifest-Update kann /compact ausgefuehrt werden.**
-
 ---
 
-## Welle 2: Synthese (1 ceiling-Agent)
+## Worker-Vertrag: Observer-Synthese
 
-**Solo-Modus:** DU bist der Synthesist.
-**Worker-Modus:** Team Lead spawnt diesen Schritt als separaten Task. Erkennbar via "Welle 2: Synthese" in Task-Beschreibung.
+**Rolle:** Synthesist (1 Worker)
+**Wann:** Team Lead spawnt dich nach Abschluss aller Observer-Drafter.
 
 ### Voraussetzung
 
@@ -275,7 +192,7 @@ Lies ALLE Dateien in `.claude/analysis/drafts/{NAME}-observe{CYCLE}-D*.md`
 1. Lies alle Draft-Reports
 2. Konsolidiere Findings (Duplikate entfernen, F-Nummern vereinheitlichen)
 3. Kategorisiere nach Technologie-Concern
-4. Schreibe `.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md`
+4. Schreibe `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md`
 5. Aktualisiere Manifest
 6. Im Worker-Modus: TaskUpdate completed + SendMessage an Team Lead
 

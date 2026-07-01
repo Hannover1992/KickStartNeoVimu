@@ -1,4 +1,4 @@
-﻿# /_WP_convergence - Quality Loop Convergence Controller
+# /_WP_convergence - Quality Loop Convergence Controller
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-10
 op: WritePaper
 phase: Core Transformation
-type: convergence
+type: building-block
 chain_position: convergence
 difficulty_scaling: true
 mcp_critical: false

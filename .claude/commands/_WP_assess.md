@@ -1,4 +1,4 @@
-﻿# /_WP_assess - Chapter Knowledge Assessment
+# /_WP_assess - Chapter Knowledge Assessment
 
 ```yaml
 status: active
@@ -7,24 +7,11 @@ created: 2026-02-08
 updated: 2026-02-14
 op: WritePaper
 phase: Knowledge
-type: assess
+type: building-block
 chain_position: assess
 difficulty_scaling: true
 mcp_critical: true
 decision_command: true
-changelog: |
-  v1.2.1: Hard Gates vor Composite Score.
-        Gate 1: unique_external_sources >= 3 (gegen Single-Source)
-        Gate 2: keyword_ext_coverage >= 0.3 (gegen irrelevante Papers)
-        Gates nicht bestanden → diversity_score capped bei 0.40
-        Getestet: 20/20 Szenarien bestanden, 0 False Positives.
-        Score-Separation PASS vs DISCOVERY: 0.248 (kein Overlap).
-  v1.2: Robuste 2-Dimensionen-Entscheidung.
-        internal_coverage_score vs coverage_score getrennt.
-        Composite diversity_score (4 Komponenten, gewichtet).
-  v1.1: Source Diversity Analysis (Schritt 2.5).
-        INTERNAL vs EXTERNAL Klassifikation.
-  v1.0: Initiale Version (Keywords + RAG Coverage)
 ```
 
 ---

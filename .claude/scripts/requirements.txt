@@ -1,0 +1,9 @@
+# Python-Dependencies fuer .claude/scripts (Engine-Tooling + pytest-Suite)
+# Install: py -3 -m pip install -r .claude/scripts/requirements.txt
+#
+# Hintergrund (2026-06-20): test_berater_outputs_pointer.py + test_validate_vault_schema_truth.py
+# (+ ~10 yaml-nutzende Scripts) brachen mit ModuleNotFoundError 'yaml' auf einem frischen
+# Python-3.13t-Env (free-threaded). pyyaml war nirgends als Dependency dokumentiert.
+# Blocker live gefunden im BL-433-Lauf, gefixt + hier festgehalten.
+
+PyYAML>=6.0

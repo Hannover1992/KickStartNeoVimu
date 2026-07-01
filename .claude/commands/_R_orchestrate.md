@@ -9,15 +9,6 @@ type: orchestration
 chain_position: standalone
 difficulty_scaling: true
 team_based: true
-changelog: |
-  v1.0.0-draft: Initialer Entwurf (SC-Cycle 1 Hypothese).
-                3-Wellen Code-Review-Pipeline via Uncle Bob RAG/Agents.
-                KURZLEBIG_PROMPT Pattern aus SC_orchestrate v2.0.
-                Basiert auf _R_orchestrate_Model.md v1.1 (31 W{n}).
-  v1.1.0: Evidence-Awareness (2026-02-26).
-          LIEST: analysis/evidence/*.md (optional, Architektur-Kontext).
-          PRAESENTATION: neue Sektion "Architectural Decisions" (Evidence-Referenzen).
-          Kompanion-Command: /_R_evidence (Evidence-Dokument erstellen).
 ---
 
 # /_R_orchestrate - Code Review Pipeline (Uncle Bob)
@@ -28,18 +19,21 @@ changelog: |
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                              ║
 ║    .claude/review-{FEATURE}-queue.md  (Queue mit Code-Stellen)      ║
-║    .claude/analysis/_manifest.md      (R_PIPELINE_STATE, Resume)    ║
+║    {VAULT}/_manifest.md                 (R_PIPELINE_STATE, Resume)    ║
 ║    .claude/models/{FEATURE}_Model.md  (optional, Kontext)           ║
-║    .claude/analysis/evidence/*.md     (optional, Architektur-Kontext║
+║    .claude/evidence/*.md     (optional, Architektur-Kontext║
 ║                                        fuer W1 RAG-Scan + W3 DickBob║
+║    {META}/codeKonvention/*.md   (projektspezifische Normen    ║
+║                                        fuer W2 Bob + W3 DickBob,   ║
+║                                        W213, RF-PI-005)             ║
 ║                                                                      ║
 ║  SCHREIBT:                                                           ║
-║    .claude/analysis/_manifest.md      (R_PIPELINE_STATE nach Welle) ║
+║    {VAULT}/_manifest.md                 (R_PIPELINE_STATE nach Welle) ║
 ║    .claude/review-{FEATURE}-queue.md  (Header: PENDING→REVIEWED)    ║
 ║                                                                      ║
 ║  AUSGABEN DURCH WORKER:                                              ║
 ║    .claude/review/ragscan-{item}.md         (Welle 1, floor/haiku)  ║
-║    .claude/review/bob-monolog-{item}.md     (Welle 2, middle/sonnet)║
+║    .claude/review/bob-monolog-{item}.md     (Welle 2, ceiling (min. sonnet))║
 ║    .claude/review/PRAESENTATION-{FEATURE}-{YYYY-MM-DD}.md (Welle 3) ║
 ║                                                                      ║
 ║  INVARIANTEN (W27):                                                  ║
@@ -48,6 +42,7 @@ changelog: |
 ║    NIE Wellen parallel starten (N+1 erst nach N komplett)           ║
 ║    NIE mcp__cleancoder__query im Team Lead selbst (nur W1-Workers)  ║
 ║    NIE DickBob bei easy-Modus spawnen (W26, W8, YAGNI)             ║
+║    NIE /_R_orchestrate ohne aktive User-Session starten (W225: HiL) ║
 ╚══════════════════════════════════════════════════════════════════════╝
 ```
 
@@ -61,7 +56,7 @@ changelog: |
 | ACTOR: TEAM LEAD (DU - die ausfuehrende Claude-Instanz)             |
 | WORKER: 3 Wellen-Typen:                                             |
 |   W1: floor/haiku  → r-{feature}-{item}-ragscan (MCP RAG-Scan)     |
-|   W2: middle/sonnet → r-{feature}-{item}-bob (Uncle Bob Monolog)   |
+|   W2: ceiling (min. sonnet) → r-{feature}-{item}-bob (Uncle Bob Monolog)   |
 |   W3: ceiling/opus  → r-{feature}-synthese-dickbob (Synthese)      |
 |                                                                      |
 | ZWECK: User zeigt Code-Stellen via Queue-Datei. Uncle Bob analysiert|
@@ -102,7 +97,7 @@ changelog: |
 
 **Beispiele:**
 ```
-/_R_orchestrate DCSRE-881                        → normal, opus/haiku
+/_R_orchestrate DCSRE-881                        → normal, sonnet/haiku
 /_R_orchestrate DCSRE-881 hard opus haiku        → hard, 9-5-1 Skalierung
 /_R_orchestrate DCSRE-881 easy                   → easy, 1 Bob-Agent (kein DickBob)
 /_R_orchestrate MyFeature normal sonnet haiku    → normal, sonnet ceiling
@@ -110,7 +105,7 @@ changelog: |
 
 **Wellen-Skalierung (N = Anzahl PENDING Queue-Items):**
 
-| Difficulty | Welle 1 (RAG-Scan, floor) | Welle 2 (Bob, middle) | Welle 3 (DickBob, ceiling) |
+| Difficulty | Welle 1 (RAG-Scan, floor) | Welle 2 (Bob, ceiling) | Welle 3 (DickBob, ceiling) |
 |------------|--------------------------|----------------------|---------------------------|
 | easy | SKIP | 1 Agent | SKIP (Bob = Endprodukt) |
 | normal | min(N, 5) Agents PARALLEL | min(N, 3) Agents PARALLEL | 1 Agent |
@@ -121,31 +116,32 @@ changelog: |
 | Rolle | Modell | Agent-Name | Naming-Beispiel |
 |-------|--------|------------|-----------------|
 | W1 RAG-Scan | {floor} (haiku) | r-{feature}-{item}-ragscan | r-DCSRE881-item1-ragscan |
-| W2 Bob | {middle} (sonnet) | r-{feature}-{item}-bob | r-DCSRE881-item1-bob |
+| W2 Bob | {bob_model} (ceiling, min. sonnet) | r-{feature}-{item}-bob | r-DCSRE881-item1-bob |
 | W3 DickBob | {ceiling} (opus) | r-{feature}-synthese-dickbob | r-DCSRE881-synthese-dickbob |
 
 ---
 
 ## GLOBALE PARAMETER (/_param Override)
 
-Lies `.claude/analysis/_manifest.md` und suche nach GLOBAL_* Feldern.
-Falls gesetzt, ueberschreiben sie die lokalen Parameter-Defaults:
-
-| Manifest-Feld | Wirkung |
-|---|---|
-| `GLOBAL_DIFFICULTY` | Ueberschreibt lokalen `difficulty` Default |
-| `GLOBAL_CEILING` | Kappt lokales ceiling: `effektiv = min(lokal, GLOBAL_CEILING)` |
-| `GLOBAL_FLOOR` | Hebt lokalen floor an: `effektiv = max(lokal, GLOBAL_FLOOR)` |
+Lies `{VAULT}/_session_params.md` (4 Zeilen, 4 Parameter):
 
 **Berechnung:**
-Hierarchie: opus=3, sonnet=2, haiku=1
-IF GLOBAL_DIFFICULTY gesetzt UND != "(nicht gesetzt)": difficulty = GLOBAL_DIFFICULTY
-IF GLOBAL_CEILING gesetzt UND != "(nicht gesetzt)":    ceiling = min(ceiling, GLOBAL_CEILING)
-IF GLOBAL_FLOOR gesetzt UND != "(nicht gesetzt)":      floor = max(floor, GLOBAL_FLOOR)
-Validierung: ceiling >= floor (sonst ceiling = floor + Warning ausgeben)
-middle = sonnet wenn ceiling=opus, haiku wenn ceiling=sonnet, haiku wenn ceiling=haiku
-
-**Falls KEINE GLOBAL_* Felder gesetzt:** Lokale Defaults gelten unveraendert.
+```
+params = lies("_session_params.md")
+difficulty = params.difficulty
+ceiling    = min(ceiling, params.ceiling)
+floor      = max(floor, params.floor)
+# PFLASTER (BL-363): Uncle Bob (Welle 2) faehrt IMMER den ceiling (dynamisch aus /_param),
+# NIE den middle/sonnet-Default und auf GAR KEINEN FALL haiku. ceiling=haiku -> sonnet-Floor.
+bob_model  = ceiling if ceiling != "haiku" else "sonnet"
+# DOKTRIN: Urteil=ceiling / Sammeln=floor
+# Urteil-Rollen (Bob W2, DickBob W3) = Aufgabe erfordert Abwaegung/Entscheidung → ceiling
+# Sammeln-Rollen (W1 RAG-Scan) = mechanische Faktenerhebung, kein Urteil → floor genuegt
+# Bob (W2): Code durch Clean-Code-Linse beurteilen = Urteil → ceiling (min. sonnet)
+# DickBob (W3): Synthese aller Urteile = Urteil → ceiling (bereits korrekt)
+# W1 RAG-Scan: Chunks suchen/strukturieren = Sammeln → floor (haiku genuegt)
+# Floor-Guard: ceiling=haiku verboten fuer Urteil-Rollen → bob_model=sonnet als Minimum
+```
 
 ---
 
@@ -277,7 +273,7 @@ FUER JEDES Item (Welle 2):
   Task tool:
     name: "r-{feature}-{item}-bob"
     subagent_type: "general-purpose"
-    model: "{middle}"
+    model: "{bob_model}"   # PFLASTER BL-363 (war {middle}): Uncle Bob immer ceiling, nie sonnet-Default, nie haiku
     team_name: "r-{feature}"
     mode: "bypassPermissions"
     run_in_background: true        ← PARALLEL innerhalb Welle
@@ -314,7 +310,7 @@ LIES:
 - Focus: {UNCLE_BOB_FOCUS}   ← aus Queue-Item (optional, sonst "Clean Code best practices")
 - Datei: {DATEIPFAD}:{VON}-{BIS}
 - User-Frage: {USER_FRAGE}
-- Evidence-Kontext: .claude/analysis/evidence/*.md  ← optional, falls Dateien vorhanden: kurz lesen (Architektur-Entscheidungen beachten)
+- Evidence-Kontext: .claude/evidence/*.md  ← optional, falls Dateien vorhanden: kurz lesen (Architektur-Entscheidungen beachten)
 
 FUEHRE AUS:
 1. mcp__cleancoder__query(
@@ -362,7 +358,7 @@ SendMessage an "team-lead": "W1 {ITEM_BEZEICHNUNG}: {N} Prinzipien, Confidence {
 
 ---
 
-### Welle 2: Uncle Bob Monolog (middle/sonnet, normal/hard)
+### Welle 2: Uncle Bob Monolog (ceiling/min. sonnet, normal/hard)
 
 ```
 [WORKER-MODE] Welle 2: Uncle Bob Monolog
@@ -380,6 +376,12 @@ LIES:
   (Datei: {DATEIPFAD}:{VON}-{BIS})
 - User-Frage: {USER_FRAGE}
 - RAG-Kontext: .claude/review/ragscan-{ITEM_BEZEICHNUNG}.md
+
+# SP-FIX-10: Stille-Post-Schutz (RAG-Scan nur als Kompass)
+STILLE-POST-SCHUTZ: ragscan-Output ist KONTEXT, nicht Faktenquelle.
+Lies den CODE SELBST (Read-Tool: {DATEIPFAD} Zeilen {VON}-{BIS}).
+Bilde dein Urteil an der PRIMAERQUELLE (Code). RAG-Chunks sind
+Inspiration fuer Prinzipien-Zuordnung, NICHT Beweis fuer Verletzungen.
 
 DEINE 5 FRAGEN (beantworte ALLE):
 F1: Welches Clean-Code-Prinzip wird hier verletzt -- und WIE GENAU?
@@ -435,7 +437,7 @@ SendMessage an "team-lead": "W2 {ITEM_BEZEICHNUNG}: {SCHWEREGRAD} -- {1 Satz}"
 
 ---
 
-### Welle 2 (Easy-Modus): Uncle Bob Direkt (middle/sonnet, KEIN ragscan-Input)
+### Welle 2 (Easy-Modus): Uncle Bob Direkt (ceiling/min. sonnet, KEIN ragscan-Input)
 
 Bei `easy` entfaellt Welle 1 (RAG-Scan). Bob analysiert Code direkt (W26):
 
@@ -498,7 +500,12 @@ LIES:
 - ALLE RAG-Scans: .claude/review/ragscan-*.md  (als Hintergrund)
 - Feature-Name: {FEATURE}
 - Items: {ITEM_LISTE}   ← alle N Bezeichnungen
-- Evidence-Kontext: .claude/analysis/evidence/*.md  ← optional, falls vorhanden: Architektur-Entscheidungen als Hintergrund (verhindert False Positives)
+- Evidence-Kontext: .claude/evidence/*.md  ← optional, falls vorhanden: Architektur-Entscheidungen als Hintergrund (verhindert False Positives)
+
+# SP-FIX-10b: Stille-Post-Schutz (Bob-Monologe nur als Kompass)
+STILLE-POST-SCHUTZ: Bob-Monologe sind Analyseperspektiven, KEINE verifizierten Fakten.
+Lies den CODE SELBST (via Read-Tool) bevor du Findings als Root Cause einstufst.
+Verifiziere Prinzipien-Verletzungen an der PRIMAERQUELLE (Code-Dateien), nicht am Bob-Monolog.
 
 DEIN AUFTRAG:
 1. Lies alle bob-monolog-*.md (N Stueck)
@@ -571,7 +578,7 @@ primaerquelle_gelesen: true
 
 ## Architectural Decisions (aus Evidence)
 
-NUR wenn .claude/analysis/evidence/*.md vorhanden UND relevant fuer review items:
+NUR wenn .claude/evidence/*.md vorhanden UND relevant fuer review items:
 
 | Evidence-ID | Typ | Entscheidung |
 |-------------|-----|-------------|
@@ -592,7 +599,7 @@ Evidence verhindert False Positives: Wenn Code WEGEN einer Architektur-Constrain
 > Remember: {Passendes Bob-Zitat}
 >
 > -- Robert C. Martin, via DickBob Tournament Champion
-> -- Analysiert am {DATUM} | Pipeline: haiku -> sonnet -> ceiling
+> -- Analysiert am {DATUM} | Pipeline: floor -> ceiling(min.sonnet) -> ceiling
 
 ENTSCHEIDUNGS-REGELN:
 - KRITISCH: Kern-Prinzip (SRP/OCP/DIP), verursacht andere Smells, Architektur-Bruch
@@ -617,9 +624,14 @@ SendMessage an "team-lead": "W3 Synthese: PRAESENTATION-{FEATURE}-{DATUM}.md fer
 
 ### Live-Session Modus (Default)
 
+**HINWEIS W225 — Human-in-the-Loop (User-Phase):**
+Diese Pipeline enthaelt eine explizite User-Phase (HiL). Team Lead operiert in Rolle A
+als INTERVIEW-PARTNER mit dem User. Dieser Dialog IST die Human-in-the-Loop-Interaktion —
+kein separater Checkpoint noetig. Queue-Befuellung durch User = HiL-Eingabe.
+
 Team Lead operiert in 2 gleichzeitigen Rollen:
 
-**Rolle A: Interview-Partner (mit User)**
+**Rolle A: Interview-Partner (mit User)** [USER-PHASE / HiL W225]
 ```
 User: "diese Methode — 200 Zeilen, alles drin"
 Team Lead: Item in review-{feature}-queue.md eintragen
@@ -814,6 +826,7 @@ NIE: Queue-Datei loeschen oder verschieben (User-Kontrolle; nur Header-Update)
 NIE: Parallel mehrere Wellen starten (Welle N+1 erst nach Welle N KOMPLETT)
 NIE: mcp__cleancoder__query im Team Lead selbst aufrufen (nur W1-Workers)
 NIE: DickBob bei easy-Modus spawnen (1 Item → Bob = Endprodukt, YAGNI)
+NIE: /_R_orchestrate ohne aktive User-Session starten (W225 — /_R = User-Phase, kein vollautomatisierter Agent-Step)
 KEIN Warten auf vollstaendige Queue (Live-Session: sofort spawnen bei >=1 Item)
 ```
 
@@ -842,7 +855,7 @@ Wenn User sagt "reviewe Code-Stelle X":
 2. /_R_orchestrate {FEATURE} [normal]
 3. Team Lead: Queue parsen → N Items → Team + Tasks erstellen
 4. Welle 1: haiku-Agents (PARALLEL) → ragscan-*.md
-5. Welle 2: sonnet-Agents (PARALLEL) → bob-monolog-*.md
+5. Welle 2: ceiling-Agents (bob_model, PARALLEL) → bob-monolog-*.md
 6. Welle 3: ceiling-Agent (1x) → PRAESENTATION-*.md
 7. Team Lead: Queue als REVIEWED markieren, User informieren
 8. User: Deep-Dive / Naechste Items / Done
@@ -866,6 +879,51 @@ Wenn User sagt "reviewe Code-Stelle X":
 - Vor einer PR: Kritische Code-Stellen durch Uncle Bob pruefen
 - Nach einem Feature: Refactoring-Kandidaten identifizieren
 - Ad-hoc: "Was sagt Clean Code zu dieser Methode?"
+
+---
+
+## PR-REPLY-GUIDELINES (RF-SC-004, AC-SC-005, W247)
+
+Nach einer Code-Review-Praesentation koennen Reviewer-Kommentare und PR-Antworten entstehen.
+Diese Regeln strukturieren wie auf Review-Findings geantwortet wird — "in einem Command ODER Artefakt".
+
+### PR-Kommunikationsregeln
+
+**Grundregel:** IMMER strukturierte Antworten, NIE vage Zusagen.
+
+**Doing-Regel (Was wurde konkret umgesetzt):**
+```
+Format fuer "Doing"-Antwort:
+  → NUR konkrete Commits verlinken (kein "wurde erledigt" ohne Nachweis)
+  → Commit-Format: "{COMMIT_HASH}: {Beschreibung der Aenderung}"
+  → Mehrere Commits: chronologisch auflisten
+  → Kein Commit verfuegbar → AUSSTEHEND markieren, nicht behaupten "erledigt"
+```
+
+**Abweichungs-Regel (Wenn Reviewer-Vorschlag nicht umgesetzt wird):**
+```
+Format fuer Abweichungs-Antwort (3 Pflicht-Elemente):
+  1. VERSTAENDNIS: "Ich verstehe, dass {Reviewer-Punkt}."
+  2. BEGRUENDUNG: "Wir weichen ab, weil {technische/fachliche Begruendung}."
+  3. EVIDENCE-VERWEIS: "Siehe {Evidence-Datei ODER Architektur-Entscheidung ODER W{n}-Grundlage}."
+
+Beispiel:
+  "Ich verstehe, dass ein separater Service empfohlen wird.
+   Wir weichen ab, weil die Logik in diesem Kontext atomar ist (SRP: 1 Grund zum Aendern).
+   Siehe EVIDENCE-DCSRE881-SRP-2026-02-24.md (constraint: Service-Extraktion erhoehte
+   Kopplung ohne Testbarkeitsgewinn)."
+```
+
+**Scope-Regel (Was NICHT geaendert wird):**
+```
+Format fuer Scope-Antwort:
+  → Explizit benennen: "Ausserhalb Scope dieses PRs."
+  → Parking-Lot-Verweis: "Eingetragen in {VAULT}/_parking-lot.md als [TITEL]."
+  → Kein "werden wir machen" ohne konkreten Tracking-Eintrag.
+```
+
+**INVARIANTE:** /_R_orchestrate schreibt NIEMALS Code (Analysis-only). PR-Antworten
+sind textuelle Kommunikation. Code-Fixes entstehen via /_I_orchestrate oder manuell.
 
 ---
 

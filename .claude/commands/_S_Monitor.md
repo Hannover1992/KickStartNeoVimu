@@ -4,6 +4,7 @@ version: "1.0"
 created: 2026-02-28
 updated: 2026-02-28
 op: SprintMonitor
+type: satellite
 ---
 
 # /_S_Monitor — Sprint Monitor
@@ -117,10 +118,8 @@ BEI FEHLER (Datei fehlt oder nicht lesbar):
 
 **Hardcoded Fallback-Defaults:**
 ```
+# PL-Q Cleanup 2026-05-07: V2/V3/V4 entfernt (Worktrees existieren nicht mehr).
 V1-Param   -> C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V1-Param   | vorhaben/1-global-param
-V2-Audit   -> C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V2-Audit   | vorhaben/2-kern-audit
-V3-SCI     -> C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V3-SCI-Uebergang | vorhaben/3-sci-uebergang
-V4-Mermaid -> C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V4-Mermaid | vorhaben/4-mermaid-first
 V5-Monitor -> C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V5-Monitor | vorhaben/5-sprint-monitor
 ```
 
@@ -130,7 +129,7 @@ WENN filter nicht leer:
   worktrees = worktrees.filter(wt => wt.label IN filter)
   WENN worktrees leer:
     STOP: "FEHLER: Keine Worktrees nach Filter '{filter}'.
-           Verfuegbar: V1-Param, V2-Audit, V3-SCI, V4-Mermaid, V5-Monitor"
+           Verfuegbar: V1-Param, V5-Monitor"
 ```
 
 **Schritt 1.5 — Willkommens-Meldung ausgeben:**
@@ -162,7 +161,7 @@ Rufe `/_S_FanOut` auf (intern, als Command-Referenz).
 `/_S_FanOut` spawnt N haiku Worker PARALLEL (einen pro Worktree in `worktrees`).
 Jeder Worker liest:
 1. `{PATH}/INSTRUCTION.md` (limit=20) -> SCOPE_TEXT
-2. `{PATH}/.claude/analysis/_manifest.md` (limit=50) -> PHASE_STRING
+2. `{PATH}/{VAULT}/_manifest.md` (limit=50) -> PHASE_STRING
 3. `git -C {PATH} log --oneline -1` -> COMMIT_HASH + COMMIT_MESSAGE
 
 Warte auf alle Worker-Reports (max 30s Timeout).

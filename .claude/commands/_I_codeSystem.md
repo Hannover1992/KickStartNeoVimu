@@ -1,6 +1,10 @@
+---
+type: building-block
+---
+
 # /_I_codeSystem
 
-**Status:** v4.1 (exit_report Pflichtblock + Parking-Lot Aktivierung — PN-1 I-ExitReport)
+**Status:** v4.2 (BL-065: Vault-First DirectWrite, Hybrid-Marker ersetzt)
 **Actor:** SYSTEM-TESTER
 **Zweck:** System/E2E Tests via Red-Green-Refactor (Batch: 1-2 Tests pro Aufruf)
 
@@ -14,7 +18,13 @@
 +===============================================================+
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                            |
+|    0. Sub-Blueprint: ## Test-Inventar (3-Kategorien)     |
+|       GUARD: Regressions-Schutz ohne SPEC-Bezug (Kanarienvogel)|
+|       SPEC_SYSTEMGRENZE: Tests an Modul-Grenzen (SPEC-def.)   |
+|       INTERN: interne Impl-Tests (kein SPEC-Bezug)            |
+|       Kanarienvogel-Tests (GUARD) sind ABSOLUT read-only.      |
+|       Ref: _I_fanIn.md Phase 3 (RF-TEST-001/003)              |
+|    1. {VAULT}/_manifest.md                            |
 |    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)        |
 |    3. .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md            |
 |       → System Test-Liste (ST1, ST2, ...)                     |
@@ -23,33 +33,46 @@
 |       → VORAUSSETZUNG: status=final (alle ITs gruen)          |
 |    5. .claude/analysis/synthese/{NAME}-SYSTEM-{SLICE}.md       |
 |       → RESUME: Falls vorhanden, lies status + done Tests     |
-|    6. .claude/Task.md                                          |
+|    6. {VAULT}/Task.md                                          |
 |       → Akzeptanzkriterien (System Tests validieren diese!)   |
 |    7. Codebase (Production Code, Konfiguration, E2E Tests)    |
 |                                                                |
 |  LIEST (Input) - OPTIONAL bei Code-Generierung:               |
-|    8. .claude/meta/implementation/routing.md                   |
+|    8. {META}/implementation/routing.md                   |
 |       → API-Route-Naming, Versioning, snake_case              |
 |       → KRITISCH: Verhindert 404-Fehler in E2E-Tests          |
-|    9. .claude/meta/implementation/auth.md                      |
+|    9. {META}/implementation/auth.md                      |
 |       → JWT, Bearer Token, [Authorize]-Attribute              |
-|   10. .claude/meta/implementation/error-handling.md            |
+|   10. {META}/implementation/error-handling.md            |
 |       → Exception-Mapping, Error-Response-Format              |
-|   11. .claude/meta/implementation/testing.md                   |
+|   11. {META}/implementation/testing.md                   |
 |       → E2E-Test-Pattern, Data-Builder                        |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
 |       → Lesen VOR Schritt 2 (E2E Test-Strategie)             |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
 |    1. Code: System/E2E Tests + System-Konfiguration           |
-|    2. .claude/analysis/synthese/{NAME}-SYSTEM-{SLICE}.md       |
-|       → INKREMENTELL: Nach JEDEM gruenen ST aktualisieren     |
+|    2. Vault-First (BL-065)                                     |
+|       Implementation-Logs werden DIREKT in den Vault geschrieben:|
+|       {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-SYSTEM-{SLICE}.md |
+|       Status (partial/final) wird im FRONTMATTER der Log-Datei |
+|       kodiert, NICHT ueber Pfad-Unterschied.                   |
+|       Pre-Flight-Check (verbindlich, RF-06):                   |
+|       mkdir -p {VAULT}/Backlog/{BL_SLUG}/Implementation/ |
+|       if [ $? -ne 0 ] || [ -z "$DCS_VAULT_ROOT" ]; then       |
+|         log_error "Vault unreachable: ..."                     |
+|         exit 1                                                 |
+|       fi                                                       |
+|       Schreibpfad: {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-SYSTEM-{SLICE}.md |
+|       Frontmatter: status: partial|final (Feld, nicht Pfad).  |
+|       INKREMENTELL (status=partial): lokal zwischenspeichern   |
+|       .claude/analysis/synthese/{NAME}-SYSTEM-{SLICE}.md       |
 |       → status: partial (N/M) oder final (M/M)               |
-|    3. .claude/analysis/_manifest.md (nach JEDEM ST update)    |
+|    3. {VAULT}/_manifest.md (nach JEDEM ST update)    |
 |                                                                |
 |  SCHREIBT (Output) - OPTIONAL:                                 |
-|    .claude/patterns/_pattern-library.md                       |
-|    .claude/analysis/_parking-lot.md (APPEND bei Findings)     |
+|    {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                       |
+|    {VAULT}/_parking-lot.md (APPEND bei Findings)     |
 |                                                                |
 |  MCP: mcp__cleancoder__query() NUR bei E2E-Unsicherheit       |
 |    MIN-Modus: max 1 Query, limit=1                            |
@@ -148,7 +171,7 @@ Fuer relevante Topics laden (falls Datei existiert):
 | `error-handling.md` | MITTEL | E2E-Tests die Fehlerszenarien validieren (4xx, 5xx) |
 
 Falls Datei nicht existiert:
-  - WARN: "⚠️ `.claude/meta/implementation/{topic}.md` nicht gefunden — weiter ohne"
+  - WARN: "⚠️ `{META}/implementation/{topic}.md` nicht gefunden — weiter ohne"
   - SUGGEST: "Empfehlung: `/_I_updateMeta` kann Regeln hinzufuegen (nach manuellem Fund)"
   - CONTINUE (kein ABORT)
 
@@ -399,7 +422,7 @@ exit_report:
 - `findings` NIEMALS leer lassen wenn Erkenntnisse vorhanden — diese werden Parking-Lot-Kandidaten
 - `context_health: low` wenn Kontext-Limit Grund fuer partial war
 - `block_reason` bei `status: final` leer lassen ("")
-- Falls `findings` nicht leer: APPEND an `.claude/analysis/_parking-lot.md`
+- Falls `findings` nicht leer: APPEND an `{VAULT}/_parking-lot.md`
 
 ---
 

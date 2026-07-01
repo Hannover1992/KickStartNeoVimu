@@ -1,4 +1,4 @@
-﻿# /_WP_visual - Visual Figure Generation & Review
+# /_WP_visual - Visual Figure Generation & Review
 
 ---
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-09
 op: WritePaper
 phase: Core Transformation
-type: HiL-blocking
+type: building-block
 chain_position: 9
 difficulty_scaling: true
 ---

@@ -1,4 +1,4 @@
-﻿# /_WP_structure - Paper-Strukturextraktion
+# /_WP_structure - Paper-Strukturextraktion
 
 ```yaml
 status: active
@@ -8,6 +8,7 @@ author: OmniCommand System
 category: Research/WritePaper
 difficulty: normal
 estimated_time: 5min
+type: building-block
 ```
 
 ---

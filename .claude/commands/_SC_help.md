@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Wissenschaftlicher Forschungszyklus - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Scientific Cycle (/_SC_*) Commands.
@@ -7,6 +11,80 @@ Zeige die Uebersicht der Scientific Cycle (/_SC_*) Commands.
 ```
 /_SC_help
 ```
+
+---
+
+## Updates 2026-05-19 (BL-173/174/175 Cross-Cutting)
+
+**Manifest-Routing (BL-173):**
+- SC schreibt `SC_PIPELINE_STATE` in `{bl_folder}/_manifest.md` (pipeline-spezifisch)
+- `{vault}/_factory_manifest.md` behaelt ausschliesslich BDF+GLOBAL_*-Bloecke
+- Helper: `manifest_reader.read_factory_block(...)`, `manifest_reader.read_bl_block(bl_id, ...)`
+- Migration: `migrate_manifest_split.py migrate --vault-root=... --rollback-tag=YYYY-MM-DD`
+
+**Session-Params Per-BL (BL-174):**
+- 3-Stufen-Inheritance: BL-Override → Vault-Default → Framework-Default
+- Resolver: `session_params_resolver.resolve_param(name, bl_id=None)`
+- `/_param` mit `--bl-id=BL-XXX` schreibt BL-spezifisch (SC-Params pro BL isoliert)
+
+**BDF Factory-Lock (BL-175):**
+- `acquire/release/heartbeat` via `factory_lock.py`
+- TTL+Heartbeat, kein fcntl, eigenes `_factory_lock.md`
+- Race-Condition-safe fuer 5-10 parallele BDFs
+
+(siehe `/_help` TEIL 8c, BL-173/174/175 Spec-Dateien)
+
+---
+
+## POSITION IN DER PIPELINE-REISE (3er-Doppel-Sicht, NEU 2026-05-24)
+
+> **Cross-Reference:** Vollstaendige Reise + Geister-Tabelle: `/_help` TEIL 10
+> Methodik: `.claude/INSTRUCTION_full_scan_2026-05-24.md`
+
+**Wo sitzt /_SC_orchestrate in der Gesamt-Reise?**
+
+```
+/_SDF_orchestrate Phase 2.1 dispatch (modus IN [M4, M5, M6, M7])
+                                  │
+                                  ▼
+                              ★G#6 → /_SC_orchestrate
+                                          │
+                                          │ SC-Cycle (6 Berater)
+                                          ▼
+                              Phase 5 AUTOCHAIN-EXIT (INV-MODUS-7)
+                                          │
+                                          ▼
+                              ★G#7 → /_SDF_orchestrate_post
+```
+
+**3er-Doppel-Fenster:**
+
+| Position | Vertrag                          | Lese-Fokus                          |
+|----------|----------------------------------|-------------------------------------|
+| [N-1]    | `/_SDF_orchestrate` Phase 2.1    | DF_BATCH_STATE.modus + current_sub_batch_items |
+| [N  ]    | `/_SC_orchestrate`               | LIEST + SCHREIBT (SC-Cycle, sc_handover.md) |
+| [N+1]    | `/_SDF_orchestrate_post`         | sc_handover.md.idf_reentry_signal + BERATER_OUTPUTS |
+
+**Geister-Beteiligung:**
+
+- **Input-Geist G#6:** `/_SDF Phase 2.1 → /_SC_orchestrate` (modus M4/M5/M6/M7)
+- **Intra-Geist:** SC-Cycle Berater-Sequence (observe → modelMaintain → qualityGate → hypothese → implement → ergebnis)
+- **Sub-Geist (FULL-Modus):** `/_SC_orchestrate → /_I_orchestrate` (Symbiose-Pattern, scope=core)
+- **Output-Geist G#7:** `/_SC_orchestrate → /_SDF_orchestrate_post` (POST_HANDOVER, INV-HANDOVER-1)
+
+**Re-Entry-Pfade:**
+
+- SDF Phase 4 loopDecision setzt `sc_resume_from="ergebnis"` → SC Phase 0 Resume-Check springt direkt zu `_SC_ergebnis`
+- BL-206 Bottleneck-Pfad: SC schreibt `idf_reentry_signal` in sc_handover.md → IDF Phase 3.8 plBewertung refresht SRS
+- Standalone-Modus (`--standalone`): kein POST_HANDOVER (User-Direct-Call)
+
+**Step-Anzahl im 1-Pipeline-Durchlauf:**
+
+- Phase 0 Resume-Check → 1 teamSetup → 2 kurzlebigPrompt → 3 teamLeadSteuerung
+- SC-Cycle iterativ (max 5-8 Zyklen je difficulty)
+- 4 SC-Berater (teamSetup, modusMatrix, kurzlebigPrompt, teamLeadSteuerung)
+- 6 SC-Cycle Berater (observe, modelMaintain, qualityGate, hypothese, implement, ergebnis)
+- Optional Sub-Calls: `_I_orchestrate` (FULL-Modus), `_architecturalBoundaries`, `_blindspotDetection`, `_knowledge`
 
 ---
 
@@ -87,39 +165,51 @@ Gib dem User folgende Uebersicht aus:
 ║                                                                         ║
 ║  ORCHESTRATOR (automatische Zyklus-Steuerung):                         ║
 ║                                                                         ║
-║  /_SC_orchestrate {NAME} [difficulty] [ceiling] [floor] [-I]           ║
+║  /_SC_orchestrate {NAME} [difficulty] [ceiling] [floor] [-I] [--standalone] ║
 ║  ┌──────────────────────────────────────────────────────────────────┐   ║
 ║  │  Team Lead + Worker orchestrieren kompletten Forschungszyklus    │   ║
 ║  │  Actor: TEAM LEAD (spawnt Worker pro Task)                      │   ║
 ║  │                                                                  │   ║
-║  │  MODUS (NEU v3.0, OmniCommand EC-3):                           │   ║
+║  │  NEU BL-NEW-12 (2026-05-11) — POST_HANDOVER (conditional):       │   ║
+║  │    Default-Aufruf (von SDF dispatched): SC ruft am Ende          │   ║
+║  │      Skill(_SDF_orchestrate_post, ...) — Phase 3+4 muss laufen!  │   ║
+║  │    --standalone Flag (Direct/BDF/W-Aufruf): SKIP Handover        │   ║
+║  │    INV-HANDOVER-1: ohne Handover bleibt SDF Phase 3 ungelaufen   │   ║
+║  │                                                                  │   ║
+║  │  4 MODI (v2.3, SC⟲I Symbiose-Architektur):                     │   ║
 ║  │  ┌──────────────────────────────────────────────────────────┐   │   ║
-║  │  │  THEORETISCH (Default, ohne -I):                         │   │   ║
-║  │  │    → _implement wird UEBERSPRUNGEN                       │   │   ║
-║  │  │    → _hypothese = Haupt-Produktions-Phase (Spec-Output)  │   │   ║
-║  │  │    → Verifikation: V-S1 bis V-S4 (Spec-Pruefung)       │   │   ║
-║  │  │    → Output: Model + Spec (KEINE Code-Aenderungen)       │   │   ║
+║  │  │  FULL (Default, OHNE -I):                                │   │   ║
+║  │  │    → Voller Zyklus inkl. /_I_orchestrate (SYMBIOSE)      │   │   ║
+║  │  │    → SC⟲I SYMBIOSE: I laeuft core (0-8) innerhalb SC   │   │   ║
+║  │  │    → Output: Model + Code (via I-Pipeline core)          │   │   ║
 ║  │  │                                                          │   │   ║
-║  │  │  IMPLEMENT (mit -I Flag):                                │   │   ║
-║  │  │    → _implement wird AUSGEFUEHRT                         │   │   ║
-║  │  │    → Verifikation: V1-V5 (Code-Pruefung)               │   │   ║
-║  │  │    → Output: Model + Code                                │   │   ║
+║  │  │  INLINE (mit -I, kleine ICs):                            │   │   ║
+║  │  │    → _implement direkt in SC (1 IC pro Zyklus)           │   │   ║
+║  │  │    → Output: Model + kleine Code-Aenderungen             │   │   ║
+║  │  │                                                          │   │   ║
+║  │  │  REVIEW (--mode=review):                                 │   │   ║
+║  │  │    → Bestehendes Artefakt reviewen (kein implement)      │   │   ║
+║  │  │    → Output: Review-Report                                │   │   ║
+║  │  │                                                          │   │   ║
+║  │  │  ANALYSE (--mode=analyse, NEU v2.3):                     │   │   ║
+║  │  │    → Reine Analyse/Discovery OHNE Implementation         │   │   ║
+║  │  │    → Saettigungs-basierter Exit (delta_wn, Stabilitaet) │   │   ║
+║  │  │    → Output: Model + Wissensbasis (KEINE Code-Aenderung) │   │   ║
 ║  │  └──────────────────────────────────────────────────────────┘   │   ║
 ║  │                                                                  │   ║
-║  │  COLD-START (NEU v3.0, OmniCommand EC-1):                      │   ║
-║  │    T-1 Checkliste (CS-0 bis CS-6) VOR dem Pre-Cycle:           │   ║
-║  │    CS-1 Branch erstellen, CS-2 Manifest archivieren,           │   ║
-║  │    CS-3 Neues Manifest, CS-4 Parking-Lot pruefen,             │   ║
-║  │    CS-5 W_fetch, CS-6 taskDefinition + model                  │   ║
+║  │  META-DATEIEN (v3.0 Decomposition):                               │   ║
+║  │    Orchestrator = reiner Prozess-Manager (18.6KB permanent)       │   ║
+║  │    Domain-Logik in .claude/meta/sc/ (on-demand per Read-Tool):   │   ║
+║  │    • task-templates.md    (Task 0-11 Beschreibungen)             │   ║
+║  │    • decision-tables.md   (3 Decision Tables)                    │   ║
+║  │    • sc-i-gate.md         (Gate + Finale Verifikation)           │   ║
+║  │    • symbiose-protocol.md (SC⟲I FULL-Modus)                     │   ║
+║  │    • review-modus.md      (Post-I Review Details)                │   ║
+║  │    • handoff-template.md  (HandOff-Dokument Template)            │   ║
 ║  │                                                                  │   ║
-║  │  DECISION-TREE (NEU v3.0, OmniCommand EC-2):                   │   ║
-║  │    SC (unklar/komplex) vs I (klar+Spec) vs WP (Paper)         │   ║
-║  │    Hybride Ketten: SC→I, SC→WP, SC-Spec→I                    │   ║
-║  │    KONTEXT-MAPPING: SC-Artefakte → Empfaenger-Konzepte        │   ║
-║  │                                                                  │   ║
-║  │  PARKING-LOT (NEU v3.0, OmniCommand EC-4):                     │   ║
-║  │    3-Phasen: Park → Search → Reactivate                       │   ║
-║  │    _parking-lot.md als Incidental Findings Queue               │   ║
+║  │  GEPLANT (noch nicht implementiert):                              │   ║
+║  │    /_sliceInit (W245): Cold-Start Satellite-Command              │   ║
+║  │    Decision-Tree SC/I/WP Routing (OmniCommand EC-2)             │   ║
 ║  └──────────────────────────────────────────────────────────────────┘   ║
 ║                                                                         ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
@@ -143,7 +233,7 @@ Gib dem User folgende Uebersicht aus:
 ║  Model-Split:         >15 W{n}/TC → Teilmodelle (VM-1..VM-6)          ║
 ║  Garbage Collection:  WIDERLEGT > ELIMINIERT > AKTIV (Sek.0 ab Cy.2)  ║
 ║  Stagnation:          <3.0 OK, >=5.0 PFLICHT, >=7.0 ABORT             ║
-║  Verifikation:     V1-V5 (Code), V-S1-S4 (Spec) je nach MODUS       ║
+║  Verifikation:     V1-V5 (Code/FULL), V-S1-S4 (Spec/ANALYSE)        ║
 ║  KONTEXT-MAPPING:  SC→I, SC→WP, SC-Spec→I Transformation            ║
 ║  Eskalation:          P1 ABORT > P2 Re-Expansion > P3 BR > P4 Split   ║
 ║                                                                         ║
@@ -183,6 +273,6 @@ Gib dem User folgende Uebersicht aus:
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
-Dann lies `.claude/analysis/_manifest.md` falls vorhanden und zeige den aktuellen Stand.
+Dann lies `{VAULT}/_manifest.md` falls vorhanden und zeige den aktuellen Stand.
 
 ARGUMENTS: $ARGUMENTS

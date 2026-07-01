@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Oeffne alle Analysis-Reports im Browser als gerenderte HTML-Seiten.
 
 ## Ablauf

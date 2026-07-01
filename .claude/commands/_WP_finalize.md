@@ -1,10 +1,11 @@
-﻿---
+---
 status: active
 version: 1.0
 created: 2026-02-11
 updated: 2026-02-11
 author: Command-System
 tags: [research, writepaper, publish, finalize, latex, pdf]
+type: building-block
 ---
 
 # /_WP_finalize - Paper Finalization & Publication

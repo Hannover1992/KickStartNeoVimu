@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_I_mitose
 
 **Status:** v1.1 (NUR Git-Operationen, .claude/ Verteilung → /_I_fanOut)
@@ -14,8 +18,9 @@
 +===============================================================+
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                            |
-|    2. .claude/analysis/synthese/{NAME}-ARCHITECT.md            |
+|    1. {VAULT}/_manifest.md                            |
+|    2. PRIMAER: {VAULT}/.../Blueprint/{NAME}-ARCHITECT.md       |
+|       FALLBACK: .claude/analysis/synthese/{NAME}-ARCHITECT.md  |
 |       → Slice-Liste + Abhaengigkeiten                         |
 |    3. .claude/SLICE-BRIEFINGS.md (falls vorhanden)             |
 |    4. Git Status (aktueller Branch)                            |

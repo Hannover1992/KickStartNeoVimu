@@ -1,4 +1,4 @@
-﻿# /_WP_chapterGap - Chapter Gap Analysis & Decision
+# /_WP_chapterGap - Chapter Gap Analysis & Decision
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-08
 op: WritePaper
 phase: Knowledge
-type: chapterGap
+type: building-block
 chain_position: chapterGap
 difficulty_scaling: true
 mcp_critical: true

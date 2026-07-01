@@ -1,5 +1,14 @@
 # /_W_sync_orchestrate
 
+> **⚠ V13 NOTICE (2026-05-08, Sanity-Check):** Diese Pipeline ist ein
+> **Thin-Wrapper ueber das archivierte `/_W_obsidianSync`** (BL-065 Archive,
+> obsoleted_by BL-050/BL-045 "Vault-First-Write"). Funktional ist sie deshalb
+> **gebrochen** — die Delegation zeigt auf einen archivierten Command. Der Status
+> bleibt `active` aus historischen Gruenden, aber bei Aufruf wird `/_W_obsidianSync`
+> nicht mehr resolved (siehe `.claude/commands/_archive_BL-065/`). Architekt-
+> Entscheidung **(F-V13-3, parking-lot)** ausstehend: deprecate `_W_sync_orchestrate`
+> oder re-implementieren mit Vault-First-Write-Pattern. Vor PR/Mergen pruefen.
+
 ```yaml
 status: active
 version: 1.0.0
@@ -26,7 +35,7 @@ chain_position: sync
 ║    Atomic Unit: Von SC/I/WP_orchestrate aufrufbar. DRY-Einstiegspunkt.  ║
 ║                                                                           ║
 ║  LIEST:                                                                   ║
-║    .claude/analysis/_manifest.md       (SC_PIPELINE_STATE, Zyklus-Info)  ║
+║    {WORKING_DIR}/_manifest.md (SC_PIPELINE_STATE, Zyklus-Info — per-Story, BL-155 AK-1)║
 ║    .claude/models/*.md                 (Hash-Kandidaten fuer Sync)        ║
 ║    .claude/analysis/synthese/*.md      (Hash-Kandidaten fuer Sync)        ║
 ║                                                                           ║
@@ -36,7 +45,10 @@ chain_position: sync
 ║  SCHREIBT:                                                                ║
 ║    Vault-Dateien (via /_W_obsidianSync)                                   ║
 ║    co-created-with + cycle-cluster Frontmatter (bei --co-work, nach Sync) ║
-║    .claude/analysis/_manifest.md (Sync-Log: Zyklus N, N Dateien, Zeit)   ║
+║    {VAULT}/_manifest_protokoll.md  (Pattern C: W_SYNC_{N}                  ║
+║                                              Protokoll-Eintrag PREPEND)   ║
+║    {VAULT}/_manifest.md  (Pattern A: State-Einzeiler                      ║
+║                                    W_SYNC_STATUS = {STATUS})              ║
 ║                                                                           ║
 ║  KEIN:                                                                    ║
 ║    git, kein Sub-Agent spawnen, kein Quality Gate                         ║
@@ -74,13 +86,11 @@ chain_position: sync
 
 ## GLOBALE PARAMETER (/_param Override)
 
-Lies `.claude/analysis/_manifest.md` und suche nach GLOBAL_* Feldern.
+Lies `{VAULT}/_manifest.md` und suche nach GLOBAL_* Feldern.
 
-| Manifest-Feld | Wirkung |
+| Quelle | Wirkung |
 |---|---|
-| `GLOBAL_DIFFICULTY` | Ueberschreibt lokalen `difficulty` Default |
-| `GLOBAL_CEILING` | Nicht anwendbar — Thin Wrapper ohne Wellen-Muster |
-| `GLOBAL_FLOOR`   | Nicht anwendbar — Thin Wrapper ohne Wellen-Muster |
+| `_session_params.md` | difficulty (ceiling/floor nicht anwendbar fuer Thin Wrapper) |
 
 **Begruendung (Thin Wrapper):**
 _W_sync_orchestrate delegiert direkt an _W_obsidianSync.
@@ -88,7 +98,10 @@ _W_obsidianSync ist ein monolithischer spezialisierter Prozess (Guard-Chain sequ
 Hash-basierte Vault-Kopien). Wellen-Skalierung ist nicht moeglich und nicht sinnvoll.
 Nur difficulty wird weitergereicht (Sync-Tiefe: easy=1x, normal=3x, hard=vollstaendig).
 
-**Falls KEINE GLOBAL_* Felder gesetzt:** Lokale Defaults gelten unveraendert.
+```
+params = lies("_session_params.md")
+difficulty = params.difficulty
+```
 
 ---
 
@@ -145,14 +158,15 @@ graph LR
     S2 --> S3["Schritt 3\nSync delegieren\n/_W_obsidianSync"]
     S3 --> S4{"--co-work\nFlag?"}
     S4 -->|"Ja"| COWORK["Schritt 4\nCo-Working-Links\nschreiben"]
-    S4 -->|"Nein"| S5["Schritt 5\nManifest-Log\naktualisieren"]
-    COWORK --> S5
+    S4 -->|"Nein"| S5a["Schritt 5a\nProtokolleintrag\n_manifest_protokoll.md"]
+    COWORK --> S5a
+    S5a --> S5b["Schritt 5b\nState-Einzeiler\n_manifest.md"]
 ```
 
 ### Schritt 1: Manifest lesen + SC_PIPELINE_STATE
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {WORKING_DIR}/_manifest.md  # per-Story (BL-155 AK-1)
    → Pruefe ob SC_PIPELINE_STATE Sektion vorhanden
    → Falls vorhanden: Extrahiere cycle_nr (aktueller Zyklus N)
    → Falls NICHT vorhanden:
@@ -250,21 +264,33 @@ cycle-cluster: 3
 ---
 ```
 
-### Schritt 5: Manifest aktualisieren
+### Schritt 5a: Protokoll-Eintrag (Pattern C — _manifest_protokoll.md)
 
 ```
-Schreibe Sync-Log in .claude/analysis/_manifest.md:
+Prepend nach YAML-Frontmatter in {VAULT}/_manifest_protokoll.md:
 
-Falls "## Sync-Log (sync_orchestrate)" Sektion existiert → aktualisiere letzten Eintrag
-Falls nicht → fuege am Ende des Manifests ein
-
-Format:
-**LETZTER SYNC via sync_orchestrate:**
-- Datum: {YYYY-MM-DD HH:MM}
+## W_SYNC_{N} [{Datum}]
 - Zyklus: {cycle_nr}
 - Schwierigkeit: {easy|normal|hard}
 - Co-Work: {Ja/Nein}
 - Dateien gesynct: {N}
+- Vault: {VAULT_PATH oder "nicht erreichbar"}
+
+Frontmatter _manifest_protokoll.md aktualisieren:
+  last_append: {Datum}
+  append_count: {N+1}
+```
+
+### Schritt 5b: State-Update _manifest.md (Pattern A — Einzeiler)
+
+```
+Schreibe/aktualisiere State-Einzeiler in {VAULT}/_manifest.md:
+
+**W_SYNC_STATUS:** {STATUS} ({Datum}, Zyklus {cycle_nr}, {easy|normal|hard}{, Co-Work} | {N} Dateien)
+
+Falls "## Sync-Log (sync_orchestrate)" Sektion existiert → ersetze letzten Eintrag durch Einzeiler
+Falls LETZTER_SYNC Feld existiert → aktualisieren
+Falls nicht → am Ende einfuegen
 ```
 
 ---
@@ -300,7 +326,7 @@ Trigger-Empfehlungen:
 
 | Fehler | Aktion |
 |--------|--------|
-| Manifest nicht gefunden | AUSGABE: "Manifest fehlt unter .claude/analysis/_manifest.md" → STOPP |
+| Manifest nicht gefunden | AUSGABE: "Manifest fehlt unter {WORKING_DIR}/_manifest.md" → STOPP |
 | SC_PIPELINE_STATE fehlt im Manifest | WARN: "Co-Work nicht moeglich — SC_PIPELINE_STATE nicht im Manifest" → SKIP Co-Work, Sync weiter |
 | Vault nicht erreichbar (via _W_obsidianSync) | Degraded Mode: Nur Manifest-Log, kein Sync |
 | _W_obsidianSync FAIL | AUSGABE: Fehler weiterleiten → STOPP |

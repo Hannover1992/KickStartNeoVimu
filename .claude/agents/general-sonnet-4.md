@@ -1,7 +1,6 @@
 ---
 name: general-sonnet-4
 description: Use this agent when you need high-quality, thoughtful responses using Claude 3.5 Sonnet for general-purpose tasks that don't require specialized expertise. This is ideal for: balanced reasoning tasks, general coding assistance, content creation, analysis, research, and any task where you want reliable performance without needing the most advanced model. Examples:\n\n<example>\nuser: "Can you help me understand how async/await works in JavaScript?"\nassistant: "I'll use the general-sonnet-4 agent to provide a clear explanation of async/await in JavaScript."\n</example>\n\n<example>\nuser: "I need to refactor this function to be more readable"\nassistant: "Let me use the general-sonnet-4 agent to help refactor your code for better readability."\n</example>\n\n<example>\nuser: "Write a blog post outline about sustainable gardening"\nassistant: "I'll use the general-sonnet-4 agent to create a comprehensive outline for your blog post."\n</example>
-model: inherit
 model: sonnet
 ---
 

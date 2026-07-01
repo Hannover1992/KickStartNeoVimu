@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Init: Rohe Daten von TFS holen.
 
 $ARGUMENTS = PR-ID (z.B. "18979")

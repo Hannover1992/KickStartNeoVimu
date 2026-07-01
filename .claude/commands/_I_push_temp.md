@@ -7,15 +7,9 @@ created: 2026-02-27
 updated: 2026-02-27
 op: ImplementationPipeline
 phase: Knowledge
-type: command
+type: building-block
 chain_position: post-slice
 team_based: false
-changelog: |
-  v1.0: Neuer Command. Implementiert F01+F02 (I-Pipeline RAG Rueckkanal, W146+W147).
-        Blueprint: _W_push_temp.md v2.1 (ORANGE, Reuse-Score 0.75).
-        Trigger: Slice-DONE (nach verify_status=final).
-        Collection: i_knowledge_{feature_id} (GETRENNT von local_knowledge_).
-        Zweck: Cross-Slice-Lernen — Wissen aus Slice N fuer Slice N+1 verfuegbar machen.
 ```
 
 ---
@@ -47,8 +41,9 @@ changelog: |
 |    → Team Lead ruft Command auf (kein Worker-Command)         |
 |                                                               |
 |  LIEST (Input) - PFLICHT:                                     |
-|    1. .claude/analysis/_manifest.md                           |
+|    1a. {VAULT}/_manifest.md  (global)                |
 |       → NAME-Feld → feature_id → Collection-Name             |
+|    1b. {WORKING_DIR}/_manifest.md  (per-Story BL-155 AK-1)   |
 |       → I_PIPELINE_STATE.rag_collection (aus Schritt 1.1b)   |
 |    2. {WORKTREE}/.claude/analysis/synthese/VERIFY-{SLICE}.md  |
 |       → verify_status pruefen (muss "final" sein)             |
@@ -58,7 +53,7 @@ changelog: |
 |  SCHREIBT (Output) - PFLICHT:                                 |
 |    1. RAG Collection: i_knowledge_{feature_id}                |
 |       → Via MCP create_collection() + ingest()               |
-|    2. .claude/analysis/_manifest.md                           |
+|    2. {WORKING_DIR}/_manifest.md  (per-Story BL-155 AK-1)    |
 |       → I_PIPELINE_STATE.worktrees.{SLICE}.push_status        |
 |                                                               |
 |  SCHREIBT NICHT:                                              |
@@ -89,9 +84,11 @@ Dokumente modifizieren.
 ## Schritt 0: Feature-ID + Collection ermitteln
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md  (global: NAME)
 2. Extrahiere NAME-Feld (erste Zeile mit "**NAME:**")
    → Beispiel: **NAME:** DCSRE-881 → Feature-ID = "dcsre881"
+
+2a. Lies {WORKING_DIR}/_manifest.md  (per-Story: I_PIPELINE_STATE — BL-155 AK-1)
 
 3. Pruefe ob I_PIPELINE_STATE.rag_collection vorhanden:
    → JA: Collection-Name = I_PIPELINE_STATE.rag_collection
@@ -226,7 +223,7 @@ AUSGABE pro Dokument:
 ## Schritt 4: Manifest aktualisieren
 
 ```
-In .claude/analysis/_manifest.md:
+In {WORKING_DIR}/_manifest.md  (per-Story BL-155 AK-1):
 
 1. PUSH_STATUS fuer diesen Slice setzen:
    → I_PIPELINE_STATE.worktrees.{SLICE}.push_status = "COMPLETED ({DATUM})"

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Oeffnet die PR-Findings (Kommentare von Christian) einer Gruppe im Browser.
 
 $ARGUMENTS = Gruppen-Nummer (z.B. "1", "6", "14")

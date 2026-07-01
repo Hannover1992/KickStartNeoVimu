@@ -1,3 +1,15 @@
+---
+type: building-block
+depends_on:
+  - _spec
+  - _model
+feeds_into:
+  - _SC_hypothese
+  - _I_orchestrate
+related:
+  - _SC_qualityGate
+---
+
 # Gap-Analyse: IST vs SOLL Delta
 
 Du erstellst oder aktualisierst die Gap-Analyse - das strukturierte Delta zwischen
@@ -5,7 +17,7 @@ SPEC (SOLL) und MODEL (IST). Der GAP quantifiziert was fehlt, was divergiert,
 und was bereits existiert. Der GAP ist der Circuit Breaker der Pipeline:
 Wenn das Delta zu gross oder wachsend ist, stoppt die Pipeline.
 
-**Status:** NEU v3.0
+**Status:** v3.1 (BL-065 Vault-First DirectWrite: Pre-Flight mkdir + Fail-fast, kein stiller Fallback)
 **Actor:** ANALYST
 **Zweck:** Delta zwischen Ziel-Architektur (SPEC) und IST-Zustand (MODEL) identifizieren,
 quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
@@ -16,9 +28,24 @@ quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
 /_gap {NAME} [easy|normal|hard]
 ```
 
-- **NAME** (Pflicht): Eindeutiger Name (identisch mit /_spec und /_model)
+- **NAME** (Optional): Eindeutiger Name (identisch mit /_spec und /_model). Falls nicht angegeben: 4-Stufen-Fallback (siehe unten).
 - **Schwierigkeit** (Optional): Default `hard` bei Erst-Analyse, `normal` bei Re-Evaluation
   nach Slice, `easy` fuer Quick-Check
+
+**NAME-Herleitung (IF-8, name-herleitung.md):**
+```
+IF NAME nicht als Argument angegeben:
+  Lies {WORKING_DIR}/_manifest.md  # per-Story (BL-155 AK-1)
+  Suche SC_PIPELINE_STATE → feature:
+  IF feature vorhanden: NAME = feature
+    Logge: "NAME auto-hergeleitet aus Manifest (SC_PIPELINE_STATE): {NAME}"
+  ELSE:
+    Suche I_PIPELINE_STATE → feature:
+    IF feature vorhanden: NAME = feature
+      Logge: "NAME auto-hergeleitet aus Manifest (I_PIPELINE_STATE): {NAME}"
+    ELSE:
+      → FEHLER: "NAME nicht angegeben und nicht aus Manifest herleitbar"
+```
 
 ---
 
@@ -30,10 +57,12 @@ quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
 +===============================================================+
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md (falls vorhanden)          |
-|    2. .claude/specs/{NAME}_Spec.md (SOLL - MUSS EXISTIEREN)   |
+|    1. {VAULT}/_manifest.md (falls vorhanden)          |
+|    2. {VAULT}/.../Spec/{NAME}_Spec.md (SOLL - MUSS EXISTIEREN)|
+|       FALLBACK: .claude/specs/{NAME}_Spec.md                   |
 |       --> Ziel-Architektur: Komponenten, Interfaces, NFR       |
-|    3. .claude/models/{NAME}_Model.md (IST - MUSS EXISTIEREN)  |
+|    3. {VAULT}/.../Model/{NAME}_Model.md (IST - MUSS EXIST.)   |
+|       FALLBACK: .claude/models/{NAME}_Model.md                 |
 |       --> Aktueller Zustand: W{n}, Architektur, Patterns       |
 |    4. Codebase (direkt via Glob/Grep/Read)                     |
 |       --> Tatsaechlicher Implementierungs-Stand                |
@@ -53,9 +82,22 @@ quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
 |       --> Referenz fuer Vertrags-Matrix, Index, Metriken        |
 |                                                                |
 |  LIEST (Input) - OPTIONAL:                                     |
-|    8. .claude/_parking-lot.md (bekannte offene Punkte)         |
+|    8. {VAULT}/_parking-lot.md (bekannte offene Punkte)         |
 |    9. MCP Clean Code (Uncle Bob Queries)                       |
 |       --> Architektur-Conformance, Dependency Rules             |
+|                                                                |
+|  SCHREIBT NICHT (BL-165 AK-9 forbidden_keys):                  |
+|    DF_BATCH_STATE.recommended_modus                             |
+|    DF_BATCH_STATE.sdf_mode / sdf_mode_hint                     |
+|    DF_BATCH_STATE.expected_sdf_mode                             |
+|    DF_BATCH_STATE.mode_recommendation                           |
+|                                                                |
+|  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):               |
+|    Pattern A: Reiner State-Write — kein Protokoll-Eintrag      |
+|    SCHREIBT STATE: GAP_STATUS = ABGESCHLOSSEN                  |
+|    SCHREIBT NICHT: _manifest_protokoll.md                      |
+|    LIEST: _manifest_protokoll.md (aeltere Zyklus-Daten        |
+|      optional, fuer historische Trend-Analyse)                 |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
 |                                                                |
@@ -69,14 +111,41 @@ quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
 |      .claude/analysis/drafts/{NAME}-gap-D02-{fokus}.md         |
 |      ... (pro Agent eine Datei)                                |
 |                                                                |
-|    Welle 3 (Synthese = DU, Hauptagent):                        |
-|      .claude/analysis/synthese/{NAME}-GAP.md                   |
+|    Welle 3 (Synthese = DU, Hauptagent, BL-065 Vault-First):    |
+|      # BL-065 Vault-First: Write direkt in Vault (RF-06, INV-VFC-4) |
+|      vault_path = "{VAULT}/Backlog/{BL_SLUG}/5_Gap/{NAME}-GAP.md" |
+|      # Pre-Flight mkdir + Fail-fast (BL-065 AK-10, INV-VFC-4)  |
+|      mkdir -p {VAULT}/Backlog/{BL_SLUG}/5_Gap/     |
+|      IF mkdir fehlschlaegt ODER DCS_VAULT_ROOT leer:            |
+|        log_error "Vault unreachable: {vault_path}"             |
+|        exit 1  # KEIN stiller Fallback (INV-VFC-2)             |
+|      Schreibe {vault_path}                                      |
+|      Vault-Pfad via vault-routing.json (5-stufig)              |
+|                                                                |
+|    # ═══ RF-05 UPDATE-GUARD (BL-050 Vault-First) ═══          |
+|    # Bei Re-Synthese: created BEWAHREN, version+1,             |
+|    #   updated=HEUTE                                           |
+|    # Bei Erstanlage: created=HEUTE, version=1                  |
+|    vault_ziel = aufgeloester Vault-Pfad (PRIMAER oder          |
+|                 FALLBACK)                                       |
+|    IF DATEI_EXISTIERT(vault_ziel):                              |
+|      bestehende_fm = LIES_FRONTMATTER(vault_ziel)              |
+|      neue_version = bestehende_fm.version + 1  # Integer!      |
+|      bewahre_created = bestehende_fm.created  # NIE            |
+|                        ueberschreiben                          |
+|      updated = {HEUTE}                                         |
+|    ELSE:                                                        |
+|      neue_version = 1                                           |
+|      bewahre_created = {HEUTE}                                  |
+|      updated = {HEUTE}                                          |
+|    # Schreibe Frontmatter mit bewahre_created,                 |
+|    #   neue_version, updated                                   |
 |                                                                |
 |    Manifest (IMMER):                                           |
-|      .claude/analysis/_manifest.md (aktualisieren)             |
+|      {VAULT}/_manifest.md (aktualisieren)             |
 |                                                                |
 |  SCHREIBT (Output) - OPTIONAL:                                 |
-|    .claude/_parking-lot.md (APPEND, Incidental Findings)       |
+|    {VAULT}/_parking-lot.md (APPEND, Incidental Findings)       |
 |                                                                |
 |  MCP INTEGRATION (OPTIONAL, Uncle Bob Clean Code):             |
 |    - mcp__cleancoder__query() fuer Architektur-Conformance     |
@@ -118,6 +187,24 @@ quantifizieren, priorisieren und als Circuit Breaker fuer die Pipeline einsetzen
 |    KEINE Hypothesen (das macht /_SC_hypothese).                |
 +===============================================================+
 ```
+
+---
+
+## SOURCE-PROVENANCE-PROPAGATION (BL-160 AK-5)
+
+**INV-PROV-PROP-6:** Jeder Output-Datei MUSS source_provenance + provenance_chain Frontmatter-Block enthalten.
+
+**Pattern:**
+1. Lies Vorgaenger-Output (Spec, Model). Extrahiere predecessor.source_provenance + predecessor.provenance_chain.
+2. Bei Output-Schreibung ({NAME}-GAP.md):
+   - source_provenance: kopiere von predecessor (gleiche Source-URL/PageId)
+   - provenance_chain: haenge neuen Layer-Eintrag an (layer=4, artifact=gap_pfad, role="gap", timestamp=ISO, derived_from=[spec_pfad, model_pfad])
+3. Bei mehreren Predecessors: provenance_chain.derived_from sammelt alle Vorgaenger (Spec + Model).
+4. Wenn predecessor.source_provenance FEHLT (legacy): setze source_provenance={source: "legacy_pre_BL-160", source_kind: "legacy", fetched_at: ISO_NOW}.
+
+**Helper:** Verwende `.claude/scripts/propagate_provenance.py update <output_path>` nach Output-Schreibung — autoupdate predecessor.used_in (Hebb-bidir).
+
+**role-Mapping fuer diesen Skill:** `"gap"`
 
 ---
 
@@ -291,7 +378,7 @@ Normalisiert: GAP% = GAP-Score / MAX-Score * 100
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md` falls vorhanden
+1. Lies `{VAULT}/_manifest.md` falls vorhanden
    - Ermittle aktuellen {NAME}
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`
@@ -600,18 +687,29 @@ Der GAP-Report ist dichter (quantifiziertes Delta) und braucht zusaetzlich `pie`
 ```markdown
 ---
 name: {NAME}
+type: gap
+feature: {NAME}
+bl-item: {BL_ID}
 phase: gap
 tier: {SYSTEM-MODEL}
 model: {TATSAECHLICHES-MODELL}
 agent: Hauptagent
 date: {YYYY-MM-DD}
+created: {bewahre_created}
+updated: {updated}
 reads: specs/{NAME}_Spec.md, models/{NAME}_Model.md
 gap-score: {SCORE}
 gap-percent: {PERCENT}%
 circuit-breaker: {GRUEN|GELB|ORANGE|ROT|KRITISCH}
 evaluation: {initial|re-eval-S{NN}}
 status: final
-version: {N}
+version: {neue_version}
+tags:
+  - bl/{BL_ID}
+  - type/gap
+  - pipeline/pre-cycle
+  - feature/{FEATURE-SLUG}
+keywords: [{Feature-spezifische Schlagwoerter}]
 ---
 
 # Gap-Analyse: {NAME}

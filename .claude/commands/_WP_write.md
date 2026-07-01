@@ -1,4 +1,4 @@
-﻿# /_WP_write - Chapter Draft Writing
+# /_WP_write - Chapter Draft Writing
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-09
 op: WritePaper
 phase: Core Transformation
-type: write
+type: building-block
 chain_position: write
 difficulty_scaling: true
 mcp_critical: true

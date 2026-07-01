@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Migration
 description: Pre-PR Migration Quality Gate - prueft Entity Framework Migrationen auf korrekte Down()-Implementierung und Integritaet
+type: building-block
 ---
 
 # /_Pre_PR_Migration
@@ -22,7 +23,7 @@ description: Pre-PR Migration Quality Gate - prueft Entity Framework Migrationen
 ║  COMMAND: /_Pre_PR_Migration                                 ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                      ║
-║    1. .claude/meta/codeKonvention/migration.md               ║
+║    1. {META}/codeKonvention/migration.md               ║
 ║    2. Git Diff (develop...HEAD)                              ║
 ║    3. Migrations/*.cs Dateien                                ║
 ║  SCHREIBT:                                                   ║
@@ -62,10 +63,10 @@ DIRTY-SCOPE: [Anzahl] Migration-Dateien
 **Aktion:** Konvention laden.
 
 ```bash
-cat .claude/meta/codeKonvention/migration.md
+cat {META}/codeKonvention/migration.md
 ```
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/migration.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/migration.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
 **Regeln extrahieren:**
 - R1: Down() muss exaktes Gegenteil von Up() sein (BLOCKER)

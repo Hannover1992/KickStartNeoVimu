@@ -1,6 +1,18 @@
+---
+type: building-block
+depends_on:
+  - _SC_observe
+  - _SC_ergebnis
+feeds_into:
+  - _SC_qualityGate
+  - _gap
+related:
+  - _model
+---
+
 # /_SC_modelMaintain
 
-**Status:** NEU v2.8 (Mermaid-Typ-Qualitaets-Gate Schritt 3b, EC-1/S1_Gate)
+**Status:** NEU v2.9 (BL-142 Phase 5E: Schritt 3c unreife_typ -> DF_BATCH_STATE)
 **Actor:** MODEL-MAINTAINER
 **Zweck:** Model pflegen, GC, Split ausfuehren, Commit-Tracking
 
@@ -14,7 +26,8 @@
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  LIEST (Input) - PFLICHT:                                                ║
 ║    1. _manifest.md                                                       ║
-║    2. models/{NAME}_Model.md (MUSS EXISTIEREN)                          ║
+║    2. {VAULT}/.../Model/{NAME}_Model.md (MUSS EXISTIEREN)              ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                          ║
 ║                                                                          ║
 ║  LIEST (Input) - MODUS-ABHAENGIG:                                       ║
 ║    In-Cycle (default):                                                   ║
@@ -25,14 +38,48 @@
 ║      4. spec/{NAME}_SPEC.md (optional, fuer Drift-Erkennung)          ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    Model-Update (IMMER):                                                 ║
-║      models/{NAME}_Model.md (aktualisiert)                              ║
+║    Model-Update (IMMER, BL-050 Vault-First):                             ║
+║      PRIMAER: {VAULT}/Backlog/{BL_SLUG}/Model/{NAME}_Model.md ║
+║      FALLBACK: .claude/models/{NAME}_Model.md                           ║
+║                                                                          ║
+║    # ═══ RF-05 UPDATE-GUARD (BL-050 Vault-First) ═══                   ║
+║    # modelMaintain: Model MUSS existieren — ELSE ist FEHLER             ║
+║    vault_ziel = aufgeloester Vault-Pfad (PRIMAER oder FALLBACK)         ║
+║    IF DATEI_EXISTIERT(vault_ziel):                                       ║
+║      bestehende_fm = LIES_FRONTMATTER(vault_ziel)                       ║
+║      neue_version = bestehende_fm.version + 1                           ║
+║      bewahre_created = bestehende_fm.created  # NIE ueberschreiben      ║
+║      updated = {HEUTE}                                                   ║
+║    ELSE:                                                                  ║
+║      FEHLER: "Model {NAME}_Model.md existiert nicht im Vault"           ║
+║              "und nicht im FALLBACK-Pfad. modelMaintain setzt"          ║
+║              "ein bestehendes Model voraus. Erst /_model ausfuehren."   ║
+║      → ABBRUCH                                                           ║
+║    # Schreibe Frontmatter mit bewahre_created, neue_version, updated    ║
+║                                                                          ║
 ║      → Neue W{n} / korrigierte W{n} / Version erhoehen                 ║
 ║      → GC: WIDERLEGT/ELIMINIERT markieren                               ║
 ║      → Kap. 6a pflegen (Offene Bereiche, Aktive TCs)                   ║
 ║      → Mermaid-Diagramme pflegen (Schritt 3a, normal+hard)             ║
 ║      → Mermaid-Anker aktualisieren bei W{n}-Bestaetigung (MA-1..MA-4) ║
 ║      → w-confirmed Frontmatter-Zaehler bei BESTAETIGT-Markierung       ║
+║      → w_extern_count/w_intern_count/w_grauzone_count: LESEN (v2.0)   ║
+║        Gesetzt durch Phase 4.1c (A-Pipeline). modelMaintain PFLEGT     ║
+║        diese Zaehler erst ab v2.0 aus per-W{n}-Tags.                  ║
+║        In v1.0: nur LESEN + bei Bedarf loggen.                        ║
+║      → Per-W{n} Felder Typ + Herkunft (ab v2.0, BL-018):             ║
+║        Typ: FESTSTELLUNG | FRAGE | HYPOTHESE | SOLL                   ║
+║          FESTSTELLUNG = Aussage/Erkenntnis (Default)                  ║
+║          FRAGE = offene Frage, noch zu klaeren                        ║
+║          HYPOTHESE = unbewiesene Vermutung/Annahme                    ║
+║          SOLL = gewuenschter Ziel-Zustand (nicht IST)                 ║
+║        Herkunft: INTERN | EXTERN (Default: INTERN)                    ║
+║        LIEST + SCHREIBT per-W{n}-Tags ab v1.0.                       ║
+║        Zaehler-Neuberechnung aus per-W{n}-Tags ab v2.0.              ║
+║        Legacy FRAGEND → wird als FRAGE interpretiert.                 ║
+║        Bestehende W{n} ohne Typ/Herkunft: Default annehmen.           ║
+║      → w_hypothese_count/w_soll_count: Neue Frontmatter-Zaehler      ║
+║        (v2.0, BL-018 RF-15). Gesetzt bei modelMaintain.              ║
 ║      → sync.last_sync_commit aktualisieren (IMMER)                     ║
 ║      → sync.last_sync_date aktualisieren (IMMER)                       ║
 ║                                                                          ║
@@ -42,6 +89,15 @@
 ║                                                                          ║
 ║  SCHREIBT (Output) - OPTIONAL:                                           ║
 ║    _parking-lot.md (APPEND, falls Incidental Findings)                  ║
+║                                                                          ║
+║  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                        ║
+║    Pattern A: Reiner State-Write — kein Protokoll-Eintrag               ║
+║    SCHREIBT STATE: SC_Z{N}_MODELMAINTAIN, w-confirmed Zaehler           ║
+║    SCHREIBT STATE: DF_BATCH_STATE.unreife_typ (BL-142 Phase 5E,        ║
+║      Schritt 3c). Konsumiert von SDF-Routing + BDF Reifegrad-Hint.     ║
+║      Single Writer ab BL-142: A-Pipeline 4.1c gestrichen.              ║
+║    SCHREIBT NICHT: _manifest_protokoll.md                               ║
+║    (Protokoll-Eintraege via _SC_orchestrate Phase 3.3.0 Rollover)       ║
 ║                                                                          ║
 ║  ACTOR: MODEL-MAINTAINER                                                 ║
 ║    Pflegt das Model: W{n} hinzufuegen/korrigieren/GC,                  ║
@@ -164,6 +220,8 @@ Für jedes Finding in OBSERVE{CYCLE}.md:
 **Zyklus:** {N}
 **Status:** AKTIV
 **Kategorie:** {Technologie-Concern}
+**Typ:** FESTSTELLUNG | FRAGE | HYPOTHESE | SOLL
+**Herkunft:** INTERN
 **Quelle:** Finding F{X} in OBSERVE{CYCLE}
 
 {Beschreibung: 2-3 Sätze}
@@ -196,6 +254,52 @@ Mermaid-Ziel-Entscheidungsbaum:
      NEIN → Mermaid-Ziel: "keins"
 ```
 
+**Regeln fuer Typ- und Herkunft-Felder (beim Schreiben von Schritt 1 ausfuellen):**
+
+```
+Typ-Entscheidungsbaum (v2.0, BL-018 RF-13):
+
+  1. Formuliert W{n} eine offene Frage?
+     (Signale: Fragezeichen, "Welcher...", "Wie...", "Ob...", ungeklaert)
+     JA  → Typ: FRAGE
+
+  2. Formuliert W{n} eine unbewiesene Vermutung / Annahme / Vorhersage?
+     (Signale: "vermutlich", "wahrscheinlich", "muesste", "koennte sein", "Annahme")
+     JA  → Typ: HYPOTHESE
+
+  3. Beschreibt W{n} einen gewuenschten Ziel-Zustand (nicht IST)?
+     (Signale: "sollte", "muss kuenftig", "Ziel:", "geplant", SOLL-Zustand)
+     JA  → Typ: SOLL
+
+  4. Formuliert W{n} eine durch Beobachtung/Experiment gestuetzte Aussage?
+     (Signale: "nutzt", "ist", "hat", "besteht aus", verifiziert)
+     JA  → Typ: FESTSTELLUNG
+
+  Default bei Unsicherheit: FESTSTELLUNG
+  Legacy FRAGEND → wird als FRAGE interpretiert (rueckwaertskompatibel).
+
+  HINWEIS: Typ ist orthogonal zum Status-Automaten.
+  Alle Typen durchlaufen: AKTIV → BESTAETIGT / WIDERLEGT / ELIMINIERT.
+  HYPOTHESE + BESTAETIGT = verifizierte Vermutung → wird FESTSTELLUNG.
+  SOLL + BESTAETIGT = implementierter Ziel-Zustand → wird FESTSTELLUNG.
+```
+
+```
+Herkunft-Entscheidungsbaum (v1.0):
+
+  1. Ist die Antwort durch Code-Experiment / Analyse / Beobachtung findbar?
+     (Signale: Codebase, Debugging, Logging, Config-Dateien, Tests)
+     JA  → Herkunft: INTERN
+
+  2. Braucht die Antwort externe Quellen (Paper, Doku, Standards, RFCs)?
+     (Signale: "laut RFC", "Standard", "Best Practice", "Paper zeigt")
+     JA  → Herkunft: EXTERN
+
+  Default bei Unsicherheit: INTERN (konservativ, analog EXTERN_INTERN_Klassifikator)
+  Bestehende W{n} ohne Typ/Herkunft-Feld: Default FESTSTELLUNG/INTERN annehmen,
+  kein Update erzwungen (Rueckwaertskompatibilitaet, INV-2).
+```
+
 **W{n} BESTAETIGEN (wenn ERGEBNIS KONSISTENT-Marker gesetzt):**
 
 Falls ERGEBNIS{CYCLE}.md fuer ein bestehendes W{n} den Marker "KONSISTENT" enthaelt:
@@ -211,9 +315,47 @@ Falls ERGEBNIS{CYCLE}.md fuer ein bestehendes W{n} den Marker "KONSISTENT" entha
 REGEL: "AKTIV (BESTAETIGT)" ist der korrekte Status — NICHT "BESTAETIGT" allein.
 Begruendung: W{n} bleibt aktiv (kann weiter widerlegt werden), ist aber empirisch gestuetzt.
 
+**Confirm-Provenance an der BESTAETIGT-Transition (BL-255 AK-4, 2026-06-10):**
+
+Jede Transition auf "AKTIV (BESTAETIGT)" traegt ZUSAETZLICH drei Provenance-Felder
+(additive Annotation — bestehende Felder, Marker-Pfade und Zaehler-Mechanik unveraendert):
+
+```markdown
+**Status:** AKTIV (BESTAETIGT)
+**confirmed_by:** {abnahme_verdikt | experiment | user_hil}
+**confirmed_at:** {ISO-Date}
+**verify_ref:** {Pfad zum verify_report bzw. Evidenz-Dokument}
+```
+
+Regeln:
+- `confirmed_by` MUSS aus der Whitelist stammen. SINGLE-SOURCE der Whitelist ist der
+  Guard-Abschnitt in `_srs_compute.md` (INV-SRS-6) — hier KEINE zweite Liste pflegen:
+  - `abnahme_verdikt` — VERIFIED-Verdikt aus `_I_verify` (verify_mode tdd|scenario|convention), NEU BL-255
+  - `experiment` — experiment-derived (SC-Pfad, bestehend)
+  - `user_hil` — explizite User-Bestaetigung (bestehend)
+- Pflicht-Evidenz bei `confirmed_by=abnahme_verdikt`: `verify_ref` (Pfad zum verify-Report)
+  + `confirmed_at` (ISO). Ohne whitelisted `confirmed_by` + Pflicht-Evidenz blockt der
+  Anti-False-Certainty-Guard (INV-SRS-6) den BESTAETIGT-Write.
+- Der bestehende KONSISTENT-Marker-Pfad (oben) entspricht `confirmed_by=experiment` —
+  Evidenz ist ERGEBNIS{CYCLE}.md (als `verify_ref` eintragbar).
+- Orthogonal zu INV-SRS-5: der Zahlen-Guard (`srs_source`) bleibt unveraendert — dieses
+  Feld betrifft den STATUS-Write, nicht srs-Zahlen (kein direktes srs-Schreiben).
+
 Frontmatter-Zaehler:
 - `w-confirmed` im Model-Frontmatter um +1 erhoehen
 - `w-open` im Model-Frontmatter um -1 verringern
+
+Kategorie-Statistiken Update (BL-018 RF-15, nach JEDER Zaehler-Aenderung):
+- Zaehle alle W{n} nach Typ: w_feststellung_count, w_frage_count, w_hypothese_count, w_soll_count
+- Schreibe Zaehler in Model-Frontmatter (Abschnitt Kategorie-Statistiken)
+- Reife-Signal Ableitung (RF-14):
+  IF w_hypothese_count == 0 AND w_frage_count == 0:
+    reife_signal = "REIF" — Alle Wahrheiten sind Feststellungen oder SOLL
+  ELIF w_hypothese_count / w_total > 0.5:
+    reife_signal = "UNREIF" — Mehr als Haelfte sind Hypothesen
+  ELSE:
+    reife_signal = "SC-REIF" — Mischung, weitere Forschung sinnvoll
+  Logge: "[REIFE-SIGNAL] {reife_signal} (F={w_feststellung_count}, Q={w_frage_count}, H={w_hypothese_count}, S={w_soll_count})"
 
 **MERMAID-ANKER: W{n}-Diagramm-Verknuepfung bei BESTAETIGUNG**
 
@@ -243,6 +385,42 @@ Regel MA-4 (hard only): Pruefe alle Mermaid-Diagramme ob `%% Basiert auf:`-Block
 → Falls fehlend: Block erstellen und alle W{n} mit Mermaid-Ziel auf dieses Diagramm eintragen.
 
 **Hintergrund:** DCSRE-93 Include-Chain-Diagramm war von v2.1 bis v12.0 unveraendert (9 Versionen fossilliert), obwohl W81-W82 in Cycle 7 neue Navigation-Properties identifizierten.
+
+### 1b. Semantische Typ-Transitions (BL-026, RF-02/RF-04)
+
+**Grundregel (AK-02-04):** Bei reiner Status-Aenderung bleibt der Typ IMMER gleich. Typ-Aenderung erfolgt NUR durch Erstellung eines NEUEN W{n} + ELIMINIERUNG des alten (AK-04-04).
+
+**Transition: SOLL→FESTSTELLUNG bei Implementation (AK-02-02)**
+Wenn ein SOLL-W{n} implementiert und verifiziert wird (z.B. durch I-Pipeline DONE):
+```
+# 1. Neues W{n} erstellen: gleicher Inhalt, Typ=FESTSTELLUNG, Status=BESTAETIGT
+neue_nr = w_total + 1
+W{neue_nr}: {Inhalt aus altem SOLL-W{n}}
+  Typ: FESTSTELLUNG
+  Herkunft: INTERN (jetzt implementiert)
+  Status: BESTAETIGT
+  Ref: "Aus W{alte_nr} (SOLL→FESTSTELLUNG, Zyklus {cycle_nr})"
+
+# 2. Altes SOLL-W{n} eliminieren
+W{alte_nr}: Status → ELIMINIERT
+  Grund: "SOLL implementiert → neues W{neue_nr} als FESTSTELLUNG"
+```
+
+**Transition: FRAGE→neues W{n} bei Beantwortung (AK-02-03)**
+Wenn eine FRAGE durch SC- oder WP-Zyklus beantwortet wird:
+```
+# 1. Neues W{n} mit Antwort erstellen (FESTSTELLUNG oder SOLL)
+W{neue_nr}: {Antwort}
+  Typ: {FESTSTELLUNG wenn IST-Aussage, SOLL wenn Ziel-Aussage}
+  Status: AKTIV
+  Ref: "Antwort auf W{alte_nr} (FRAGE→{Typ}, Zyklus {cycle_nr})"
+
+# 2. Alte FRAGE eliminieren
+W{alte_nr}: Status → ELIMINIERT
+  Grund: "FRAGE beantwortet → neues W{neue_nr}"
+```
+
+**HYPOTHESE→BESTAETIGT (AK-02-01):** Keine neue W{n}. Nur Status-Aenderung (AKTIV→BESTAETIGT). Typ bleibt HYPOTHESE.
 
 ### 2. Garbage Collection (GC)
 
@@ -483,6 +661,61 @@ Mermaid [1.2 SC-Zyklus Ablauf-Sequenz] ⚠ WARN
 
 ---
 
+### 3c. unreife_typ_kandidat → DF_BATCH_STATE.unreife_typ (BL-142 Phase 5E Migration)
+
+**Aktivierung:** IMMER nach Schritt 3a (Mermaid-Integration) und 3b (Typ-Gate),
+vor Schritt 4 Commit-Tracking. Greift fuer alle Schwierigkeiten (auch easy).
+
+**Zweck:** Aggregiert per-W{n}-Herkunft-Tags (INTERN | EXTERN) zu einem
+Feature-Level `unreife_typ_kandidat`, der vom SDF-Routing (DF_BATCH_STATE)
+und BDF-Mode-Decision konsumiert wird. Ersetzt die alte Logik aus
+A-Pipeline Phase 4.1c (dort gestrichen via BL-142 Phase 4A).
+
+**Algorithmus (10 LOC, INV-THIN-2 erfuellt):**
+
+```
+# Per-W{n} Herkunft-Tags aggregieren (LIEST aus Model-Frontmatter v2.0+ Tags
+# UND aus per-W{n}-Sektionen — Default INTERN bei fehlendem Tag)
+w_extern = model.frontmatter.w_extern_count   # gesetzt durch v2.0 modelMaintain
+w_intern = model.frontmatter.w_intern_count   # gesetzt durch v2.0 modelMaintain
+
+# Schwelle (analog A-Pipeline 4.1c v2.0): >=2 EXTERN UND > INTERN
+IF w_extern >= 2 AND w_extern > w_intern:
+  unreife_typ_kandidat = "EXTERN"
+ELSE:
+  unreife_typ_kandidat = "INTERN"   # INV-3: Default konservativ
+
+# Ergebnis ins Manifest schreiben — Feature-Level
+Schreibe in _manifest.md → DF_BATCH_STATE:
+  unreife_typ: {unreife_typ_kandidat}
+  unreife_typ_source: "SC_modelMaintain"   # Audit-Trail (vs. A_orchestrate Phase 4.1c)
+  unreife_typ_w_extern: {w_extern}
+  unreife_typ_w_intern: {w_intern}
+  unreife_typ_updated: {ISO-Datum}
+
+Logge: "[unreife_typ] {unreife_typ_kandidat} (w_extern={w_extern}, w_intern={w_intern}) -> DF_BATCH_STATE"
+```
+
+**Konsumenten:**
+- `_SDF_orchestrate` (Phase Mode-Decision): liest `DF_BATCH_STATE.unreife_typ`,
+  routet bei `EXTERN` zu WP-RESEARCH-Modus, bei `INTERN` zu Standard-SC-Pipeline.
+- `_BDF_orchestrate` (Reifegrad-Hint): liest `DF_BATCH_STATE.unreife_typ`,
+  setzt ggf. `BL_LIFECYCLE_STATE.reifegrad_hint=UNREIF` bei EXTERN
+  (downstream konsumiert von `/_backlog` Schritt 3.5b, BL-142 Phase 5E).
+
+**Invarianten:**
+- INV-MAINT-1: SC_modelMaintain ist alleiniger Schreiber von
+  `DF_BATCH_STATE.unreife_typ` aus Model-Frontmatter (Single Writer).
+  A-Pipeline Phase 4.1c (gestrichen) schrieb frueher in
+  Model-Frontmatter direkt — modelMaintain konsolidiert nun.
+- INV-MAINT-2: Bei `easy`-Schwierigkeit lesen wir nur die Zaehler,
+  schreiben aber dennoch DF_BATCH_STATE (kein Skip — Routing braucht
+  den Wert auch fuer kleine Anpassungen).
+- INV-MAINT-3: Default `INTERN` bei fehlenden Zaehlern (`null` oder `0`)
+  — konservativ, M9 ist ultra-teuer.
+
+---
+
 ### 4. Commit-Tracking (IMMER - letzter Schritt vor Split-Check)
 
 Nach JEDEM Model-Update wird der sync-Block im Model-Frontmatter aktualisiert:
@@ -671,6 +904,11 @@ sync:
 
 ## Changelog
 
+- v2.9.1 (2026-04-26) BL-142 Phase 5E Caller-Audit:
+  unreife_typ_kandidat (Zeilen 638-670): lokale Pseudocode-Variable (kein Manifest-Lese-Feld)
+  — kein Ersatz noetig. Schreibt korrekt nach DF_BATCH_STATE.unreife_typ (bereits migriert).
+  Kein complexity_* vorhanden. Keine produktiven Lese-Stellen fuer gestrichene Felder.
+- v2.9: Wahrheiten-Taxonomie v2 (BL-018 RF-13/14/15, 2026-04-03): Typ erweitert FESTSTELLUNG|FRAGE|HYPOTHESE|SOLL (4-stufig statt 2). Legacy FRAGEND rueckwaertskompatibel. Reife-Signal-Ableitung aus Kategorie-Statistiken. Neue Frontmatter-Zaehler w_hypothese_count/w_soll_count/w_frage_count/w_feststellung_count. Reife-Signal: REIF/SC-REIF/UNREIF basierend auf Hypothese-Ratio.
 - v2.8: Mermaid-Typ-Qualitaets-Gate (EC-1/S1_Gate 2026-02-28): Schritt 3b: 3-Fragen-Check fuer semantisch korrekten Mermaid-Typ. Aktivierung: normal+hard UND >= 1 Mermaid-Aenderung in 3a. Kein Auto-Fix, kein Gate-Blocking, nur WARN. 3-Fragen: sequenceDiagram (zeitl. Reihenfolge + >2 Akteure), stateDiagram-v2 (Zustandsuebergaenge + >3 Zustaende), flowchart (Entscheidungsbaum/Ablauf/Hierarchie). Manifest-Eintrag: mermaid_gate_3b. Normative Referenz: ModelBloat_Model.md Kap.7.
 - v2.7: Mermaid-Inhalts-Update bei W{n}-Bestaetigung (I-03/W108 2026-02-27): Schritt 3a-E: Bei W{n}-Bestaetigung (OFFEN→BESTAETIGT) mit Mermaid-Ziel: Pruefe ob Diagramm-INHALTE (Kanten/Knoten) die Erkenntnis reflektieren. Abgrenzung: MA-Regeln = Kommentar-Pflege, Schritt 3a-E = Inhalts-Relevanz-Pruefung. Markierung [INHALTS-UPDATE NOETIG] bei veralteten Diagrammen. Aufloesungs-Pfad via Schritt A/B. Schwierigkeits-Tabelle aktualisiert (normal: A+B+D+E, hard: A+B+C+D+E). Adressiert W108 (BESTAETIGT), W111 (OFFEN), W121 (BESTAETIGT). Verhindert Mermaid-Fossilierung bei bestaetigt W{n}.
 - v2.6: Mermaid-Anker W{n}-Verknuepfung (E8/PL-FA-2 2026-02-26): Nach BESTAETIGT-Block: 4 Regeln MA-1..MA-4. MA-1: Pflicht-Kommentar-Block pro Diagramm. MA-2: Annotation bei W{n}-Bestaetigung. MA-3: UPDATE-KANDIDAT bei W{n}-Aenderung. MA-4 (hard): Rueckwirkende Annotation fehlender Bloecke. Verhindert Mermaid-Fossilierung (DCSRE-93: 9 Versionen unveraendert). Vertrag: Mermaid-Anker-Zeile eingefuegt.
@@ -692,6 +930,10 @@ sync:
 - [[D_orchestrate]] - Debloat-Orchestrator (SOFT/HARD-Trigger Ziel)
 
 ---
+
+## Fire-Together Trigger — ENTFERNT (BL-045/BL-050 Vault-First)
+# BL-050: Commands schreiben direkt in Vault. Kein Post-Synthese-Sync noetig.
+# _W_fireTogether ist OBSOLET (status: obsolet, obsoleted_by: BL-045).
 
 ## NOTIFY (Pflicht - Allerletzter Schritt)
 

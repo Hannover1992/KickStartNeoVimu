@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Kommentare im Browser oeffnen.
 
 Fuehre das PowerShell-Skript aus:

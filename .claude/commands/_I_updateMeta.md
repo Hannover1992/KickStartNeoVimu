@@ -7,6 +7,7 @@
 ---
 
 ```yaml
+type: building-block
 status: final
 version: 1.0.0
 ```

@@ -1,10 +1,11 @@
-﻿---
+---
 status: active
 version: 1.0
 created: 2026-02-08
 updated: 2026-02-08
 author: Command-System
 tags: [research, writepaper, setup, session-planning]
+type: building-block
 ---
 
 # /_WP_session - Session Parameter Configuration

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Status einer PR-Gruppe manuell setzen.
 
 $ARGUMENTS = "Gruppen-Nummer Status" (z.B. "1 done", "6 waiting", "14 wontfix")

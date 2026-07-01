@@ -1,6 +1,7 @@
 ---
 name: batch-simple
 description: Paralleler Batch - teilt Aufgabe in max. 10 Agents auf. 1 Agent = 1 Datei. Opus plant, Haiku/Sonnet fuehrt aus.
+type: satellite
 args:
   aufgabe:
     description: Die Aufgabe die parallel bearbeitet werden soll

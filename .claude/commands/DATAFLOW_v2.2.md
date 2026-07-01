@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Datenfluss-Diagramm: v2.2 (SRP-Refactoring)
 
 **Version:** 2.2
@@ -370,7 +374,8 @@ graph TD
 
     subgraph "Infrastructure"
         PL[_parking-lot.md]
-        MANIFEST[_manifest.md]
+        MANIFEST_STATE[_manifest.md<br/>State &lt;200Z]
+        MANIFEST_PROTOKOLL[_manifest_protokoll.md<br/>Protokoll unbegrenzt]
     end
 
     subgraph "Output"
@@ -439,7 +444,8 @@ graph TD
     style MM fill:#9C27B0,color:#fff
     style QG fill:#AB47BC,color:#fff
     style PL fill:#FDD835,color:#000
-    style MANIFEST fill:#00BCD4,color:#fff
+    style MANIFEST_STATE fill:#00BCD4,color:#fff
+    style MANIFEST_PROTOKOLL fill:#00838F,color:#fff
 ```
 
 ---

@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_W_push_global
 
 **Status:** v1.0 (Quality Gate + Dual-Push)
@@ -30,23 +34,37 @@
 |  LIEST (Input) - PFLICHT:                                      |
 |    1. {DOCUMENT} (Pfad relativ zu .claude/ oder absolut)      |
 |       → Dokument validieren (existiert, .md, erlaubter Ordner)|
-|    2. .claude/analysis/_manifest.md                            |
+|    2. {VAULT}/_manifest.md                            |
 |       → NAME-Feld für Feature-ID (für Log)                     |
 |    3. {DOCUMENT} Inhalt (für Quality Gate):                    |
 |       → W{n}-Referenzen extrahieren                            |
 |       → Status-Prüfung (BESTÄTIGT, ZUR PRÜFUNG, WIDERLEGT)    |
 |                                                                |
-|  LIEST OPTIONAL (Vault):                                       |
-|    4. $OBSIDIAN_VAULT_PATH Environment Variable                |
-|       → Falls gesetzt: Vault-Push aktiviert                    |
-|       → Falls nicht gesetzt: Nur RAG-Push (degraded mode)     |
+|  LIEST OPTIONAL (Vault + Routing):                              |
+|    4. .claude/config/vault-routing.json (Kategorie-Routing)    |
+|       → Bestimmt Vault-Pfad + globale RAG-Collection           |
+|       → 3 Kategorien: DCS, CenCoCo, Brain                     |
+|    5. $OBSIDIAN_VAULT_PATH Environment Variable (Fallback)     |
+|       → Falls vault-routing.json fehlt: Env-Var als Fallback  |
+|       → Falls beides fehlt: Nur RAG-Push (degraded mode)      |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
-|    1. RAG Collection: global_knowledge                         |
+|    1. RAG Collection: {GLOBAL_RAG aus vault-routing.json}      |
+|       → DCS-Projekte: global_knowledge                        |
+|       → CenCoCo-Projekte: global_knowledge_cencoco            |
+|       → Brain-Projekte: global_knowledge_brain                 |
 |       → Via MCP create_collection() + ingest()                 |
-|    2. .claude/analysis/_manifest.md:                           |
+|    2. {VAULT}/_manifest.md:                           |
 |       → "## Quality Gate Log" Sektion                          |
 |       → "## RAG Push Status" Sektion (Status: GLOBAL)          |
+|                                                                |
+|  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):               |
+|    Pattern C: Protokoll-Only-Write + State-Einzeiler           |
+|    SCHREIBT PROTOKOLL: Quality-Gate-Log + RAG-Push-Log         |
+|      vollstaendig (Prepend → _manifest_protokoll.md)           |
+|    SCHREIBT STATE: W_PUSH_STATUS-Einzeiler in _manifest.md     |
+|    SCHREIBT NICHT: Detaillierte Logs in _manifest.md           |
+|      (nur W_PUSH_STATUS-Einzeiler)                             |
 |                                                                |
 |  SCHREIBT OPTIONAL (Vault):                                    |
 |    3. {VAULT}/{DOKUMENT_NAME} (mit Frontmatter)                |
@@ -80,7 +98,7 @@
 ## Schritt 0: Feature-ID extrahieren
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md
 2. Extrahiere NAME-Feld (erste Zeile mit "**NAME:**")
    → Beispiel: **NAME:** TwoTierBridge → Feature-ID = "twotierbridge"
 
@@ -222,15 +240,44 @@ AUSGABE:
 
 ---
 
-## Schritt 3: RAG Push (global_knowledge)
+## Schritt 2b: Vault-Routing laden (Kategorie-Erkennung)
+
+```
+  CONFIG_PATH = ".claude/config/vault-routing.json"
+
+  IF CONFIG_PATH existiert:
+    routing = JSON.parse(CONFIG_PATH)
+    cwd = aktueller Pfad (pwd)
+
+    # Pattern-Matching (nach Prioritaet sortiert)
+    FUER JEDE rule IN routing.detection.rules (sortiert nach priority):
+      IF cwd CONTAINS rule.pattern (case-insensitive):
+        MATCHED_RULE = rule
+        GLOBAL_RAG = rule.rag_collections[0]  # Erste Collection = globale
+        VAULT_NAME = rule.vault
+        VAULT_PATH = routing.vaults[VAULT_NAME].windows_path
+        BREAK
+
+    Logge: "Vault-Routing: Pattern={MATCHED_RULE.pattern}, Vault={VAULT_NAME}, RAG={GLOBAL_RAG}"
+
+  ELSE:
+    # Fallback: kein Routing → Default global_knowledge
+    GLOBAL_RAG = "global_knowledge"
+    VAULT_PATH = $OBSIDIAN_VAULT_PATH ?? null
+    Logge WARNUNG: "vault-routing.json nicht gefunden → Fallback: global_knowledge"
+```
+
+---
+
+## Schritt 3: RAG Push ({GLOBAL_RAG})
 
 ```
 Nach Quality Gate PASS:
 
   1. Collection sicherstellen (idempotent):
-     → MCP create_collection(name="global_knowledge")
-     → Return: {"status": "created"|"exists", "collection": "global_knowledge", "count": int}
-     → AUSGABE: "Collection: global_knowledge (Status: {STATUS}, Docs: {COUNT})"
+     → MCP create_collection(name="{GLOBAL_RAG}")
+     → Return: {"status": "created"|"exists", "collection": "{GLOBAL_RAG}", "count": int}
+     → AUSGABE: "Collection: {GLOBAL_RAG} (Status: {STATUS}, Docs: {COUNT})"
 
   2. Absoluten Pfad ermitteln:
      → Falls relativ zu .claude/: Absolut machen
@@ -239,7 +286,7 @@ Nach Quality Gate PASS:
   3. MCP ingest aufrufen:
      → MCP ingest(
          file_path="{ABSOLUTER_PFAD}",
-         collection="global_knowledge",
+         collection="{GLOBAL_RAG}",
          options=None
        )
      → Return: {
@@ -325,10 +372,43 @@ Nach Quality Gate PASS:
 
 ---
 
+## Schritt 4b: BL-242-Index-Refresh (BL-275 AK-S1 — Forward Write→Index-Seam)
+
+```
+**ZWECK (BL-275 „ab-jetzt-sauber"):** Sobald ein Dokument als Vault-Knoten landet (VAULT_SUCCESS),
+den vorab gebauten BL-242-Schnell-Index (keyword/edge/anchor/backlinks-JSON + _Tag-Index.md) auffrischen.
+Sonst veraltet der Index ab dem ersten Write → _W_fetch Schritt 0d (Index-First-Read, BL-242 AK-5) findet
+den neuen Knoten NICHT im Schnell-Pfad (faellt auf RAG/Laufzeit-Walk zurueck = weiterhin findbar, nur langsam).
+
+**GRANULARITAET (Design-Resolution BL-275):** Die Naht sitzt bewusst HIER (Feature-Ende, pro gepushtem
+Dokument — selten), NICHT in _W_push_temp (kein Vault-Knoten) und NICHT pro einzelnem Truth-Write (das waere
+der „staendige teure Reindex", den BL-275 vermeiden will). Bei dieser Granularitaet ist der aktuelle
+Full-Rebuild-`--incremental` kostentragbar.
+
+  IF VAULT_SUCCESS == True:
+    rel = "{DOKUMENT_NAME}"   # geschrieben unter {VAULT}/{DOKUMENT_NAME}; relativ zum Vault-Root
+    Bash("py -3 .claude/scripts/build_retrieval_index.py --incremental --path={rel}")
+      → exit 0:    "[INDEX OK] BL-242-Index aufgefrischt fuer {rel} (Schnell-Pfad fuer _W_fetch Schritt 0d)"
+      → exit != 0: WARNUNG "[INDEX SKIP] Refresh fuer {rel} fehlgeschlagen (Pfad nicht im Vault /
+                   Resolver-Mismatch / Build-Fehler) — _W_fetch nutzt RAG/Walk-Fallback (KEIN
+                   Korrektheits-Verlust). Bulk-Catch-up via Reindex (BL-274) moeglich."
+    # NON-BLOCKING: ein Refresh-Fehler nimmt den erfolgreichen RAG/Vault-Push NICHT zurueck.
+  ELSE:
+    Logge: "[INDEX SKIP] VAULT_SUCCESS=False (RAG-only-Modus) → kein Vault-Knoten, kein Index-Refresh noetig."
+
+# Resolver-Alignment: build_retrieval_index nutzt resolve_vault_root() als Root. Bei DCS/CenCoCo/Brain ==
+# vault-routing.json VAULT_PATH (derselbe Vault). Bei Abweichung greift der graceful Skip oben (kein Hard-Fail).
+# Optimierung (Folge-Sub-AK, optional): patch_index (build_retrieval_index.py:174) statt Full-Rebuild in die
+# --incremental-CLI verdrahten → O(1)-Patch des persistierten JSON statt Re-Walk. Bei Feature-Ende-Granularitaet
+# NICHT erforderlich; erst relevant falls Feature-Ende-Rebuilds zum Bottleneck werden. [BL-275 AK-S1]
+```
+
+---
+
 ## Schritt 5: Manifest aktualisieren
 
 ```
-In .claude/analysis/_manifest.md:
+In {VAULT}/_manifest.md:
 
   1. Sektion "## Quality Gate Log" (GAP-008):
      → Falls nicht vorhanden: Sektion NEU erstellen (APPEND am Ende)

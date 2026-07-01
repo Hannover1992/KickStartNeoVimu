@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Kommentare von TFS abrufen und Arbeitsplan erstellen.
 
 Fuehre das PowerShell-Skript aus:

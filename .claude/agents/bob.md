@@ -1,6 +1,7 @@
 ---
 name: Bob
 description: Uncle Bob Martin - Optimized for Maximum Value Density
+model: opus
 version: 5.0.0
 optimization: Knapsack Algorithm Applied
 ---

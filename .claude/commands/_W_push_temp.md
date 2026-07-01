@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_W_push_temp
 
 **Status:** v2.1 (+ Schritt 1b: Metadaten-Injection via options.citation_info)
@@ -30,7 +34,7 @@
 |    /_W_push_temp auto    → Alle Push-Kandidaten finden + pushen|
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |       → NAME-Feld → Feature-ID fuer Collection-Name           |
 |    2. {DOCUMENT} ODER auto-Scan der erlaubten Ordner           |
 |       → Validierung: Existiert? .md? Erlaubter Ordner?         |
@@ -38,8 +42,16 @@
 |  SCHREIBT (Output) - PFLICHT:                                  |
 |    1. RAG Collection: local_knowledge_{feature_id}             |
 |       → Via MCP create_collection() + ingest()                 |
-|    2. .claude/analysis/_manifest.md                            |
+|    2. {VAULT}/_manifest.md                            |
 |       → "## RAG Push Status" Sektion aktualisieren             |
+|                                                                |
+|  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):               |
+|    Pattern C: Protokoll-Only-Write + State-Einzeiler           |
+|    SCHREIBT PROTOKOLL: RAG-Push-Log-Tabelle vollstaendig       |
+|      (Prepend → _manifest_protokoll.md)                        |
+|    SCHREIBT STATE: PUSH_STATUS-Einzeiler in _manifest.md       |
+|    SCHREIBT NICHT: Detaillierte Push-Logs in _manifest.md      |
+|      (nur PUSH_STATUS-Einzeiler)                               |
 |                                                                |
 |  SCHREIBT NICHT:                                               |
 |    - Vault-Dateien (das macht _W_obsidianSync)                   |
@@ -78,7 +90,7 @@ Dokumente modifizieren, Quality Gate pruefen (das macht W_push_global).
 ## Schritt 0: Feature-ID ermitteln
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md
 2. Extrahiere NAME-Feld (erste Zeile mit "**NAME:**")
    → Beispiel: **NAME:** TwoTierBridge → Feature-ID = "twotierbridge"
 
@@ -316,7 +328,7 @@ METADATEN-STRATEGIE (F5 + D1-Fix):
 ## Schritt 4: Manifest aktualisieren
 
 ```
-In .claude/analysis/_manifest.md (F8 - neue Sektion):
+In {VAULT}/_manifest.md (F8 - neue Sektion):
 
   1. Suche Sektion "## RAG Push Status"
      → Falls nicht vorhanden: Sektion NEU erstellen (APPEND am Ende, vor letztem "---")
@@ -395,7 +407,7 @@ AUSGABE:
      Pro fehlgeschlagenem Dokument:
        "  [FAIL] {DOKUMENT} → {error}"
    ""
-   "Manifest aktualisiert: .claude/analysis/_manifest.md → ## RAG Push Status"
+   "Manifest aktualisiert: {VAULT}/_manifest.md → ## RAG Push Status"
    ""
    "Naechste Schritte (F7):"
    "  → /_W_fetch kann jetzt lokales Wissen finden"
@@ -451,7 +463,7 @@ W_push_temp ist FEATURE-ISOLIERT:
 
 | Fehler | Ursache | Loesung |
 |--------|---------|---------|
-| Manifest nicht gefunden | .claude/analysis/_manifest.md fehlt | FEHLER + Hinweis: "Starte mit /_taskDefinition" |
+| Manifest nicht gefunden | {VAULT}/_manifest.md fehlt | FEHLER + Hinweis: "Starte mit /_taskDefinition" |
 | NAME nicht im Manifest | Manifest hat kein NAME-Feld | FRAGE User nach Feature-Name |
 | Dokument nicht gefunden | Pfad falsch oder Datei geloescht | FEHLER mit korrektem Pfad-Hinweis |
 | Nicht-erlaubter Ordner | Dokument in crumbs/drafts/temp | FEHLER mit Liste erlaubter Ordner |

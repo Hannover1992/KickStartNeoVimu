@@ -1,4 +1,4 @@
-﻿---
+---
 status: active
 version: 1.0.0
 created: 2026-02-08
@@ -7,7 +7,7 @@ author: OmniCommand
 chain: WritePaper
 position: init
 phase: Setup
-type: setup
+type: building-block
 tags: [setup, WritePaper, init, RAG]
 ---
 

@@ -3,6 +3,7 @@ status: v1.0
 version: "1.0"
 created: 2026-02-28
 op: SprintFanOut
+type: satellite
 ---
 
 # /_S_FanOut — Sprint Monitor Satelliten-Command
@@ -35,7 +36,7 @@ op: SprintFanOut
 |                                                              |
 |  VORAUSSETZUNG:                                             |
 |    1. .claude/session-params.md existiert                   |
-|    2. Jeder Worktree hat .claude/analysis/_manifest.md      |
+|    2. Jeder Worktree hat eine eigene Manifest-Datei         |
 |    3. Jeder Worktree hat INSTRUCTION.md                     |
 |                                                              |
 |  VERHALTEN:                                                  |
@@ -89,11 +90,8 @@ grep "^\s*branch:" .claude/session-params.md | sed 's/.*branch:\s*//'
 **Ergebnis:** Liste von Objekten: `[{label, path, branch}, ...]`
 
 Wenn `.claude/session-params.md` nicht lesbar:
-- Nutze Fallback-Defaults (hardcoded):
+- Nutze Fallback-Defaults (hardcoded, PL-Q Cleanup 2026-05-07: V2/V3/V4 entfernt — Worktrees existieren nicht mehr):
   - `{label: "V1-Param", path: "C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V1-Param", branch: "vorhaben/1-global-param"}`
-  - `{label: "V2-Audit",   path: "C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V2-Audit",   branch: "vorhaben/2-kern-audit"}`
-  - `{label: "V3-SCI",     path: "C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V3-SCI-Uebergang", branch: "vorhaben/3-sci-uebergang"}`
-  - `{label: "V4-Mermaid", path: "C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V4-Mermaid", branch: "vorhaben/4-mermaid-first"}`
   - `{label: "V5-Monitor", path: "C:/Users/Administrator/Documents/Work/Code2/DCSRE_Azure/OmniCommand-V5-Monitor", branch: "vorhaben/5-sprint-monitor"}`
 - Gib eine WARN-Meldung aus: `"WARNING: session-params.md nicht gefunden, nutze hardcoded Defaults"`
 
@@ -144,10 +142,10 @@ Fallback wenn nicht lesbar: SCOPE_TEXT = "NO-SCOPE"
 
 ===================================================
 
-SCHRITT 2: LESE _manifest.md (HEAD 50 Zeilen)
+SCHRITT 2: LESE Manifest (HEAD 50 Zeilen)
 
-Primaerer Pfad:  {PATH}/.claude/analysis/_manifest.md
-Fallback-Pfad:   {PATH}/.claude/_manifest.md
+Primaerer Pfad:  {PATH}/_manifest_per_worktree.md (per-Worktree State, nicht OmniCommand-Vault)
+Fallback-Pfad:   {PATH}/state.md (legacy)
 
 Nutze das Read-Tool mit limit=50 (lese nur erste 50 Zeilen).
 Suche Zeile mit: **PHASE:** oder phase: (YAML-Feld)

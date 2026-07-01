@@ -1,0 +1,376 @@
+---
+type: building-block
+---
+
+# /_I_codeIntegration
+
+**Status:** v4.2 (BL-065: Vault-First DirectWrite, Hybrid-Marker ersetzt)
+**Actor:** INTEGRATIONS-CODER
+**Zweck:** Integration Tests + Boundary Code via RGR (Batch: 2-3 Tests pro Aufruf)
+
+---
+
+## Vertrag
+
+```
++===============================================================+
+|  COMMAND: /_I_codeIntegration {SLICE_NAME}                     |
++===============================================================+
+|                                                                |
+|  LIEST (Input) - PFLICHT:                                      |
+|    1. {VAULT}/_manifest.md                            |
+|    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)        |
+|    3. .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md            |
+|       → Integration Test-Liste (IT1, IT2, ...)                |
+|       → Boundary Crossings (API, DB, External)                |
+|    4. .claude/analysis/synthese/{NAME}-ATOMIC-{SLICE}.md       |
+|       → VORAUSSETZUNG: status=final (alle Unit Tests gruen)   |
+|    5. .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md  |
+|       → RESUME: Falls vorhanden, lies status + done Tests     |
+|    6. .claude/patterns/_pattern-library.md                    |
+|    7. Codebase (Production Code + bestehende Tests)           |
+|                                                                |
+|  LIEST (Input) - OPTIONAL bei Code-Generierung:               |
+|    8. .claude/meta/implementation/testing.md                   |
+|       → TestBase<T> Vererbung, TestBuilder, Fixtures           |
+|       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
+|    9. .claude/meta/implementation/routing.md                   |
+|       → Controller-Conventions, Routing-Attribute             |
+|       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
+|   10. .claude/meta/implementation/auth.md                      |
+|       → Auth-Conventions, Policy-Namen, ClaimTypes            |
+|       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
+|   11. .claude/meta/implementation/validation.md                |
+|       → FluentValidation-Regeln, Custom Validators            |
+|       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
+|                                                                |
+|  SCHREIBT (Output) - PFLICHT:                                  |
+|    1. Code: Integration Tests + Boundary/Wiring Code          |
+|    2. Vault-First (BL-065)                                     |
+|       Implementation-Logs werden DIREKT in den Vault geschrieben:|
+|       {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-INTEGRATION-{SLICE}.md |
+|       Status (partial/final) wird im FRONTMATTER der Log-Datei |
+|       kodiert, NICHT ueber Pfad-Unterschied.                   |
+|       Pre-Flight-Check (verbindlich, RF-06):                   |
+|       mkdir -p {VAULT}/Backlog/{BL_SLUG}/Implementation/ |
+|       if [ $? -ne 0 ] || [ -z "$DCS_VAULT_ROOT" ]; then       |
+|         log_error "Vault unreachable: ..."                     |
+|         exit 1                                                 |
+|       fi                                                       |
+|       Schreibpfad: {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-INTEGRATION-{SLICE}.md |
+|       Frontmatter: status: partial|final (Feld, nicht Pfad).  |
+|       INKREMENTELL (status=partial): lokal zwischenspeichern   |
+|       .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md  |
+|       → status: partial (N/M) oder final (M/M)               |
+|    3. {VAULT}/_manifest.md (nach JEDEM IT update)    |
+|                                                                |
+|  SCHREIBT (Output) - OPTIONAL:                                 |
+|    .claude/patterns/_pattern-library.md                       |
+|    {VAULT}/_parking-lot.md (APPEND bei Findings)     |
+|                                                                |
+|  MCP: mcp__cleancoder__query() NUR bei Boundary-Unsicherheit  |
+|    MIN-Modus: max 1 Query, limit=1                            |
+|                                                                |
+|  BATCH-MODUS:                                                  |
+|    Bearbeite 2-3 Tests pro Aufruf, dann STOPPE.              |
+|    Integration Tests sind komplexer → kleinere Batches.       |
+|    Resume liest INTEGRATION.md → weiss wo weitermachen.       |
+|                                                                |
+|  PIPELINE:                                                     |
+|    [/_I_codeAtomic] → [/_I_codeIntegration] →                 |
+|    [/_I_codeSystem]                                            |
+|                                                                |
+|  VORAUSSETZUNG:                                                |
+|    ATOMIC-{SLICE}.md existiert mit status=final               |
+|    (alle Unit Tests gruen)                                    |
+|                                                                |
+|  ERGEBNIS:                                                     |
+|    INTEGRATION-{SLICE}.md (status=partial oder final)         |
+|    partial → User ruft erneut auf                             |
+|    final   → /_I_codeSystem kann starten                     |
+|                                                                |
++===============================================================+
+```
+
+---
+
+## Verantwortlichkeit
+
+**INTEGRATIONS-CODER:** Integration Tests + Boundary Code via TDD.
+
+**TUT:** Integration Tests schreiben, Boundary Code verdrahten (DI, Routing, DB Config),
+Mock-Strategien anwenden (Machist an DIP-Grenzen), Test-Isolation sicherstellen.
+
+**NICHT:** Unit Tests, System Tests, Business Logic aendern (NUR Wiring!).
+
+**Eskalation:** Bei 5+ RGR ohne Fortschritt → /_SC_observe
+
+---
+
+## Schritt 0: Resume-Check + Voraussetzungen
+
+### 0.1 Mitose-Check
+
+```
+Falls .claude/CURRENT_SLICE.md existiert:
+  → {SLICE_NAME} aus CURRENT_SLICE.md verwenden
+  → NUR an diesem Slice arbeiten
+```
+
+### 0.2 Atomic-Phase pruefen
+
+```
+Lies ATOMIC-{SLICE}.md → Pruefe Frontmatter: status
+  → Falls status != final:
+      ABBRUCH: "/_I_codeAtomic {SLICE} muss zuerst abgeschlossen werden"
+  → Falls status = final: OK, weiter
+```
+
+### 0.3 Resume-Check (NEU v4.0)
+
+```
+Falls .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md existiert:
+  → Lies Frontmatter: status, tests_done, tests_total, next_test
+  → Falls status=final:
+      AUSGABE: "INTEGRATION Phase bereits abgeschlossen."
+      AUSGABE: "Naechster Schritt: /_I_codeSystem {SLICE}"
+      → STOP
+  → Falls status=partial:
+      AUSGABE: "Resume: {tests_done}/{tests_total} ITs fertig."
+      AUSGABE: "Starte bei {next_test}."
+      → Setze fort
+Falls NICHT existiert:
+  → Neuer Start bei IT1
+```
+
+### 0.4 Standard-Inputs
+
+1. Lies `plans/{NAME}-{SLICE}-PLAN.md` → IT-Liste, Boundaries
+2. Lies `ATOMIC-{SLICE}.md` → Interfaces, Patterns, Code-Struktur
+3. Lies `_pattern-library.md` (falls vorhanden)
+4. Bestimme BATCH_SIZE: 2-3 (Integration Tests sind komplex)
+
+---
+
+### 0.5 Optional-Input: Implementation Meta
+
+Fuer relevante Topics laden (falls Dateien existieren):
+
+| Test-Typ | Topics laden |
+|----------|-------------|
+| API / Controller | testing.md, routing.md, auth.md |
+| Validation / Input | testing.md, validation.md |
+| Auth / Security | testing.md, auth.md |
+| DB / Repository | testing.md |
+| External / Mock | testing.md |
+
+Lade NUR Topics die fuer den aktuellen IT-Batch relevant sind.
+
+Falls Datei nicht existiert:
+  - WARN: "⚠️ `.claude/meta/implementation/{topic}.md` nicht gefunden — weiter ohne"
+  - CONTINUE (kein ABORT)
+
+Falls Datei vorhanden: Regeln R1..Rn extrahieren und als Vorgaben in RED/GREEN/REFACTOR nutzen.
+Beim Schreiben referenzieren: `// testing.md R1: TestBase<T> angewendet`
+
+Bei RESUME (status=partial): Meta-Dateien erneut lesen — kein Cache. Meta kann via `/_I_updateMeta` aktualisiert worden sein.
+
+---
+
+## Schritt 1: Boundary-Analyse (beim ersten Aufruf)
+
+Nur beim ERSTEN Aufruf (kein Resume). Klassifiziere Boundaries:
+
+| Boundary-Typ | Test-Strategie | Mock/Real |
+|--------------|----------------|-----------|
+| **API** (Controller → Service) | WebApplicationTestFactory | Real (in-process) |
+| **DB** (Repository → Datenbank) | InMemory DB / Container | Real/InMemory |
+| **Service** (via Interface) | Mock (Machist) | Mock |
+| **External** (DIC, S3, SFTP) | Mock (Machist, IMMER) | Mock |
+
+**Machist-Regel:** Mocks an JEDER DIP-Grenze und externen Boundary.
+**Statist-Regel:** Echte Objekte innerhalb eines Boundary-Layers.
+
+---
+
+## Schritt 2: RGR-Loop (Batch-Modus)
+
+### Fuer die naechsten BATCH_SIZE ITs aus der offenen Liste:
+
+**RED:**
+1. IT aus PLAN.md nehmen
+2. Boundary-Setup (TestServer, Mocks, InMemory DB)
+3. Request/Aufruf ueber Boundary senden
+4. Assert: Ende-zu-Ende Verhalten
+5. Test MUSS fehlschlagen (typisch: 404, DI Exception, DB fehlt)
+
+**GREEN:**
+1. MINIMALER Wiring-Code: DI Registration, Routing, DB Mapping, Config
+2. NUR Verdrahtung, KEINE neue Business Logic (existiert aus Atomic)
+3. Falls Business Logic fehlt → ZURUECK zu /_I_codeAtomic
+4. ALLE Tests (Unit + Integration) MUESSEN gruen bleiben
+
+**REFACTOR:**
+1. DI Module extrahieren (services.Add{Feature}Services())
+2. Config Sections organisieren
+3. Test-Helper fuer Boundary Setup
+4. ALLE Tests (Unit + Integration) MUESSEN gruen bleiben
+
+**CHECKPOINT (nach JEDEM gruenen IT):**
+1. Manifest aktualisieren
+2. INTEGRATION-{SLICE}.md aktualisieren (inkrementell)
+
+### Batch-Ende
+
+```
+Falls ALLE ITs aus PLAN.md fertig:
+  → Integritaets-Check: Alle Unit + Integration Tests gruen?
+  → INTEGRATION.md mit status=final schreiben
+  → AUSGABE: "INTEGRATION Phase abgeschlossen ({M}/{M} ITs)."
+  → AUSGABE: "Naechster Schritt: /_I_codeSystem {SLICE}"
+
+Falls noch ITs offen:
+  → INTEGRATION.md mit status=partial schreiben
+  → AUSGABE: "{done}/{total} ITs fertig."
+  → AUSGABE: "Naechster Batch: /_I_codeIntegration {SLICE}"
+```
+
+---
+
+## Schritt 3: MCP + Stagnation
+
+| Situation | Query |
+|-----------|-------|
+| Boundary-Unsicherheit | "integration testing for {boundary}" |
+| Mock vs Real | "mock vs real for {boundary}" |
+| DI Problem | "dependency injection for {scenario}" |
+| Stuck (>3 Versuche) | "getting unstuck in integration test {problem}" |
+
+Stagnation: >= 4 RGR ohne Fortschritt → MCP, >= 5 → /_SC_observe
+
+---
+
+## Output-Format: INTEGRATION-{SLICE}.md (INKREMENTELL)
+
+**Pfad:** `.claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md`
+
+```markdown
+---
+name: {NAME}
+slice: {SLICE_NAME}
+phase: integration
+pipeline: implementation
+status: partial
+tests_total: 8
+tests_done: 3
+next_test: IT4
+batch_size: 3
+batches_completed: 1
+last_updated: {YYYY-MM-DD}
+---
+
+# Integration: {NAME} - {SLICE_NAME}
+
+**Tests:** {done}/{total} | **Status:** partial | **Batches:** {N}
+**Atomic:** ABGESCHLOSSEN ({N} Unit Tests gruen)
+
+## Boundary-Analyse
+
+| Boundary | Typ | Mock/Real |
+|----------|-----|-----------|
+| Controller → Service | API | Real (TestServer) |
+| Service → Repository | DB | InMemory |
+| Service → DIC | External | Mock |
+
+## Test-Ergebnisse
+
+| # | Test | Boundary | Status | RGR | Stil |
+|---|------|----------|--------|-----|------|
+| IT1 | {Name} | API | GRUEN | 1 | Statist |
+| IT2 | {Name} | DB | GRUEN | 2 | Statist |
+| IT3 | {Name} | External | GRUEN | 1 | Machist |
+| IT4 | {Name} | API | OFFEN | - | - |
+| ... | ... | ... | OFFEN | - | - |
+
+## RGR-Protokoll
+
+### Batch 1 (IT1-IT3)
+- IT1: RED weil {X} → GREEN: {Wiring} → REFACTOR {Z}
+- ...
+
+## Boundary-Entscheidungen
+
+| Boundary | Entscheidung | Begruendung |
+|----------|-------------|-------------|
+| API | TestServer in-process | Schnell |
+| DB | InMemory SQLite | Keine Docker-Dep |
+| External | Mock via Interface | Test-Isolation |
+
+## Naechster Batch
+
+IT4-IT6 (/_I_codeIntegration {SLICE_NAME})
+```
+
+---
+
+## Manifest-Update (nach JEDEM gruenen IT)
+
+```markdown
+**PHASE:** _I_codeIntegration {SLICE_NAME}
+**PIPELINE:** Implementation
+**UNIT TESTS:** {N}/{N} gruen (aus Atomic)
+**INTEGRATION TESTS:** {done}/{total}
+**STATUS:** partial | final
+**NAECHSTER TEST:** IT{done+1}: {Name}
+**BATCH:** {N} von geschaetzt {ceil(total/batch_size)}
+```
+
+---
+
+## Qualitaetskriterien
+
+- TDD Drei Gesetze strikt einhalten
+- NUR Wiring-Code in GREEN (KEINE neue Business Logic!)
+- ALLE Tests gruen nach jedem Schritt (Unit + Integration)
+- Machist an DIP-Grenzen, Statist innerhalb Layer
+- Unit Tests duerfen NICHT brechen (Regressions-Check)
+- Manifest + INTEGRATION.md nach JEDEM IT aktuell (inkrementell!)
+- Batch-Limit einhalten (2-3 ITs, dann STOP)
+- Bei Stagnation eskalieren
+- XML-Docs in C#: ECHTE Umlaute (ä, ö, ü, ß) — NIEMALS ae, oe, ue, ss
+- XML-Docs: Einfaches Deutsch, KEINE kryptischen Referenzen (T1, S4, W12, PLAN.md)
+
+---
+
+## exit_report (PFLICHT - VOR NOTIFY)
+
+**IMMER schreiben** — egal ob status=partial oder status=final.
+Schreibe diesen Block ans Ende der INTEGRATION-{SLICE}.md Synthese-Datei (APPEND):
+
+```yaml
+exit_report:
+  status: partial|final
+  blocked_items: []          # ITs die nicht bearbeitet werden konnten
+  block_reason: ""           # Warum blockiert (z.B. "Kontext-Limit", "DI-Wiring fehlt")
+  recommended_strategy: ""   # Empfehlung fuer naechsten Batch (z.B. "Resume ab IT4")
+  context_health: ""         # low|medium|high — wie viel Kontext war noch verfuegbar
+  findings: []               # Erkenntnisse ausserhalb des Scope (W{n}-Kandidaten)
+```
+
+**Regeln:**
+- `findings` NIEMALS leer lassen wenn Erkenntnisse vorhanden — diese werden Parking-Lot-Kandidaten
+- `context_health: low` wenn Kontext-Limit Grund fuer partial war
+- `block_reason` bei `status: final` leer lassen ("")
+- Falls `findings` nicht leer: APPEND an `{VAULT}/_parking-lot.md`
+
+---
+
+## NOTIFY (Pflicht - Allerletzter Schritt)
+
+**NUR wenn ALLES fertig ist** (exit_report geschrieben, Zusammenfassung ausgegeben):
+
+```bash
+powershell -Command "notify '{FEATURE} /_I_codeIntegration abgeschlossen'"
+```
+
+WICHTIG: Keine Zwischen-Benachrichtigungen! NUR ganz am Ende.

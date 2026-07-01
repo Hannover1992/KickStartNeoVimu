@@ -1,6 +1,10 @@
+---
+type: building-block
+---
+
 # /_I_codeAtomic
 
-**Status:** v4.1 (exit_report Pflichtblock + Parking-Lot Aktivierung — PN-1 I-ExitReport)
+**Status:** v5.1 (BL-065: Vault-First DirectWrite, Hybrid-Marker ersetzt)
 **Actor:** ATOMARER CODER
 **Zweck:** Unit Tests + Production Code via Red-Green-Refactor (Batch: 3-5 Tests pro Aufruf)
 
@@ -14,34 +18,54 @@
 +===============================================================+
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)        |
 |    3. .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md            |
 |       → Test-Liste, Architektur, Pattern Reuse                |
 |    4. .claude/analysis/synthese/{NAME}-ATOMIC-{SLICE}.md       |
 |       → RESUME: Falls vorhanden, lies status + done Tests     |
-|    5. .claude/patterns/_pattern-library.md (Blueprint)        |
+|    5. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1) (Blueprint)        |
 |    6. Codebase (Produktion + bestehende Tests)                |
 |                                                                |
 |  LIEST (Input) - OPTIONAL bei Code-Generierung:               |
-|    7. .claude/meta/implementation/testing.md                   |
+|    7. {META}/implementation/testing.md                   |
 |       → TestBase<T> Vererbung, TestBuilder, Fixtures           |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
 |       → Lesen VOR Schritt 1 (RED)                             |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
 |    1. Code: Unit Tests + Production Code (via TDD)            |
-|    2. .claude/analysis/synthese/{NAME}-ATOMIC-{SLICE}.md       |
-|       → INKREMENTELL: Nach JEDEM gruenen Test aktualisieren   |
+|    2. Vault-First (BL-065)                                     |
+|       Implementation-Logs werden DIREKT in den Vault geschrieben:|
+|       {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-ATOMIC-{SLICE}.md |
+|       Status (partial/final) wird im FRONTMATTER der Log-Datei |
+|       kodiert, NICHT ueber Pfad-Unterschied.                   |
+|       Pre-Flight-Check (verbindlich, RF-06):                   |
+|       mkdir -p {VAULT}/Backlog/{BL_SLUG}/Implementation/ |
+|       if [ $? -ne 0 ] || [ -z "$DCS_VAULT_ROOT" ]; then       |
+|         log_error "Vault unreachable: ..."                     |
+|         exit 1                                                 |
+|       fi                                                       |
+|       Schreibpfad: {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-ATOMIC-{SLICE}.md |
+|       Frontmatter: status: partial|final (Feld, nicht Pfad).  |
+|       INKREMENTELL (status=partial): lokal zwischenspeichern   |
+|       .claude/analysis/synthese/{NAME}-ATOMIC-{SLICE}.md       |
 |       → status: partial (N/M) oder final (M/M)               |
-|    3. .claude/analysis/_manifest.md (nach JEDEM Test update)  |
+|    3. {VAULT}/_manifest.md (nach JEDEM Test update)  |
 |                                                                |
 |  SCHREIBT (Output) - OPTIONAL:                                 |
-|    .claude/patterns/_pattern-library.md                       |
-|    .claude/analysis/_parking-lot.md (APPEND bei Findings)     |
+|    {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                       |
+|    {VAULT}/_parking-lot.md (APPEND bei Findings)     |
 |                                                                |
 |  MCP: mcp__cleancoder__query() NUR bei Unsicherheit           |
 |    MIN-Modus: max 1 Query, limit=1                            |
+|                                                                |
+|  WORKER-TEST-ISOLATION (W224, RF-PI-003):                      |
+|    Worker fuehrt NUR Tests aus die er geschrieben oder         |
+|    angefasst hat. KEINE fremden Tests starten.                 |
+|    Begruendung: Parallelitaet bei Worktrees — Race Conditions  |
+|    bei DB-Tests, File-Locks, Port-Konflikte.                   |
+|    Enforcement: Teil des KURZLEBIG_PROMPT (statische Regel).   |
 |                                                                |
 |  BATCH-MODUS:                                                  |
 |    Bearbeite 3-5 Tests pro Aufruf, dann STOPPE.              |
@@ -121,10 +145,10 @@ Falls NICHT existiert:
 ### 0.4 Optional-Input: Implementation Meta
 
 Fuer relevante Topics laden (falls Datei existiert):
-  - `.claude/meta/implementation/testing.md` (TestBase<T>, TestBuilder, Fixtures)
+  - `{META}/implementation/testing.md` (TestBase<T>, TestBuilder, Fixtures)
 
 Falls Datei nicht existiert:
-  - WARN: "⚠️ `.claude/meta/implementation/testing.md` nicht gefunden — weiter ohne"
+  - WARN: "⚠️ `{META}/implementation/testing.md` nicht gefunden — weiter ohne"
   - CONTINUE (kein ABORT)
 
 Falls Datei vorhanden: Regeln R1..Rn extrahieren und als Vorgaben in RED/GREEN/REFACTOR nutzen.
@@ -165,27 +189,80 @@ BEVOR ein Test geschrieben wird, pruefe:
 
 ---
 
-## Schritt 1: RGR-Loop (Batch-Modus)
+## Schritt 0.5: 3 Einstiegsfragen (VOR jedem Batch — PFLICHT)
+
+Bevor der erste Test geschrieben wird, beantworte diese 3 Fragen:
+
+```
+1. Was ist der EINFACHSTE Test der mich zwingt, echten Code zu schreiben?
+   → Starte mit dem trivialsten Edge Case (null, leer, Grenzwert)
+   → NICHT mit dem Normalfall ("Don't go for the gold" — Uncle Bob)
+
+2. Welchen Edge Case deckt dieser Test ab?
+   → Benenne explizit die Grenze die getestet wird
+   → Ein guter erster Test zwingt zu einer if-Abfrage oder einem Guard
+
+3. Braucht dieser Test ueberhaupt eigenen Production-Code?
+   → Falls der GREEN-Schritt NULL eigenen Code erfordert → SKIP
+   → Logiklose Tests verschwenden Zeit (siehe Test-Filter)
+```
+
+---
+
+## TDD-Methodik: Gegenlaeufer-Prinzip (PFLICHT — Uncle Bob)
+
+```
+REIHENFOLGE DER TESTS (konzentrische Kreise, von aussen nach innen):
+
+  Kreis 1 (Randfall):  Leere Listen, null, 0, Grenzwerte
+                        → Erzwingt Guards + Initialisierung
+  Kreis 2 (Einfach):   Ein-Element-Fall, Normalfall
+                        → Erzwingt Kernlogik
+  Kreis 3 (Komplex):   Mehrere Elemente, Kombinationen, Edge-Edge
+                        → Erzwingt Generalisierung
+
+PRINZIP: Tests werden SPEZIFISCHER → Code wird GENERISCHER.
+         "As the tests get more specific, the code gets more generic."
+
+ANTI-PATTERN: Direkt den Normalfall testen → zu viel Code auf einmal →
+              kein inkrementeller Fortschritt → "Going for the gold".
+```
+
+---
+
+## Schritt 1: RGRC-Loop (Batch-Modus) — Red-Green-Refactor-CHECK
 
 ### Fuer die naechsten BATCH_SIZE Tests aus der offenen Liste:
 
 **RED:**
 1. Test aus PLAN.md nehmen (Arrange-Act-Assert)
 2. FILTER: Ist dieser Test logiklos? → SKIP (siehe Test-Filter)
-3. Test ausfuehren → MUSS fehlschlagen
-4. Falls sofort gruen → Test ist trivial, ueberdenken
+3. "Don't go for the gold": Waehle den EINFACHSTEN naechsten Test
+   → Nicht den offensichtlichsten, sondern den der am wenigsten Code erfordert
+4. Test ausfuehren → MUSS fehlschlagen
+5. Falls sofort gruen → Test ist trivial, ueberdenken
 
 **GREEN:**
 1. MINIMALER Code um Test zu passen (Fake OK, Hardcoded OK)
 2. Blueprint aus PLAN.md als Vorlage
-3. Test ausfuehren → MUSS gruen sein
-4. ALLE bisherigen Tests → MUESSEN gruen bleiben
+3. KEINE Vorausplanung — nur genau den Code den der Test verlangt
+4. Test ausfuehren → MUSS gruen sein
+5. ALLE bisherigen Tests → MUESSEN gruen bleiben
 
 **REFACTOR:**
 1. DRY, Extract Method/Class, Rename, Move
 2. Tests bereinigen (Setup-Methoden, Helper)
 3. Pattern-Check (bekannt? neu?)
 4. ALLE Tests → MUESSEN gruen bleiben
+
+**CHECK (4. Schritt — nach REFACTOR, vor naechstem RED):**
+1. Passt der geschriebene Code zum Sub-Blueprint (falls vorhanden)?
+   → Lese Sub-Blueprint "## Exit-Kriterien" — naehere ich mich dem Ziel?
+2. Habe ich die Grenze meines Slices ueberschritten?
+   → Falls Code ausserhalb des Slice-Scope → Finding dokumentieren
+3. Ist eine Abweichung vom Blueprint entstanden?
+   → Falls ja: Dokumentiere Abweichung in ATOMIC.md "## Abweichungen"
+   → Entscheide: Absichtlich (Blueprint falsch) oder versehentlich (Code korrigieren)
 
 **CHECKPOINT (nach JEDEM gruenen Test):**
 1. Manifest aktualisieren (Test-Fortschritt)
@@ -309,7 +386,11 @@ Wenn status=final: Ersetze "Naechster Batch" durch:
 ## Qualitaetskriterien
 
 - TDD Drei Gesetze strikt einhalten (kein Production Code ohne roten Test)
-- RED vor GREEN vor REFACTOR (Reihenfolge!)
+- RED vor GREEN vor REFACTOR vor CHECK (4-Schritt-Reihenfolge!)
+- "Don't go for the gold" — einfachster Test zuerst, nicht offensichtlichster
+- Gegenlaeufer-Prinzip: Edge Cases → Normalfall → Komplex (konzentrische Kreise)
+- 3 Einstiegsfragen VOR jedem Batch beantwortet
+- CHECK-Schritt: Blueprint-Abgleich nach jedem Refactor
 - ALLE Tests gruen nach jedem Schritt
 - Blueprint aus PLAN.md nutzen
 - Manifest nach JEDEM Test aktuell
@@ -342,7 +423,7 @@ exit_report:
 - `findings` NIEMALS leer lassen wenn Erkenntnisse vorhanden — diese werden Parking-Lot-Kandidaten
 - `context_health: low` wenn Kontext-Limit Grund fuer partial war
 - `block_reason` bei `status: final` leer lassen ("")
-- Falls `findings` nicht leer: APPEND an `.claude/analysis/_parking-lot.md`
+- Falls `findings` nicht leer: APPEND an `{VAULT}/_parking-lot.md`
 
 ---
 

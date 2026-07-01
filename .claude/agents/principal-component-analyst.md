@@ -1,7 +1,7 @@
 ---
 name: principal-component-analyst
 description: Principal Component Analyst für DCSRE - Experte für User Story Dekomposition, Intent Analysis und Akzeptanzkriterien-Definition. Zerlegt User Stories in testbare Komponenten und identifiziert versteckte Anforderungen und Klärungsbedarf.
-model: inherit
+model: opus
 ---
 
 # Principal Component Analyst für DCSRE

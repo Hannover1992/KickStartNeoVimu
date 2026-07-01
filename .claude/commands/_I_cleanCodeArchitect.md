@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_I_cleanCodeArchitect
 
 **Status:** NEU v3.1 (Implementierungs-Pipeline Phase 1, Mitose-Support)
@@ -10,39 +14,69 @@
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  COMMAND: /_I_cleanCodeArchitect {NAME} [easy|normal|hard]                ║
+║  COMMAND: /_I_cleanCodeArchitect {NAME} [easy|normal|hard] [--stufe {N}] ║
+║                                 [--mode impact-check] [--batch {ID}]    ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
-║    2. .claude/Task.md (Feature-Definition)                               ║
-║    3. .claude/analysis/synthese/{NAME}-GAP.md (falls vorhanden)         ║
+║    0. WENN --mode impact-check:                                          ║
+║       _manifest.md → ARCHITECT_ESCALATION_QUEUE (ARCH-12, BL-153)       ║
+║    1. {VAULT}/_manifest.md                     ║
+║    2. {VAULT}/Task.md (Feature-Definition)                               ║
+║    3. PRIMAER: {VAULT}/.../Gap/{NAME}-GAP.md (falls vorhanden)         ║
+║       FALLBACK: .claude/analysis/synthese/{NAME}-GAP.md                ║
 ║       ◄── NEU v3.0: Delta IST↔SOLL + Priorisierung fuer Slices        ║
-║    4. .claude/specs/{NAME}_Spec.md (falls vorhanden, SOLL-Zustand)     ║
-║    5. .claude/models/{NAME}_Model.md (falls vorhanden, IST-Zustand)     ║
+║    4. PRIMAER: {VAULT}/.../Spec/{NAME}_Spec.md (SOLL-Zustand)         ║
+║       FALLBACK: .claude/specs/{NAME}_Spec.md                           ║
+║    5. PRIMAER: {VAULT}/.../Model/{NAME}_Model.md (IST-Zustand)        ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                         ║
 ║    6. .claude/analysis/synthese/{NAME}-BOUNDARIES.md (falls vorhanden)  ║
 ║       → Reuse von bestehender Dekomposition aus wiss. Zyklus            ║
 ║    7. Codebase (via Glob/Grep/Read)                                     ║
 ║    8. MCP Clean Code (Uncle Bob Queries)                                 ║
-║    9. .claude/analysis/evidence/*.md (optional, falls vorhanden)         ║
+║    9. .claude/evidence/*.md (optional, falls vorhanden)         ║
 ║       → Architektur-Constraints beachten VOR Slice-Schnitt              ║
 ║       → constraint-Evidence = "NIE so implementieren" (hard rule)       ║
+║   10. .claude/meta/implementation/stage_{STUFE}.md                      ║
+║       (Stufen-Metadaten, PFLICHT wenn --stufe Parameter gesetzt)        ║
+║       → Laedt blueprint_perspektive, fanout, mocks_erlaubt etc.         ║
+║   11. .claude/models/{NAME}_ImplPipeline_Model.md                       ║
+║       (ImplPipeline-Modell, optional)                                   ║
+║   12. Vorstufen-Blueprint (PFLICHT wenn STUFE > 1):                     ║
+║       .claude/analysis/blueprints/{FEATURE}/S{N-1}/blueprint.md        ║
+║       → Kontinuitaet der Blueprint-Kette sicherstellen                  ║
+║   13. patternBrief (ARCH-16, BL-153):                                   ║
+║       BERATER_OUTPUTS.patternBrief aus Manifest ODER KURZLEBIG_PROMPT   ║
+║       NON-BLOCKING: fehlend = normaler Lauf ohne Pattern-Direktive      ║
 ║                                                                          ║
-║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    .claude/analysis/synthese/{NAME}-ARCHITECT.md                         ║
+║  SCHREIBT (Output) - WENN --mode impact-check:                           ║
+║    _manifest.md → ARCHITECT_IMPACT_VERDICTS: [{finding_id, verdict,     ║
+║      reasoning, affected_files, needs_pl}] (ARCH-12, BL-153)            ║
+║    _manifest.md → ARCHITECT_ESCALATION_QUEUE = [] (nach Verarbeitung)   ║
+║                                                                          ║
+║  SCHREIBT (Output) - PFLICHT (Standard-Modus):                           ║
+║    PRIMAER:  {VAULT}/Backlog/{BL_SLUG}/Blueprint/{NAME}-ARCHITECT.md ║
+║    FALLBACK: .claude/analysis/synthese/{NAME}-ARCHITECT.md               ║
 ║      → System-Ueberblick (Architektur-Vision)                           ║
 ║      → Vertikale Slices (FE → BE → DB pro Feature-Teil)                ║
 ║      → Abhaengigkeiten zwischen Slices                                  ║
 ║      → Architektur-Entscheidungen (DIP, Patterns, Boundaries)          ║
-║      → Test-Pyramide (Unit → Integration → System)                     ║
 ║      → Uncle Bob Empfehlungen (MCP Queries)                             ║
 ║      → Empfohlene Slice-Reihenfolge                                     ║
-║    .claude/analysis/_manifest.md (aktualisieren)                         ║
+║    {VAULT}/_manifest.md (aktualisieren)                         ║
+║                                                                          ║
+║  SCHREIBT (Output) - STUFEN-MODUS (nur wenn --stufe Parameter gesetzt): ║
+║    PRIMAER:  {VAULT}/Backlog/{BL_SLUG}/Blueprint/S{STUFE}/blueprint.md ║
+║    FALLBACK: .claude/analysis/blueprints/{FEATURE}/S{STUFE}/blueprint.md ║
+║      → Blueprint mit 7 Pflicht-Sektionen (RF-BP-001)                   ║
+║    _manifest.md Update:                                                  ║
+║      s{STUFE}_blueprint: done                                            ║
+║      s{STUFE}_blueprint_path: PRIMAER-Pfad (Vault falls erreichbar, sonst FALLBACK) ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - OPTIONAL:                                           ║
 ║    .claude/SLICE-BRIEFINGS.md                                           ║
 ║      → Konkrete Code-Aenderungen, Dateien, Tests pro Slice             ║
 ║      → Quick-Reference fuer Worktree-Arbeit (von FanOut genutzt)       ║
-║    .claude/_parking-lot.md (APPEND, falls Incidental Findings)          ║
+║    {VAULT}/_parking-lot.md (APPEND, falls Incidental Findings)          ║
 ║                                                                          ║
 ║  MCP INTEGRATION:                                                        ║
 ║    - mcp__cleancoder__query() fuer Architektur-Guidance                 ║
@@ -50,7 +84,6 @@
 ║      * "architecture for {feature description}"                         ║
 ║      * "vertical slicing strategy for {component types}"               ║
 ║      * "dependency inversion boundaries {layer description}"            ║
-║      * "test pyramid strategy for {feature type}"                       ║
 ║                                                                          ║
 ║  MCP-BREMSE:                                                             ║
 ║    ┌─────────────────────────────────────────────────────────┐           ║
@@ -86,17 +119,19 @@ Was der Architekt **TUT**:
 - ✅ Feature in vertikale Slices zerlegen (FE → BE → DB)
 - ✅ Abhaengigkeiten zwischen Slices identifizieren
 - ✅ Architektur-Entscheidungen treffen (DIP, Boundaries, Patterns)
-- ✅ Test-Pyramide definieren (welche Tests auf welcher Ebene)
 - ✅ Uncle Bob MCP befragen fuer Architektur-Guidance
 - ✅ Slice-Reihenfolge empfehlen (Canary-First, Dependencies)
 - ✅ Bestehende BOUNDARIES.md wiederverwenden (falls vorhanden)
 
 Was der Architekt **NICHT TUT**:
-- ❌ Code schreiben (→ /_I_codeAtomic)
-- ❌ Tests schreiben (→ /_I_codeAtomic)
+- ❌ Code schreiben (→ TDD-Zyklus)
+- ❌ Tests schreiben (→ TDD-Zyklus)
 - ❌ Einzelne Slices planen (→ /_I_cleanCodeSlice)
 - ❌ Model.md updaten (→ /_SC_modelMaintain)
 - ❌ Findings sammeln (→ /_SC_observe)
+- ❌ Sub-Blueprints erstellen (→ /_I_cleanCodeSlice ist dafuer zustaendig) (RF-ARCH-007)
+- ❌ Pattern Library pflegen (optionaler Post-Stufen-Schritt, nicht Teil dieses Commands) (RF-ARCH-007)
+- ❌ Blueprint validieren (→ /_I_blueprintQG ist dafuer zustaendig) (RF-ARCH-007)
 
 ---
 
@@ -142,15 +177,20 @@ TASKDEFINITION → [SPEC] → MODEL → [GAP] → **CLEANCODEARCHITECT** → MIT
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle aktuellen {NAME}
    - Pruefe ob Task.md existiert
    - Lies **SYSTEM-MODEL** aus System-Konfiguration
-2. Lies `.claude/Task.md`
+2. Lies `{VAULT}/Task.md`
    - Feature-Beschreibung
    - Akzeptanzkriterien
    - Scope-Grenzen
-3. Lies `.claude/models/{NAME}_Model.md` (falls vorhanden)
+3. Lies Model (PRIMAER Vault, FALLBACK lokal, falls vorhanden):
+   # PRIMAER: Vault (BL-065)
+   `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md`
+   # FALLBACK: lokal (Legacy)
+   # fallback-read: expected vault, using .claude/
+   ODER `.claude/models/{NAME}_Model.md`
    - IST-Zustand des Systems
    - Bekannte Wahrheiten (W{n})
    - Aktive TCs
@@ -158,6 +198,27 @@ TASKDEFINITION → [SPEC] → MODEL → [GAP] → **CLEANCODEARCHITECT** → MIT
    - REUSE: Bestehende Dekomposition aus wissenschaftlichem Zyklus
    - Teilprobleme und Datei-Mapping uebernehmen
    - Vertikale Suche Ergebnisse wiederverwenden
+
+---
+
+## Schritt 0.5: patternBrief laden (ARCH-16, BL-153)
+
+> **Einschub-Strategie (INV-EINSCHUB, ARCH-16):** Nach Schritt 0 (Manifest+Inputs lesen),
+> VOR Schritt 1 (Codebase-Exploration).
+> NON-BLOCKING — fehlendes patternBrief = normaler Architect-Lauf ohne Pattern-Direktive.
+
+```
+pattern_brief = lies Manifest → BERATER_OUTPUTS.patternBrief ?? null
+IF pattern_brief == null:
+  pattern_brief = lies KURZLEBIG_PROMPT → pattern_brief ?? null
+
+IF pattern_brief != null AND (|pattern_brief.matched_patterns ?? []| > 0
+                              OR |pattern_brief.matched_semantics ?? []| > 0):
+  Logge: "[architect] patternBrief aktiv: {|pattern_brief.matched_patterns ?? []|} Patterns + {|pattern_brief.matched_semantics ?? []|} Semantics"
+  # pattern_brief.hinweis enthaelt Pattern-Direktive fuer Schritt 3 Slice-Dekomposition
+ELSE:
+  Logge: "[architect] Kein patternBrief (null oder leer) — NON-BLOCKING"
+```
 
 ---
 
@@ -197,20 +258,7 @@ mcp__cleancoder__query(
 
 **Ergebnis dokumentieren:** Uncle Bob's Empfehlungen fuer Gesamtarchitektur
 
-### Query 2: Test-Pyramide
-
-```python
-mcp__cleancoder__query(
-    "test pyramid for {FEATURE_TYPE},
-     unit tests vs integration tests vs system tests,
-     outside-in testing strategy,
-     when to use mocks vs real implementations"
-)
-```
-
-**Ergebnis dokumentieren:** Welche Tests auf welcher Ebene
-
-### Query 3: Boundary Crossings (falls relevant)
+### Query 2: Boundary Crossings (falls relevant)
 
 ```python
 mcp__cleancoder__query(
@@ -266,6 +314,14 @@ graph TD
 | 3 | {Slice} | {Abhaengig von Schritt 1+2} |
 
 **Strategie:** Canary-First (Peripherie vor Core, einfachster Slice zuerst)
+
+**Pattern-Konformanz (ARCH-16, BL-153):**
+```
+IF pattern_brief != null:
+  Pruefe: Passen die definierten Slices zu matched_patterns und matched_semantics?
+  (pattern_brief.hinweis beachten — welche Patterns gelten fuer welche Layer/Slices)
+  Logge: "[architect] Pattern-Konformanz geprueft: {N} Patterns beachtet"
+```
 
 ---
 
@@ -349,22 +405,6 @@ graph TD
 
 **Entscheidung:** {Welche Interfaces? Warum?}
 
-### Test-Strategie
-
-> {Uncle Bob Zitat ueber Tests}
-
-**Test-Pyramide:**
-```
-        /  System Tests  \        (/_I_codeSystem)
-       / Integration Tests \      (/_I_codeIntegration)
-      /    Unit Tests        \    (/_I_codeAtomic)
-```
-
-**Pro Slice:**
-- Unit Tests: {Was wird getestet?}
-- Integration Tests: {Was wird getestet?}
-- System Tests: {Was wird getestet?}
-
 ## 5. Empfohlene Reihenfolge
 
 | # | Slice | Komplexitaet | Begruendung |
@@ -398,6 +438,95 @@ Falls **nur 1 Slice** oder **strikt sequenziell**:
 
 ---
 
+## Mode: --mode impact-check (ARCH-12, BL-153)
+
+> **Einschub-Strategie (INV-EINSCHUB):** Neuer Modus VOR normalem Blueprint-Flow.
+> Ausgeloest von `_PostBatch_orchestrate` SCHRITT 1.5 bei `escalation_queued=true`.
+> NON-BLOCKING: leere Queue → Graceful Skip, kein Fehler.
+
+```
+ENTRY: args = parse_args("--mode impact-check --batch {batch_id}")
+
+SCHRITT IC-0: Queue laden
+  queue = lies _manifest.md → ARCHITECT_ESCALATION_QUEUE ?? []
+  IF |queue| == 0:
+    Logge: "[ARCH-IC] ARCHITECT_ESCALATION_QUEUE leer — NON-BLOCKING Skip"
+    → RETURN (kein Fehler)
+  Logge: "[ARCH-IC] {|queue|} Findings in Queue — Impact-Check startet"
+
+SCHRITT IC-1: Pro Finding Impact-Check durchfuehren
+  verdicts = []
+  FÜR jedes finding IN queue:
+    # Analysiere: Welche anderen Stellen sind betroffen?
+    affected_files = grep_codebase(finding.pattern_id, finding.datei)
+
+    # Test-Bezug inline ermitteln (ARCH-24: kein externer analysiere_test_bezug-Aufruf)
+    # Heuristik: Test-Dateien betroffen wenn *.Tests.* oder *Test* oder */tests/* im affected_files-Pfad
+    test_files = [f for f in affected_files IF
+                  "Test" IN f OR "/tests/" IN f OR ".Tests." IN f OR "_test" IN f]
+    tests_break_likely = (|test_files| > 0) OR (|affected_files| > 3)
+    # Reasoning: Viele betroffene Dateien oder direkte Test-Abhängigkeit = Risiko
+    Logge: "[ARCH-IC] {finding.finding_id} Test-Bezug: {|test_files|} Test-Dateien, {|affected_files|} betroffene Dateien → tests_break_likely={tests_break_likely}"
+
+    # Entscheide Verdict
+    IF finding.auto_fixable == false AND tests_break_likely:
+      verdict = "needs_human"
+      reasoning = "Umfangreicher Eingriff: {|affected_files|} betroffene Dateien ({|test_files|} Test-Dateien), Tests koennten brechen"
+    ELIF finding.auto_fixable == false AND tests_break_likely == false:
+      verdict = "needs_pl"
+      reasoning = "Manuell korrigierbar: Pattern {finding.pattern_id} verletzt in {finding.datei}"
+    ELSE:
+      verdict = "resolved"
+      reasoning = "Auto-fixable oder kein Test-Impact erkennbar"
+
+    verdicts.append({
+      finding_id:    finding.finding_id,
+      verdict:       verdict,
+      reasoning:     reasoning,
+      affected_files: affected_files,
+      test_files:    test_files,
+      needs_pl:      (verdict == "needs_pl"),
+      queued_at:     finding.queued_at
+    })
+    Logge: "[ARCH-IC] {finding.finding_id} → {verdict}: {reasoning}"
+
+SCHRITT IC-2: Output schreiben + Queue leeren
+  Schreibe _manifest.md:
+    ARCHITECT_IMPACT_VERDICTS = verdicts
+    ARCHITECT_ESCALATION_QUEUE = []   # Idempotenz: nach Verarbeitung immer leeren
+  Logge: "[ARCH-IC] DONE — {|verdicts|} Verdicts. Queue geleert. needs_pl={|[v for v in verdicts if v.needs_pl]|}"
+  → RETURN (normaler Exit, kein Blueprint-Flow)
+```
+
+**INV-ARCH-IC-1:** `--mode impact-check` ersetzt den normalen Blueprint-Flow vollstaendig.
+**INV-ARCH-IC-2:** `ARCHITECT_ESCALATION_QUEUE` MUSS nach Verarbeitung auf `[]` gesetzt werden (Idempotenz).
+**INV-ARCH-IC-3:** NON-BLOCKING — leere Queue ist kein Fehler (INV-B2-1 analog).
+
+---
+
+## Aufruf-Dokumentation
+
+```
+/_I_cleanCodeArchitect {NAME} [easy|normal|hard] [--stufe {N}]
+/_I_cleanCodeArchitect {NAME} --mode impact-check [--batch {ID}]
+
+Parameter:
+  NAME:    Feature-Name (PFLICHT)
+  easy|normal|hard: Schwierigkeits-Modus (OPTIONAL, default: normal)
+  --mode:  Spezial-Modus (OPTIONAL):
+           impact-check: Liest ARCHITECT_ESCALATION_QUEUE, schreibt Verdicts,
+                         leert Queue. Kein Blueprint-Flow. (ARCH-12, BL-153)
+  --batch: Batch-ID fuer Kontext (OPTIONAL, nur mit --mode impact-check)
+  --stufe: Teststufe 1-5 (OPTIONAL). Falls gesetzt:
+           - Laedt stage_{N}.md Metadaten aus {META}/implementation/
+           - Passt blueprint_perspektive an (Laserpointer/Taschenlampe/Scheinwerfer/Flutlicht)
+           - Schreibt Output nach .claude/analysis/blueprints/{FEATURE}/S{N}/blueprint.md
+           - Laedt Vorstufen-Blueprint wenn N > 1 (PFLICHT fuer Blueprint-Kette)
+           Falls NICHT gesetzt: Verhalten wie bisher (klassischer Modus, Output = ARCHITECT.md)
+```
+
+---
+
 ## Schwierigkeits-Parameter
 
 | Schwierigkeit | MCP Queries | Codebase-Tiefe |
@@ -405,6 +534,122 @@ Falls **nur 1 Slice** oder **strikt sequenziell**:
 | **easy** | 1-2 Queries | Oberflaechlich |
 | **normal** | 2-3 Queries | Standard |
 | **hard** | 3-5 Queries + Subagenten | Tiefenanalyse |
+
+---
+
+## Blueprint-Perspektive (Stufen-Modus, nur wenn --stufe gesetzt)
+
+Falls --stufe Parameter gesetzt: Lade `stage_{STUFE}.md` und lies `blueprint_perspektive` Feld.
+
+| Stufe | Perspektive | Schnitt-Breite |
+|-------|-------------|----------------|
+| 1 | Laserpointer | 1 Klasse / 1 Methode |
+| 2 | Taschenlampe | 2-3 Klassen/Module |
+| 3 | Scheinwerfer | Vollstaendiger Anwendungsfall (API+DB+Service) |
+| 4 | Flutlicht | Vollstaendiger End-User-Workflow |
+| 5 | Fernrohr | Vollstaendige E2E-Journey (TL-Only Constraint) |
+
+Die Perspektive bestimmt wie der Architect die Slices schneidet:
+- Kleinere Perspektive (Laserpointer) → mehr, feinere Slices
+- Groessere Perspektive (Scheinwerfer) → weniger, groebere Slices
+
+---
+
+## Blueprint-Output-Format (Stufen-Modus)
+
+Wenn --stufe Parameter gesetzt, schreibt der Command ein Blueprint nach:
+`.claude/analysis/blueprints/{FEATURE}/S{STUFE}/blueprint.md`
+
+### Pflicht-Sektionen (RF-BP-001):
+
+1. **Frontmatter** (YAML): type, variant, feature, stufe, name, part, part_of, datum, blueprint_perspektive, parent_blueprint, architect_model, qg_blueprint, pattern_zuweisung, status, erstellt_von
+2. **Scope**: Welche Teile des Systems werden in dieser Stufe implementiert?
+3. **Stufen-Block**: Stufen-spezifische Informationen (testbefehl, fanout, mocks_erlaubt)
+4. **Pattern-Zuweisung**: Platzhalter anlegen (wird von _I_patternLibrary befuellt)
+5. **Test-Inventar**: Platzhalter anlegen (wird von _I_testSearch befuellt: K/B/A Kategorien)
+6. **Gold-Definition**: Platzhalter anlegen (wird von _I_goldDefine befuellt: Gold-Formel + Kanarienvoegel + Nicht-Ziele)
+7. **Slice-Plan**: Empfohlene Slices mit fanout_empfehlung
+   - **BL-NEW-29 (2026-05-11) Batch-as-Slice:** Bei `slicing=false` (Default) produziere
+     EXAKT 1 Slice-Plan-Eintrag: `[1 Slice = ganzer Batch]`. Sub-Komponenten (z.B.
+     10 DTOs einer Hierarchie) als KOORDINATIONS-HINTS innerhalb dieses 1 Slice
+     dokumentieren — NICHT als getrennte Slice-Eintraege. fanout_empfehlung = 1.
+   - Bei `slicing=true` (Legacy/Forward-Compat): Multi-Slice-Plan wie bisher mit
+     fanout_empfehlung > 1.
+
+### INVARIANTE: Pattern-Zuweisung Ownership (RF-BPS1, AC-BPS1-2)
+
+`_I_patternLibrary` ist der EINZIGE Command der `## Pattern-Zuweisung` im Blueprint
+befuellt. Kein anderer Command darf diese Sektion inhaltlich aendern.
+- `_I_cleanCodeArchitect` LEGT AN (Platzhalter `## Pattern-Zuweisung` mit "pending")
+- `_I_patternLibrary` SCHREIBT (ersetzt NUR `## Pattern-Zuweisung` Platzhalter mit Tabelle)
+- Alle anderen Commands: LESEN ONLY
+
+### DomainLibrary + FactoringLibrary Consult (BL-237 batch_C4 AK-7) — NON-BLOCKING
+
+Das 4-kind-Pattern-System (BL-237) traegt neben PatternLibrary (arch) + SemanticLibrary
+(semantic) zwei weitere Achsen: **DomainLibrary** (fachliche/Business-Achse) +
+**FactoringLibrary** (Refactoring-Achse). Bei der System-Dekomposition KONSULTIERT der
+Architekt beide ZUSAETZLICH zur PatternLibrary, um fachliche/Refactoring-Konventionen in
+die Slice-/Modul-Schnitte einfliessen zu lassen:
+
+```
+domain_hits    = pattern_library.find_patterns(query) gegen DomainLibrary    [scope=domain]
+factoring_hits = pattern_library.find_patterns(query) gegen FactoringLibrary  [scope=factoring]
+```
+
+**NON-BLOCKING-KLAUSEL (AK-7-Constraint, HART):** DomainLibrary + FactoringLibrary sind
+greenfield (F5: frisch via AK-7 bootstrappt, usage_count=0). Eine leere/greenfield Library
+darf den Architektur-Schritt NIEMALS abbrechen — 0 Domain-/Factoring-Matches ist der
+ERWARTETE Cold-Start-Zustand, kein Fehler. Der Architekt fuegt gefundene Hits beratend in
+die Blueprint-`## Pattern-Zuweisung`-Vorgabe ein (via `_I_patternLibrary`-Ownership), bricht
+aber bei Leere NIE ab. Greenfield bricht den Architect-Schritt nie.
+
+### Pattern-Zuweisung-Tabelle (RF-BPS1, AC-BPS1-4)
+
+Format der `## Pattern-Zuweisung` Sektion im Blueprint (befuellt von `_I_patternLibrary`):
+
+```
+| Insel/Modul | Pattern-Name | Beschreibung | PL-Pfad | Min | Max | Fallback |
+|-------------|-------------|-------------|---------|-----|-----|----------|
+| {slice/modul} | {P-XXX-NNN} | {Kurzbeschreibung} | patterns/{cluster}/{name}.md | {min_score} | {max_score} | {RED/custom} |
+```
+
+Spalten-Semantik:
+- **Insel/Modul:** Slice oder Modul aus dem Blueprint-Scope
+- **Pattern-Name:** Pattern-ID aus _pattern-library.md oder _pl-index.md
+- **Beschreibung:** Einzeiler warum dieses Pattern hier passt
+- **PL-Pfad:** Relativer Pfad zur Pattern-Datei
+- **Min/Max:** Reuse-Score-Bounds (0.0-1.0) — bei MATURE Patterns aus Bounds-Feld
+- **Fallback:** Was tun wenn Score < Min (RED = Custom Implementation noetig)
+
+### Beispiel-Frontmatter:
+
+```yaml
+---
+type: blueprint
+variant: gross
+feature: {NAME}
+stufe: {N}
+name: {Stufen-Name}
+part: 1
+part_of: 1
+datum: {YYYY-MM-DD}
+blueprint_perspektive: {Laserpointer|Taschenlampe|Scheinwerfer|Flutlicht}
+parent_blueprint: null | .claude/analysis/blueprints/{NAME}/S{N-1}/blueprint.md
+architect_model: {MODEL_ID}
+qg_blueprint: pending
+pattern_zuweisung: pending
+status: draft
+erstellt_von: _I_cleanCodeArchitect
+---
+```
+
+**Feld-Semantik (RF-BP-002):**
+- `variant`: `gross` fuer Haupt-Blueprint (Architect-Output), `small` fuer Sub-Blueprint (Slicer-Output)
+- `part` / `part_of`: Part-N-von-N Splitting (RF-BP-007). Bei nicht-gesplitteten Blueprints: `1` / `1`
+- `parent_blueprint`: Pfad zum Vorstufen-Blueprint (RF-BP-006). Stufe 1: `null`. Stufe N>1: Pfad zu S{N-1}/blueprint.md
+- `architect_model`: Model-ID des ausfuehrenden Agents (Transparenz)
+- `status`: Lifecycle — `draft` (Architect-Output), `approved` (nach blueprintQG PASS), `superseded` (durch neuere Version ersetzt)
 
 ---
 

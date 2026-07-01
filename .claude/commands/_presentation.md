@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Praesentation: Ergebnisse aufbereiten
 
 Du erstellst eine Praesentation der Arbeitsergebnisse - angepasst an den Kontext.
@@ -19,24 +23,33 @@ Default ohne Parameter: **ZWISCHENERGEBNIS**
 ║  COMMAND: /_presentation                                     ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║                                                               ║
-║  LIEST (Input):                                               ║
-║    1. .claude/analysis/_manifest.md                            ║
-║    2. .claude/models/{NAME}_Model.md (falls vorhanden) ║
-║    3. .claude/analysis/synthese/{NAME}-HYPOTHESEN.md (falls vorh.)║
-║    4. .claude/analysis/synthese/{NAME}-OBSERVE*.md (v2.2+)    ║
-║    5. .claude/analysis/synthese/{NAME}-QUALITYGATE*.md (v2.2+)║
+║  LIEST (Input) — Vault-First (BL-050):                        ║
+║    1. {VAULT}/_manifest.md                            ║
+║    2. PRIMAER: {VAULT}/.../Model/{NAME}_Model.md              ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                ║
+║    3. PRIMAER: {VAULT}/.../SC/{NAME}-HYPOTHESEN.md            ║
+║       FALLBACK: .claude/analysis/synthese/{NAME}-HYPOTHESEN.md║
+║    4. PRIMAER: {VAULT}/.../SC/{NAME}-OBSERVE*.md (v2.2+)     ║
+║       FALLBACK: .claude/analysis/synthese/{NAME}-OBSERVE*.md  ║
+║    5. PRIMAER: {VAULT}/.../SC/{NAME}-QUALITYGATE*.md (v2.2+) ║
+║       FALLBACK: .claude/analysis/synthese/{NAME}-QUALITYGATE*.md║
 ║    6. .claude/analysis/synthese/{NAME}-ANALYSE*.md (LEGACY)   ║
-║    7. .claude/analysis/synthese/{NAME}-GAP.md (v3.0)          ║
-║    8. .claude/specs/{NAME}_Spec.md (v3.0)                     ║
+║    7. PRIMAER: {VAULT}/.../Gap/{NAME}-GAP.md (v3.0)          ║
+║       FALLBACK: .claude/analysis/synthese/{NAME}-GAP.md       ║
+║    8. PRIMAER: {VAULT}/.../Spec/{NAME}_Spec.md (v3.0)        ║
+║       FALLBACK: .claude/specs/{NAME}_Spec.md                  ║
 ║    9. git diff (bei PR-Modus)                                 ║
 ║                                                               ║
-║  SCHREIBT (Output) - PFLICHT:                                 ║
-║    PR:              .claude/presentation/{TICKET}-PR.md       ║
-║    BRAINSTORM:      .claude/presentation/{THEMA}-OPTIONS.md   ║
-║    ZWISCHENERGEBNIS:.claude/presentation/{TICKET}-STATUS.md   ║
+║  SCHREIBT (Output) - PFLICHT — Vault-First (BL-050):         ║
+║    PR:              PRIMAER: {VAULT}/.../Presentations/{TICKET}-PR.md ║
+║                     FALLBACK: .claude/presentation/{TICKET}-PR.md     ║
+║    BRAINSTORM:      PRIMAER: {VAULT}/.../Presentations/{THEMA}-OPTIONS.md ║
+║                     FALLBACK: .claude/presentation/{THEMA}-OPTIONS.md ║
+║    ZWISCHENERGEBNIS:PRIMAER: {VAULT}/.../Presentations/{TICKET}-STATUS.md ║
+║                     FALLBACK: .claude/presentation/{TICKET}-STATUS.md ║
 ║                                                               ║
 ║  Manifest (IMMER):                                            ║
-║    .claude/analysis/_manifest.md (aktualisieren)              ║
+║    {VAULT}/_manifest.md (aktualisieren)              ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```
@@ -49,7 +62,7 @@ Default ohne Parameter: **ZWISCHENERGEBNIS**
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle {NAME} und aktuellen Stand
    - Lies SYSTEM-MODEL aus System-Konfiguration
    - Bestimme effektives Modell: min(SYSTEM-MODEL, sonnet)
@@ -150,9 +163,32 @@ Manifest aktualisieren, User informieren.
 
 ---
 
+## EMAIL-VERSAND (Pflicht - nach Output-Datei geschrieben)
+
+**NUR wenn Output-Datei erfolgreich geschrieben wurde.**
+
+Sende die Praesentation als **Email-Body** (KEIN Attachment — MD-Inhalt = Email-Inhalt):
+
+```bash
+python3 .claude/scripts/email_sender.py \
+  "[OmniCommand] /_presentation {NAME} — {MODUS}" \
+  --body-from-file "{OUTPUT_DATEI_PFAD}"
+```
+
+| Modus | Subject |
+|-------|---------|
+| PR | `[OmniCommand] PR {TICKET} — Technische Dokumentation` |
+| BRAINSTORM | `[OmniCommand] Brainstorm {THEMA} — Optionen` |
+| ZWISCHENERGEBNIS | `[OmniCommand] Status {NAME}` |
+
+**Fehlerbehandlung:** Falls Email fehlschlaegt (GMAIL_ADDRESS/GMAIL_APP_PASSWORD nicht gesetzt):
+→ WARNUNG ausgeben, NICHT abbrechen. Datei ist trotzdem geschrieben.
+
+---
+
 ## NOTIFY (Pflicht - Allerletzter Schritt)
 
-**NUR wenn ALLES fertig ist** (alle Schritte abgeschlossen, Zusammenfassung ausgegeben):
+**NUR wenn ALLES fertig ist** (alle Schritte abgeschlossen, Email versendet oder WARNING):
 
 ```bash
 powershell -Command "notify '{FEATURE} /_presentation abgeschlossen'"

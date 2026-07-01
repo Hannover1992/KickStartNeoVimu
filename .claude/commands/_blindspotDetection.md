@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Blind-Spot-Detection + Canary Probes
 
 Du pruefst systematisch ob der aktuelle Fokus korrekt ist.
@@ -27,7 +31,7 @@ Kein easy-Modus (Blind-Spot-Erkennung erfordert diverse Perspektiven).
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
+║    1. {VAULT}/_manifest.md                                      ║
 ║    2. .claude/models/{NAME}_Model.md  ◄── MUSS EXISTIEREN               ║
 ║       (oder Teilmodelle bei Model-Split + Model-Topologie)               ║
 ║    3. .claude/analysis/synthese/{NAME}-ANALYSE{CYCLE}.md                 ║
@@ -42,7 +46,7 @@ Kein easy-Modus (Blind-Spot-Erkennung erfordert diverse Perspektiven).
 ║       → Canary-Probe-Plan (max 7, min 1 AUSSERHALB Fokus)              ║
 ║       → Dead-End-Liste                                                   ║
 ║       → Empfohlener naechster Schritt                                    ║
-║    2. .claude/analysis/_manifest.md (aktualisieren)                      ║
+║    2. {VAULT}/_manifest.md (aktualisieren)                      ║
 ║                                                                          ║
 ║  PFLICHT: MENSCH-IN-THE-LOOP (W15)                                       ║
 ║    User MUSS Canary-Probe-Platzierung bestaetigen bevor Probes           ║
@@ -75,7 +79,7 @@ Kein easy-Modus (Blind-Spot-Erkennung erfordert diverse Perspektiven).
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`

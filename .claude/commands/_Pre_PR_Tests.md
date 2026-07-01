@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_Pre_PR_Tests - Test-Klassen Quality Gate
 
 **Version:** 1.0
@@ -14,7 +18,7 @@
 +---------------------------------------------------------------------+
 |  LIEST:                                                             |
 |    - git diff --name-only develop...HEAD (*.cs in *Tests* Projekten) |
-|    - .claude/meta/codeKonvention/testbase.md                        |
+|    - {META}/codeKonvention/testbase.md                        |
 |    - Test-Dateien im DIRTY-Scope                                    |
 |                                                                     |
 |  SCHREIBT:                                                          |
@@ -86,7 +90,7 @@ dir /s /b *Tests\*.cs
 
 ```markdown
 1. DIRTY-Scope ermitteln (git diff Test-Dateien)
-2. Konventions-Metadatei laden (.claude/meta/codeKonvention/testbase.md)
+2. Konventions-Metadatei laden ({META}/codeKonvention/testbase.md)
 3. Falls keine Test-Dateien: EXIT mit INFO
 ```
 
@@ -262,7 +266,7 @@ CONTINUE: Ja (andere Dateien weiter fixen)
 
 ### Fehler 4: Konventions-Datei fehlt
 ```
-ERROR: .claude/meta/codeKonvention/testbase.md nicht gefunden
+ERROR: {META}/codeKonvention/testbase.md nicht gefunden
 ACTION: Datei erstellen (Template verwenden)
 EXIT: 1
 ```

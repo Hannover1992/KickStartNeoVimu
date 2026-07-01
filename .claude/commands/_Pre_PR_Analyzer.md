@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Analyzer
 description: Pre-PR Analyzer Quality Gate - prueft und repariert Analyzer-Konfiguration in .csproj Dateien
+type: building-block
 ---
 
 # /_Pre_PR_Analyzer
@@ -22,7 +23,7 @@ description: Pre-PR Analyzer Quality Gate - prueft und repariert Analyzer-Konfig
 ║  COMMAND: /_Pre_PR_Analyzer                                  ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                      ║
-║    1. .claude/meta/codeKonvention/analyzer.md                ║
+║    1. {META}/codeKonvention/analyzer.md                ║
 ║    2. Git Diff (develop...HEAD)                              ║
 ║    3. Alle *.csproj Dateien (neue + geaenderte)              ║
 ║    4. .editorconfig (fuer R3)                                ║
@@ -64,10 +65,10 @@ DIRTY-SCOPE:
 **Aktion:** Konvention laden.
 
 ```bash
-cat .claude/meta/codeKonvention/analyzer.md
+cat {META}/codeKonvention/analyzer.md
 ```
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/analyzer.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/analyzer.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
 **Regeln extrahieren:**
 - R1: SonarAnalyzer.CSharp in .csproj (BLOCKER, Auto-Fix JA)

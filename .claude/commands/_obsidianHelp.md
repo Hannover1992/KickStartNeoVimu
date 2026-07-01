@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Obsidian Integration - Hilfe & Referenz
 
 Zeigt die vollstaendige Obsidian-Integration des wissenschaftlichen Forschungszyklus:

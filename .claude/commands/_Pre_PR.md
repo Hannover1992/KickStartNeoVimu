@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR
 description: "REDIRECT → /_Pre_PR_orchestrate (Team-basierte parallele Ausfuehrung)"
+type: satellite
 ---
 
 # /_Pre_PR → REDIRECT

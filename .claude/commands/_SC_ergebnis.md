@@ -1,4 +1,17 @@
+---
+type: building-block
+depends_on:
+  - _SC_implement
+feeds_into:
+  - _SC_observe
+  - _finish
+related:
+  - _SC_modelMaintain
+---
+
 # /_SC_ergebnis
+
+**Changelog:** v2.2 (2026-04-25): BL-142 Caller-Migration — complexity_* -> aggregat_*; aggregat_auto_tdd_pending (step 7c) gestrichen
 
 Du sammelst Rohdaten, strukturierst sie und fuehrst MECHANISCHE ABLEITUNGEN durch.
 Dies ist die NIEDRIG-KOGNITIVE Phase: Sammeln, Strukturieren, Formeln anwenden.
@@ -8,35 +21,8 @@ OPTIONAL: Skip wenn Ergebnisse offensichtlich (Build OK/FAIL, Test passed/failed
 ## Aufruf
 
 ```
-/_SC_ergebnis [easy|normal|hard]
+/_SC_ergebnis
 ```
-
-Default ohne Parameter: **easy**
-
----
-
-## DUAL-MODE: Solo vs. Wellen-Worker
-
-Dieses Command kann in zwei Modi laufen:
-
-**SOLO-MODUS** (User ruft direkt auf: `/_SC_ergebnis [easy|normal|hard]`)
-- easy: 1 Agent (DU) sammelt ALLE Quellen sequentiell, fuehrt alle Schritte (0-5) aus
-- normal/hard: 1 Agent (DU) sammelt alle Quellen sequentiell (kein paralleles Spawning)
-- Alle Schritte (0-5) werden von dir ausgefuehrt
-
-**WELLEN-WORKER-MODUS** (Team Lead hat Task erstellt, Task-Beschreibung enthaelt "Welle X:")
-- Lies die Task-Beschreibung via TaskGet um deinen Modus zu erkennen
-- "Welle 1: Datensammlung, Sammler-ID: DS{NN}, Quellen: {quellen-liste}"
-  → Sammle NUR die zugewiesenen Quellen
-  → Schreibe: `.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS{NN}.md`
-  → Kein Spawning. Kein Manifest-Update. SendMessage an Team Lead wenn fertig.
-- "Welle 2: Synthese + SRS"
-  → Lies ALLE `.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS*.md`
-  → Konsolidiere Rohdaten, berechne SRS, Widerlegungs-Marker, Stagnation
-  → Schreibe: `.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md`
-  → Aktualisiere Manifest, sende SendMessage an Team Lead
-
-**Erkennung:** Kein Wellen-Hinweis in Task-Beschreibung → Solo-Modus.
 
 ---
 
@@ -44,12 +30,12 @@ Dieses Command kann in zwei Modi laufen:
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  COMMAND: /_SC_ergebnis [easy|normal|hard]                               ║
+║  COMMAND: /_SC_ergebnis                                                  ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
-║    2. .claude/analysis/synthese/{NAME}-HYPOTHESEN.md                     ║
+║    1. {VAULT}/_manifest.md                                      ║
+║    2. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md                     ║
 ║       ◄── Erwartete Ergebnisse + Falsifizierungskriterien                ║
 ║    3. Logs, Container-Status, Test-Output, User-Feedback                 ║
 ║    4. .claude/crumbs/{NAME}_crumbs.md (Crumbs aus A-Phase, fuer Kontext)║
@@ -67,27 +53,39 @@ Dieses Command kann in zwei Modi laufen:
 ║    → Liest KEINE Prosa, KEINE Analyse-Befunde, KEINE Hypothesen         ║
 ║    → Jeder Lesezugriff muss ZAEHLEN oder ABLESEN sein                   ║
 ║                                                                          ║
-║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    1. .claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md                ║
+║  SCHREIBT (Output) - PFLICHT (BL-050 Vault-First):                       ║
+║    1. PRIMAER: {VAULT}/Backlog/{BL_SLUG}/SC/{NAME}-ERGEBNIS{CYCLE}.md ║
+║       FALLBACK: {WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md     ║
 ║       → Strukturierte Rohdaten                                           ║
 ║       → SRS-Score VORHER/NACHHER (ab Cycle 2, PC2/HO)                   ║
 ║       → Widerlegungs-Marker (VERSCH/HO)                                 ║
 ║       → Stagnations-Check (VERSCH/HO)                                   ║
-║    2. .claude/analysis/_manifest.md (aktualisieren)                      ║
+║    2. {VAULT}/_manifest.md (aktualisieren)                      ║
 ║       → inkl. Stagnations-Zaehler Update                                 ║
 ║                                                                          ║
-║  SCHREIBT (Output) - WELLEN-WORKER-MODUS Welle 1:                       ║
-║    .claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS{NN}.md               ║
-║    → Rohdaten einer zugewiesenen Quellen-Gruppe                          ║
-║    → YAML-Frontmatter: name, phase, wave=datensammlung, agent=DS{NN},   ║
-║      quellen, date, status=final                                         ║
+║  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                        ║
+║    Pattern C: Protokoll-Write ZUERST, danach State-Einzeiler            ║
+║    SCHREIBT PROTOKOLL (_manifest_protokoll.md, Schritt 5a):             ║
+║      ## Ergebnis Z{CYCLE} - {Datum}                                     ║
+║      [x]-Checkliste vollstaendig                                         ║
+║      Prepend-Mechanismus (W18): last_append + append_count++             ║
+║    SCHREIBT STATE (_manifest.md, Schritt 5b):                           ║
+║      PHASE, NAECHSTER_SCHRITT, STAGNATION, LETZTER_*_FORTSCHRITT        ║
+║      (NUR State-Einzeiler — KEIN Checklisten-Block in _manifest.md)     ║
+║                                                                          ║
+║  SCHREIBT (Output) - abhaengig von Worker-Rolle:                         ║
+║    Ergebnis-Sammler DS{NN}:                                              ║
+║      {WORKING_DIR}/.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS{NN}.md             ║
+║      → Rohdaten einer zugewiesenen Quellen-Gruppe                        ║
+║    Ergebnis-Synthesist:                                                   ║
+║      {WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md                ║
+║      → Konsolidierte Rohdaten + SRS + Widerlegungs-Marker               ║
 ║                                                                          ║
 ║  SCHREIBT NICHT:                                                         ║
 ║    ✗ KEIN Model-Update (macht /_SC_modelMaintain)                        ║
 ║    ✗ KEINE Interpretation (macht /_SC_observe)                           ║
 ║    ✗ KEINE Schlussfolgerungen                                            ║
 ║    ✗ KEINE Battle-Royale-BEWERTUNG (macht /_SC_qualityGate)              ║
-║    ✗ Im WORKER-MODUS: Welle-1-Agents schreiben KEIN Manifest-Update      ║
 ║                                                                          ║
 ║  DREI-KATEGORIEN-REGEL (H2, Kap. 3.4):                                  ║
 ║    ┌──────────────────────┬─────────────────────┬──────────────────────┐ ║
@@ -115,30 +113,43 @@ Dieses Command kann in zwei Modi laufen:
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=sonnet)`
    - Lies **STAGNATION** Zaehler (falls vorhanden)
-2. Lies `.claude/analysis/synthese/{NAME}-HYPOTHESEN.md`
+2. Lies `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md`
    - Lies erwartete Ergebnisse und Falsifizierungskriterien
    - Lies Verifikations-Kriterium (V1-V5) und Verifikations-Anleitung
    - Diese dienen als CHECKLISTE fuer die Datensammlung
 3. **Ab Cycle 2 (PC2):** Lies Model im DATENBANK-MODUS
-   - **Bei Model-Split:** Lies `.claude/models/{NAME}_Model-Topologie.md` zuerst
-     → Identifiziere FOKUS-Teilmodel → Lies `.claude/models/{NAME}_{TC}_Model.md`
-   - **Ohne Split:** Lies `.claude/models/{NAME}_Model.md`
+   - **Bei Model-Split:**
+     # PRIMAER: Vault (BL-065)
+     Lies `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model-Topologie.md` zuerst
+     # FALLBACK: lokal (Legacy)
+     # fallback-read: expected vault, using .claude/
+     ODER `.claude/models/{NAME}_Model-Topologie.md`
+     → Identifiziere FOKUS-Teilmodel
+     Lies `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_{TC}_Model.md`
+     # fallback-read: expected vault, using .claude/
+     ODER `.claude/models/{NAME}_{TC}_Model.md`
+   - **Ohne Split:**
+     # PRIMAER: Vault (BL-065)
+     Lies `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md`
+     # FALLBACK: lokal (Legacy)
+     # fallback-read: expected vault, using .claude/
+     ODER `.claude/models/{NAME}_Model.md`
    - ZAEHLE aktive W{n} (Status=AKTIV) → D2
    - ZAEHLE Offene Hypothesen-Bereiche (Kap. 6a) → D1
    - ZAEHLE betroffene Dateien (aus HYPOTHESEN.md) → D3
    - ZAEHLE Aktive TCs (Kap. 6a oder Model-Topologie) → D4
    - **Bei Split:** SRS pro FOKUS-Teilmodel (D4_teil = 1)
    - **LIES KEINE PROSA. NUR LISTEN ABZAEHLEN.**
-4. **Ab Cycle 2 (PC2):** Lies vorheriges `.claude/analysis/synthese/{NAME}-ERGEBNIS*.md`
+4. **Ab Cycle 2 (PC2):** Lies vorheriges `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS*.md`
    - Lies SRS-VORHER-Wert
    - Lies Stagnations-Zaehler-Stand
 5. **Auto-Increment: Bestimme naechste Ergebnis-Nummer {CYCLE}**
-   - Scanne `.claude/analysis/synthese/{NAME}-ERGEBNIS*.md` auf Disk
+   - Scanne `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS*.md` auf Disk
    - `{CYCLE}` = hoechste gefundene Nummer + 1
    - Suffix-Konvention: `""` fuer 1, `"2"` fuer 2, etc.
 
@@ -285,17 +296,86 @@ NEUER ZAEHLER = {
 | >= 5.0 | SCHWELLE PFLICHT ERREICHT |
 | >= 7.0 | SCHWELLE ABORT ERREICHT |
 
+### 2d: AGGREGAT_CHECKPOINT (DynamischeKomplexitaet v1.0, RF-01+RF-02)
+
+# DK v1.0: misst Size-Complexity (Art 1). Fragility-Detection → Post-DK Feature.
+# Formel: f(offene_RFs, offene_AKs, offene_Epics) → numerischer Score.
+# Kopplung (Art 2) und Unknown (Art 3) werden als Naeherung ueber Size abgedeckt.
+
+**Zweck:** Nach jedem Zyklus die aktuelle Komplexitaet aus der Spec neu berechnen,
+mit dem Vorgaengerwert vergleichen und Trend ins Manifest schreiben.
+
+```
+# Schritt 2d: AGGREGAT_CHECKPOINT
+
+# 1. Vorherigen Wert lesen
+Lies Manifest: aggregat_current → AGGREGAT_ALT
+Lies Manifest: aggregat_changed_at_cycle → CYCLE_ALT
+
+# 2. Offene Items aus Spec zaehlen
+Lies Spec ({NAME}-SPEC.md):
+  Zaehle OFFENE RFs:   Zeilen mit `[ ]` vor RF-Header oder RF-Bloecke ohne `[x]`
+  Zaehle OFFENE AKs:   Zeilen mit `[ ]` vor AK-Header oder AK-Bloecke ohne `[x]`
+  Zaehle OFFENE Epics:  Zeilen mit `[ ]` vor Epic-Header oder Epic-Bloecke ohne `[x]`
+  Fallback: Falls Spec keine Checkboxen nutzt → alle Items zaehlen
+
+# 3. AGGREGAT_NEU berechnen
+AGGREGAT_NEU = f(offene_RFs, offene_AKs, offene_Epics):
+  LOW:    offene_RFs <= 3 UND offene_AKs <= 5 UND offene_Epics <= 2
+  HIGH:   offene_RFs > 8 ODER offene_AKs > 15 ODER offene_Epics > 5
+  MEDIUM: sonst
+
+# 4. Trend berechnen (Ordnung: HIGH > MEDIUM > LOW)
+IF AGGREGAT_NEU > AGGREGAT_ALT:
+  aggregat_trend = RISING
+ELIF AGGREGAT_NEU < AGGREGAT_ALT:
+  aggregat_trend = FALLING
+ELSE:
+  aggregat_trend = STABLE
+
+# 5. Manifest-Write (5 Felder)
+IF AGGREGAT_NEU != AGGREGAT_ALT:
+  aggregat_prev: {AGGREGAT_ALT}
+aggregat_current: {AGGREGAT_NEU}
+aggregat_trend: {RISING|STABLE|FALLING}
+aggregat_changed_at_cycle: {CYCLE}
+
+# 6. aggregat_switch_recommendation berechnen (RF-07)
+# W26-Fix: STABLE HIGH = einmal geswitcht, kein Rauschen mehr. NUR RISING triggert.
+IF AGGREGAT_NEU == HIGH AND aggregat_trend == RISING:
+  aggregat_switch_recommendation = FULL_SYMBIOSE
+ELIF AGGREGAT_NEU == HIGH AND aggregat_trend == STABLE:
+  aggregat_switch_recommendation = NONE
+ELIF AGGREGAT_NEU == MEDIUM AND aggregat_trend == FALLING:
+  aggregat_switch_recommendation = NONE
+ELSE:
+  aggregat_switch_recommendation = NONE
+
+# 7. Manifest-Write aggregat_switch_recommendation
+aggregat_switch_recommendation: {aggregat_switch_recommendation}
+
+LOG: "[AGGREGAT_CHECKPOINT] ALT={AGGREGAT_ALT} NEU={AGGREGAT_NEU} TREND={aggregat_trend} CYCLE={CYCLE} SWITCH_REC={aggregat_switch_recommendation}"
+
+# 7b. RF-04: INITIAL->STABLE Audit-Trail (AK-M3)
+IF AGGREGAT_ALT != AGGREGAT_NEU AND CYCLE_ALT == 0:
+  LOG: "[RF-04] INITIAL -> STABLE: aggregat_changed_at_cycle={CYCLE} (erste Aenderung)"
+ELIF AGGREGAT_ALT != AGGREGAT_NEU:
+  LOG: "[RF-04] STABLE -> STABLE: aggregat_changed_at_cycle={CYCLE} (erneute Aenderung)"
+
+# 7c. RF-05: aggregat_auto_tdd_pending — GESTRICHEN (BL-142)
+# Feld entfernt. Auto-tdd-Logik wird nicht mehr berechnet.
+```
+
+**DREI-KATEGORIEN-REGEL:** Dies ist eine MECHANISCHE ABLEITUNG (Zaehlen + Formel + Vergleich).
+Keine Interpretation. Zwei Ausfuehrer muessen dasselbe Ergebnis bekommen.
+
 ---
 
-## Schwierigkeits-Parameter
+## Worker-Vertrag: Ergebnis-Sammler (Datensammlung)
 
-| Schwierigkeit | Wellen-Worker-Modus (Team Lead steuert) | Solo-Modus (DU machst alles) |
-|---------------|----------------------------------------|------------------------------|
-| **easy** | 1 Task (Welle 1+2 kombiniert, 1 Agent) | 1 Agent (DU, sequentiell) |
-| **normal** | 5 Sammler-Tasks (DS01-DS05) + 1 Synthese-Task | 1 Agent (DU, sequentiell) |
-| **hard** | 9 Sammler-Tasks (DS01-DS09) + 1 Synthese-Task | 1 Agent (DU, sequentiell) |
+Du bist Sammler DS{NN}. Dein Auftrag: Rohdaten aus zugewiesenen Quellen sammeln.
 
-**Sammler-Fokus-Bereiche (Wellen-Worker-Modus Welle 1):**
+### Sammler-Fokus-Bereiche
 
 | Sammler | Quellen | Aufgabe |
 |---------|---------|---------|
@@ -304,61 +384,62 @@ NEUER ZAEHLER = {
 | DS03 | Browser/UI + User | Browser-Tests, User-Feedback, manuelle Pruefung |
 | DS04-DS09 | (bei hard) | Weitere spezialisierte Quellen (Datenbankabfragen, externe APIs, etc.) |
 
-**Modell-Downgrade (BEIBEHALTEN - niedrig-kognitiv, Rohdaten-Sammlung):**
+### Sammler-Auftrag
 
-| System-Model | Sammler (Welle 1) | Synthese-Agent (Welle 2 / Solo) |
-|-------------|-------------------|--------------------------------|
-| opus | sonnet | sonnet |
-| sonnet | haiku | sonnet |
-| haiku | haiku | haiku |
+```
+Du bist Sammler DS{NN} fuer die Ergebnis-Datensammlung von "{NAME}" (Cycle {N}).
 
-**Begruendung Downgrade:** `_SC_ergebnis` ist explizit NIEDRIG-KOGNITIV (docker ps parsen,
-Zahlen abzaehlen, SRS-Formel anwenden). Hochkognitive Interpretation bleibt `_SC_observe`
-und `_SC_modelMaintain` (die opus behalten). Sonnet/Haiku reichen fuer mechanische Sammlung.
+INPUT - LIES ZUERST DIESE DATEIEN:
+  1. {VAULT}/_manifest.md
+  2. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md
 
----
+AUFTRAG: Sammle Rohdaten aus {Quellen-Beschreibung}
 
-## Schritt 2.5: Wellen-Worker-Modus Welle 1 (Datensammlung)
+SCHREIB-PFLICHT:
+Du MUSST deine Rohdaten in folgende Datei schreiben:
+  {WORKING_DIR}/.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS{NN}.md
 
-**NUR ausfuehren wenn Task-Beschreibung "Welle 1: Datensammlung" enthaelt.**
+DATEI-FORMAT (Pflicht):
+  ---
+  name: {NAME}
+  phase: ergebnis{CYCLE}
+  wave: datensammlung
+  tier: {SYSTEM-MODEL}
+  model: {TATSAECHLICHES-MODELL}
+  agent: DS{NN}
+  quellen: {quellen-liste, z.B. "Container, Service-Logs"}
+  date: {YYYY-MM-DD}
+  status: final
+  ---
 
-Falls du als Sammler DS{NN} vom Team Lead gespawnt wurdest:
+  # Daten DS{NN}: {Quellen-Beschreibung}
 
-1. Lies die Task-Beschreibung (TaskGet) um deine Quellen-Zuweisung zu erkennen
-2. Sammle NUR die dir zugewiesenen Quellen (aus Task-Beschreibung)
-3. Schreibe `.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS{NN}.md`:
+  ## Quelle 1: {Quell-Typ}
+  {Raw-Daten, woertlich, unkommentiert}
 
-```markdown
----
-name: {NAME}
-phase: ergebnis{CYCLE}
-wave: datensammlung
-agent: DS{NN}
-quellen: {quellen-liste, z.B. "Container, Service-Logs"}
-date: {YYYY-MM-DD}
-status: final
----
+  ## Quelle 2: {Quell-Typ}
+  {Raw-Daten}
 
-# Daten DS{NN}: {Quellen-Beschreibung}
-
-## Quelle 1: {Quell-Typ}
-{Raw-Daten, woertlich, unkommentiert}
-
-## Quelle 2: {Quell-Typ}
-{Raw-Daten}
+WICHTIG:
+- NUR zugewiesene Quellen sammeln
+- Rohdaten woertlich dokumentieren, NICHT interpretieren
+- Sensitive Daten maskieren (Tokens nur erste/letzte Zeichen)
+- Kein Manifest-Update
+- Kein Spawning von Sub-Agents
+- Die Datei MUSS geschrieben werden
 ```
 
-4. **Kein** Manifest-Update (macht Welle-2-Agent oder Team Lead)
-5. **Kein** Spawning von Sub-Agents
-6. TaskUpdate completed
-7. SendMessage an Team Lead: "DS{NN} fertig: DATA{CYCLE}-DS{NN}.md ({Zusammenfassung})"
+---
 
-**Warte nicht auf andere Sammler.** Deine Aufgabe ist abgeschlossen.
+## Worker-Vertrag: Ergebnis-Synthese
 
-Falls Task "Welle 2: Synthese + SRS" enthaelt:
-1. Lies ALLE `.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS*.md`
-2. Konsolidiere Rohdaten in Schritt-3-Format
-3. Weiter mit Schritt 2a-2c (SRS, Widerlegungs-Marker, Stagnation)
+Du bist der Synthese-Agent. Dein Auftrag: Alle Sammler-Daten konsolidieren, SRS berechnen, Marker setzen.
+
+### Synthese-Auftrag
+
+1. Lies ALLE `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-DATA{CYCLE}-DS*.md`
+2. Konsolidiere Rohdaten in Schritt-3-Format (ERGEBNIS-Dokument)
+3. Fuehre Schritt 2a-2c aus (SRS, Widerlegungs-Marker, Stagnation)
 4. Schreibe ERGEBNIS{CYCLE}.md (Schritt 3)
 5. Aktualisiere Manifest (Schritt 5)
 
@@ -366,7 +447,7 @@ Falls Task "Welle 2: Synthese + SRS" enthaelt:
 
 ## Schritt 3: Ergebnis-Dokument schreiben
 
-**Pfad**: `.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md`
+**Pfad**: `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md`
 
 ```markdown
 ---
@@ -515,21 +596,33 @@ oder "Model-Finish" trifft /_SC_observe — NICHT /_SC_ergebnis.
 
 ---
 
-## Schritt 5: Manifest finalisieren
+## Schritt 5: Manifest finalisieren (Dual-Write, Pattern C)
+
+### Schritt 5a: Protokoll-Eintrag (→ _manifest_protokoll.md, ZUERST)
+
+Prepend an _manifest_protokoll.md (W18 — Prepend-Mechanismus):
+1. Frontmatter aktualisieren: last_append={Datum}, append_count++
+2. Neuen Eintrag prependen (nach YAML-Frontmatter + Leerzeile):
+
+```markdown
+## Ergebnis Z{CYCLE} - {Datum}
+- [x] {WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md (Rohdaten + Mech.Abl.)
+- [x] SRS-Score: {VORHER} → {NACHHER} ({+/- %}%)
+- [x] K-Score: {k_score} ({k_label}) — Aufwand={k_aufwand}, Kopplung={k_kopplung}, Fragilitaet={k_fragilitaet} (aus Manifest, falls vorhanden)
+- [x] Stagnation: {ALTER ZAEHLER} → {NEUER ZAEHLER} ({FORTSCHRITTS-TYP})
+- [x] W{n}-Abdeckung: {%}% ({BESTAETIGT}B + {WIDERLEGT}W / {AKTIV} gesamt)
+```
+
+### Schritt 5b: State-Update (→ _manifest.md, DANACH)
+
+Aktualisiere _manifest.md (NUR State-Felder, KEIN Checklisten-Block):
 
 ```markdown
 **PHASE:** _SC_ergebnis{CYCLE} abgeschlossen
-**NAECHSTER SCHRITT:** /_SC_observe (interpretiert Rohdaten + SRS, aktualisiert Model)
-
+**NAECHSTER_SCHRITT:** /_SC_observe (interpretiert Rohdaten + SRS, aktualisiert Model)
 **STAGNATION:** {NEUER ZAEHLER}
-**LETZTER STARKER FORTSCHRITT:** Loop {X}, Typ: {Beschreibung}
-**LETZTER SCHWACHER FORTSCHRITT:** Loop {Y}, Typ: {Beschreibung}
-
-### Ergebnis - {Datum}
-- [x] .claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md (Rohdaten + Mech.Abl.)
-- [x] SRS-Score: {VORHER} → {NACHHER} ({+/- %}%)
-- [x] Stagnation: {ALTER ZAEHLER} → {NEUER ZAEHLER} ({FORTSCHRITTS-TYP})
-- [x] W{n}-Abdeckung: {%}% ({BESTAETIGT}B + {WIDERLEGT}W / {AKTIV} gesamt)
+**LETZTER_STARKER_FORTSCHRITT:** Loop {X}, Typ: {Beschreibung}
+**LETZTER_SCHWACHER_FORTSCHRITT:** Loop {Y}, Typ: {Beschreibung}
 ```
 
 ---
@@ -558,6 +651,10 @@ oder "Model-Finish" trifft /_SC_observe — NICHT /_SC_ergebnis.
 Nach Abschluss: `/_SC_observe` ausfuehren (interpretiert Rohdaten + SRS, aktualisiert Model)
 
 ---
+
+## Fire-Together Trigger — ENTFERNT (BL-045/BL-050 Vault-First)
+# BL-050: Commands schreiben direkt in Vault. Kein Post-Synthese-Sync noetig.
+# _W_fireTogether ist OBSOLET (status: obsolet, obsoleted_by: BL-045).
 
 ## NOTIFY (Pflicht - Allerletzter Schritt)
 

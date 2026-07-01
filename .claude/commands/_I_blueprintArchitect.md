@@ -1,0 +1,401 @@
+---
+status: deprecated
+version: 1.0.0
+created: 2026-03-06
+updated: 2026-03-08
+op: BlueprintArchitect
+phase: Architect
+type: building-block
+chain_position: architect-2-of-3
+team_based: false
+deprecated_reason: "Zombie-Datei. Ersetzt durch _I_patternLibrary.md (architect-4-of-5 im 5-Schritt-Split)."
+redirect: _I_patternLibrary
+---
+
+# /_I_blueprintArchitect
+
+```
++======================================================================+
+| META-COMMAND: /_I_blueprintArchitect                                 |
++======================================================================+
+|                                                                        |
+| ACTOR: PATTERN-ZUWEISER                                               |
+|        Liest bestehenden Gross-Blueprint (von cleanCodeArchitect),    |
+|        durchsucht Pattern Library, weist Patterns zu.                 |
+|        Erstellt KEINEN neuen Blueprint -- ergaenzt bestehenden.       |
+|                                                                        |
+| PIPELINE-POSITION: Nach _I_cleanCodeArchitect (Schritt 1),           |
+|                    vor _I_blueprintQG (Schritt 3)                     |
+|                                                                        |
+| SRP: Einzig verantwortlich fuer Pattern-Zuweisung                     |
+|      Definiert KEINE Architektur (-> cleanCodeArchitect)              |
+|      Bewertet NICHT den Blueprint (-> blueprintQG)                    |
+|      Erstellt KEINE Sub-Blueprints (-> cleanCodeSlice)                |
++======================================================================+
+```
+
+---
+
+## VERTRAG
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║  COMMAND: /_I_blueprintArchitect {NAME} --stufe {N}                 ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  LIEST (Input) - PFLICHT:                                            ║
+║    1. {WORKING_DIR}/_manifest.md  (per-Story BL-155 AK-1)   ║
+║       (Pipeline-State, Blueprint-Pfad via s{N}_blueprint_path)       ║
+║    2. .claude/meta/implementation/stage_{STUFE}.md                   ║
+║       (Stufen-Metadaten: blueprint_perspektive, fanout, etc.)        ║
+║    3. .claude/analysis/blueprints/{FEATURE}/S{N}/blueprint.md        ║
+║       (Gross-Blueprint von cleanCodeArchitect -- PFLICHT)            ║
+║    4. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                                  ║
+║       (Pattern Library Index -- falls vorhanden)                     ║
+║    5. {VAULT_ROOT}/Libraries/PatternLibrary/_project/{LAYER}/*.md   ║
+║       (Pattern Library Details, VAULT-ONLY, INV-PL-VAULT-1)          ║
+║                                                                      ║
+║  SCHREIBT (Output) - PFLICHT:                                        ║
+║    .claude/analysis/blueprints/{FEATURE}/S{N}/blueprint.md           ║
+║      UPDATE: ## Pattern-Zuweisung Sektion wird befuellt/ersetzt      ║
+║    {VAULT}/_manifest.md                                     ║
+║      s{N}_pattern_zuweisung: done|pending                            ║
+║      s{N}_pattern_zuweisung_at: "{DATUM}"                            ║
+║      s{N}_pattern_coverage: "{N}/{M} Slices"                         ║
+║                                                                      ║
+║  HAUPTPRODUKT:                                                       ║
+║    Aktualisierter Blueprint mit vollstaendiger                        ║
+║    ## Pattern-Zuweisung Sektion                                       ║
+║                                                                      ║
+║  INVARIANTEN:                                                        ║
+║    - Aendert NUR die ## Pattern-Zuweisung Sektion im Blueprint       ║
+║    - Loescht KEINE anderen Blueprint-Sektionen                       ║
+║    - MCP-Bremse: easy=1Q, normal=3Q, hard=5Q                         ║
+║    - Falls Pattern Library nicht vorhanden: Graceful Degradation      ║
+║      (leere Zuweisung + Hinweis, kein Fehler-Abbruch)               ║
+║                                                                      ║
+║  MCP INTEGRATION:                                                    ║
+║    - mcp__cleancoder__query() fuer Pattern-Suche                     ║
+║    - collection: "local_knowledge"                                   ║
+║    - limit: 3 pro Query                                              ║
+║                                                                      ║
+║  MCP-BREMSE:                                                         ║
+║    ┌───────────────────────────────────────────────────┐             ║
+║    │  easy:   max 1 Query  (1 Query fuer alle Slices)  │             ║
+║    │  normal: max 3 Queries (wichtigste Slices)        │             ║
+║    │  hard:   max 5 Queries (komplexeste Slices)       │             ║
+║    └───────────────────────────────────────────────────┘             ║
+║                                                                      ║
+║  PIPELINE-POSITION:                                                  ║
+║    [_I_cleanCodeArchitect] -> [_I_blueprintArchitect] -> [_I_blueprintQG] ║
+║                                                                      ║
+║  ACTOR: PATTERN-ZUWEISER                                             ║
+║    Liest Blueprint, sucht Patterns, schreibt Zuweisung.              ║
+║    KEINE Architektur-Entscheidungen, KEINE Tests.                    ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## SOURCE-PROVENANCE-PROPAGATION (BL-160 AK-5)
+
+**INV-PROV-PROP-7:** Jeder Output-Datei MUSS source_provenance + provenance_chain Frontmatter-Block enthalten.
+
+**Pattern:**
+1. Lies Vorgaenger-Output (blueprint.md von cleanCodeArchitect). Extrahiere predecessor.source_provenance + predecessor.provenance_chain.
+2. Bei Output-Schreibung (blueprint.md, Pattern-Zuweisung):
+   - source_provenance: kopiere von predecessor (gleiche Source-URL/PageId)
+   - provenance_chain: haenge neuen Layer-Eintrag an (layer=4, artifact=blueprint_pfad, role="blueprint", timestamp=ISO, derived_from=[predecessor_pfad])
+3. Bei mehreren Predecessors: provenance_chain.derived_from sammelt alle Vorgaenger.
+4. Wenn predecessor.source_provenance FEHLT (legacy): setze source_provenance={source: "legacy_pre_BL-160", source_kind: "legacy", fetched_at: ISO_NOW}.
+
+**Helper:** Verwende `.claude/scripts/propagate_provenance.py update <output_path>` nach Output-Schreibung — autoupdate predecessor.used_in (Hebb-bidir).
+
+**role-Mapping fuer diesen Skill:** `"blueprint"`
+
+---
+
+## Aufruf
+
+```
+/_I_blueprintArchitect {NAME} --stufe {N}
+
+Parameter:
+  NAME:    Feature-Name (PFLICHT)
+  --stufe: Teststufe 1-4 (PFLICHT). Bestimmt welcher Blueprint geladen wird.
+
+Beispiele:
+  /_I_blueprintArchitect DCSRE-881 --stufe 1   -> Pattern-Zuweisung fuer Stufe 1 Blueprint
+  /_I_blueprintArchitect MeinFeature --stufe 2  -> Pattern-Zuweisung fuer Stufe 2 Blueprint
+```
+
+---
+
+## Ablauf
+
+### Schritt 1: Blueprint laden
+
+1. Lies `{WORKING_DIR}/_manifest.md`  # per-Story I_PIPELINE_STATE (BL-155 AK-1)
+   - Extrahiere `s{N}_blueprint_path` (falls vorhanden)
+   - Validiere dass `s{N}_blueprint: done` gesetzt ist (Vorbedingung)
+2. Falls `s{N}_blueprint_path` nicht im Manifest gesetzt:
+   - Verwende Default-Pfad: `.claude/analysis/blueprints/{NAME}/S{N}/blueprint.md`
+3. Lies `.claude/meta/implementation/stage_{N}.md`
+   - Extrahiere `blueprint_perspektive` (Laserpointer/Taschenlampe/Scheinwerfer/Flutlicht)
+   - Extrahiere `fanout`, `mocks_erlaubt` als Kontext
+4. Lies Blueprint vollstaendig
+5. Extrahiere alle Slices/Inseln/Module aus `## Slice-Plan` oder `## Scope` Sektion
+   - Erstelle Liste: [{Slice-Name, Beschreibung, Komplexitaet}]
+   - Falls keine Slices/Inseln erkennbar: HiL-Eskalation (Blueprint moeglicherweise leer)
+
+**Vorbedingungs-Check:**
+
+Falls `s{N}_blueprint: done` NICHT gesetzt:
+```
+FEHLER: Blueprint fuer Stufe {N} noch nicht erstellt.
+Vorbedingung nicht erfuellt: _I_cleanCodeArchitect muss zuerst ausgefuehrt werden.
+Naechster Schritt: /_I_cleanCodeArchitect {NAME} --stufe {N}
+```
+
+---
+
+### Schritt 2: Pattern Library durchsuchen (MCP-Bremse)
+
+**Budget-Ermittlung:**
+
+| Schwierigkeit (aus Kontext) | Max Queries |
+|-----------------------------|-------------|
+| easy | 1 |
+| normal | 3 |
+| hard | 5 |
+
+**Priorisierung (falls Slices > Budget):**
+
+1. Schwierigste Slices zuerst (Komplexitaet: schwer > mittel > leicht)
+2. Bei Gleichstand: Slices ohne offensichtliches Standard-Pattern bevorzugen
+3. Nicht genutztes Budget NICHT aufsparen (1 Command = 1 Ausfuehrung)
+
+**Pruefe zuerst Pattern Library Index:**
+
+```
+Lies {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1) (falls vorhanden)
+Falls NICHT vorhanden:
+  -> Graceful Degradation (Schritt 3b)
+Falls vorhanden:
+  -> Fahre mit MCP-Queries fort
+```
+
+**MCP-Query pro Slice (innerhalb Budget):**
+
+```python
+mcp__cleancoder__query(
+    query_text="{Slice-Name} {Slice-Beschreibung} Pattern Implementierung",
+    collection="local_knowledge",
+    limit=3
+)
+```
+
+**Fuer easy-Modus (1 Query fuer alle Slices zusammen):**
+
+```python
+mcp__cleancoder__query(
+    query_text="Pattern Zuweisung fuer {alle Slice-Namen kommagetrennt}",
+    collection="local_knowledge",
+    limit=5
+)
+```
+
+**Sammle pro Slice:**
+- Pattern-Name (oder "[KEIN PATTERN GEFUNDEN]")
+- Kurze Beschreibung (1-2 Saetze)
+- Pfad in Pattern Library (z.B. `_patterns/be-cont-001.md` oder `-`)
+- Min-Anwendungen (falls angegeben, sonst `-`)
+- Max-Anwendungen (falls angegeben, sonst `-`)
+- Fallback (falls Pattern nicht anwendbar oder nicht gefunden)
+
+---
+
+### Schritt 3a: Pattern-Zuweisung-Tabelle erstellen (Normal-Pfad)
+
+Erstelle Markdown-Tabelle mit allen identifizierten Slices:
+
+```markdown
+| Insel/Modul | Pattern-Name | Beschreibung | PL-Pfad | Min | Max | Fallback |
+|-------------|-------------|--------------|---------|-----|-----|---------|
+| {Slice 1}   | {Pattern}   | {Desc}       | {Pfad}  | {N} | {M} | {Alt}   |
+| {Slice 2}   | {Pattern}   | {Desc}       | {Pfad}  | {N} | {M} | {Alt}   |
+```
+
+Fuer Slices ausserhalb des MCP-Budgets (nicht abgefragt):
+
+```markdown
+| {Slice K}   | [BUDGET ERSCHOEPFT] | Kein Query mehr im Budget. Fallback: Standard-Implementierung. | - | - | - | Standard |
+```
+
+---
+
+### Schritt 3b: Graceful Degradation (Pattern Library nicht vorhanden)
+
+Falls `_pl-index.md` nicht gefunden ODER MCP liefert keine Ergebnisse:
+
+```markdown
+| Insel/Modul | Pattern-Name | Beschreibung | PL-Pfad |
+|-------------|-------------|--------------|---------|
+| {Slice 1}   | [KEIN PATTERN GEFUNDEN] | Pattern Library nicht verfuegbar oder kein passendes Pattern. Fallback: Standard-Implementierung gemaess Stufen-Perspektive. | - |
+| {Slice 2}   | [KEIN PATTERN GEFUNDEN] | Pattern Library nicht verfuegbar oder kein passendes Pattern. | - |
+```
+
+Hinweis fuer Team Lead hinzufuegen:
+```
+> HINWEIS: Pattern Library nicht verfuegbar. Zuweisung kann in einem separaten Schritt
+> ergaenzt werden wenn Pattern Library aufgebaut wurde.
+```
+
+---
+
+### Schritt 4: Blueprint aktualisieren
+
+Ersetze die `## Pattern-Zuweisung` Sektion im Blueprint (die von `_I_cleanCodeArchitect`
+als Platzhalter angelegt wurde):
+
+```markdown
+## Pattern-Zuweisung
+
+<!-- Erstellt von _I_blueprintArchitect, {DATUM} -->
+<!-- MCP-Queries: {Q} von {max_Q} Budget genutzt -->
+
+{Pattern-Zuweisung-Tabelle aus Schritt 3a oder 3b}
+
+### Pattern-Abdeckung
+
+- **Abgedeckt:** {N} von {M} Slices mit Patterns
+- **Ohne Pattern:** {K} Slices (Fallback: Standard-Implementierung)
+- **MCP-Queries:** {Q} von {max_Q} Budget genutzt
+- **Pattern Library:** {verfuegbar|nicht verfuegbar}
+```
+
+**Wichtig:** NUR `## Pattern-Zuweisung` Sektion ersetzen. Alle anderen Sektionen
+(Frontmatter, Scope, Stufen-Block, Test-Klassifikation, Slice-Plan) bleiben unveraendert.
+
+Aktualisiere Blueprint-Frontmatter:
+```yaml
+pattern_zuweisung: done
+```
+
+---
+
+### Schritt 5: Manifest aktualisieren
+
+Ergaenze in `{VAULT}/_manifest.md`:
+
+```yaml
+s{N}_pattern_zuweisung: done
+s{N}_pattern_zuweisung_at: "{YYYY-MM-DD}"
+s{N}_pattern_coverage: "{N}/{M} Slices"
+```
+
+---
+
+### Schritt 6: Exit-Report
+
+Ausgabe an Konsole:
+
+```
+_I_blueprintArchitect {NAME} --stufe {N}: ABGESCHLOSSEN
+
+Pattern-Zuweisung:
+  - Slices gesamt:    {M}
+  - Mit Pattern:      {N}
+  - Ohne Pattern:     {K}
+  - Coverage:         {N}/{M}
+
+MCP-Queries: {Q}/{max_Q} Budget genutzt
+Blueprint aktualisiert: .claude/analysis/blueprints/{NAME}/S{N}/blueprint.md
+Manifest: s{N}_pattern_zuweisung = done
+
+Naechster Schritt: /_I_blueprintQG {NAME} --stufe {N}
+```
+
+Sende SendMessage an "team-lead":
+
+```
+_I_blueprintArchitect {NAME} --stufe {N}: FINAL
+Pattern-Zuweisung: {N}/{M} Slices abgedeckt
+MCP-Queries: {Q}/{max_Q}
+Blueprint aktualisiert: .claude/analysis/blueprints/{NAME}/S{N}/blueprint.md
+Manifest: s{N}_pattern_zuweisung = done
+```
+
+---
+
+## MCP-Bremse (Query-Budget)
+
+| Modus | Max Queries | Strategie |
+|-------|-------------|-----------|
+| easy | 1 | 1 Query fuer alle Slices zusammen |
+| normal | 3 | 3 Queries fuer wichtigste Slices |
+| hard | 5 | 5 Queries fuer komplexeste Slices |
+
+**Query-Budget-Verwaltung:**
+
+1. Zaehle Slices aus Blueprint
+2. Falls Slices <= Budget: 1 Query pro Slice
+3. Falls Slices > Budget: Priorisiere nach Komplexitaet (schwer zuerst)
+4. Verbleibende Slices erhalten `[BUDGET ERSCHOEPFT]` Eintrag
+5. Nicht genutztes Budget NICHT aufsparen (1 Command = 1 Ausfuehrung)
+
+---
+
+## Abgrenzung (Was dieser Command NICHT tut)
+
+- **Erstellt KEINEN neuen Blueprint** (-> _I_cleanCodeArchitect ist dafuer zustaendig)
+- **Bewertet NICHT den Blueprint** (-> _I_blueprintQG ist dafuer zustaendig)
+- **Aendert KEINE Architektur-Entscheidungen** (-> cleanCodeArchitect hat diese bereits getroffen)
+- **Erstellt KEINE Sub-Blueprints** (-> _I_cleanCodeSlice ist dafuer zustaendig)
+- **Verwaltet NICHT die Pattern Library** (-> separates Feature, nur lesend)
+- **Schreibt KEINE Tests** (-> _I_codeAtomic etc. sind dafuer zustaendig)
+- **Loescht KEINE Blueprint-Sektionen** (NUR ## Pattern-Zuweisung wird ersetzt)
+
+---
+
+## Pipeline-Position
+
+```
+[/_I_cleanCodeArchitect {NAME} --stufe {N}]
+          |
+          v  (erstellt blueprint.md mit Pattern-Zuweisung Platzhalter)
+[/_I_blueprintArchitect {NAME} --stufe {N}]   <-- DIESER COMMAND
+          |
+          v  (befuellt ## Pattern-Zuweisung Sektion)
+[/_I_blueprintQG {NAME} --stufe {N}]
+          |
+          v  (validiert Blueprint: PASS -> weiter, FAIL -> Retry)
+[/_I_cleanCodeSlice ...]
+```
+
+**Prev:** `/_I_cleanCodeArchitect` (erstellt Gross-Blueprint)
+**Next:** `/_I_blueprintQG` (validiert Blueprint inkl. Pattern-Zuweisung)
+
+---
+
+## Obsidian-Tags
+
+```yaml
+tags:
+  - type/pattern-assignment
+  - pipeline/implementation
+  - op/{FEATURE}
+  - topic/Patterns
+  - topic/Blueprint
+pipeline-position: architect-2-of-3
+prev: [[I_cleanCodeArchitect]]
+next: [[I_blueprintQG]]
+```
+
+---
+
+## Siehe auch
+
+- [[_I_cleanCodeArchitect]] - Vorheriger Schritt (erstellt Gross-Blueprint)
+- [[_I_blueprintQG]] - Naechster Schritt (validiert Blueprint)
+- [[_I_cleanCodeSlice]] - Erstellt Sub-Blueprints nach QG-Freigabe
+- [[_pl-index.md]] - Pattern Library Index (Input)

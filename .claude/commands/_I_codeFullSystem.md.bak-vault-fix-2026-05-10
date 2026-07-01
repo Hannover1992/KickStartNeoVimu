@@ -1,0 +1,360 @@
+---
+type: building-block
+---
+
+# /_I_codeFullSystem
+
+**Status:** v1.1 (BL-065: Vault-First DirectWrite, Hybrid-Marker ersetzt)
+**Actor:** FULLSYSTEM-TESTER
+**Zweck:** Gesamtsystem-Tests FE+BE via Red-Green-Refactor (Batch: 1 Test pro Aufruf)
+
+---
+
+## Vertrag
+
+```
++===============================================================+
+|  COMMAND: /_I_codeFullSystem {SLICE_NAME}                      |
++===============================================================+
+|                                                                |
+|  LIEST (Input) - PFLICHT:                                      |
+|    1. {VAULT}/_manifest.md                            |
+|    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)        |
+|    3. .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md            |
+|       → FullSystem Test-Liste (FST1, FST2, ...)               |
+|       → Cross-Service Szenarien                                |
+|    4. .claude/analysis/synthese/{NAME}-SYSTEM-{SLICE}.md       |
+|       → VORAUSSETZUNG: status=final (alle STs gruen)          |
+|    5. .claude/analysis/synthese/{NAME}-FULLSYSTEM-{SLICE}.md   |
+|       → RESUME: Falls vorhanden, lies status + done Tests     |
+|    6. {VAULT}/Task.md                                          |
+|       → Akzeptanzkriterien (Gesamtsystem validiert diese!)    |
+|    7. .claude/meta/implementation/stage_4.md                   |
+|       → Stufen-Metadaten (Infrastruktur, Constraints)         |
+|    8. Codebase (Production Code, Konfiguration, Docker-Compose)|
+|                                                                |
+|  LIEST (Input) - OPTIONAL bei Code-Generierung:               |
+|    9. .claude/meta/implementation/routing.md                   |
+|       → API-Route-Naming, Versioning                           |
+|   10. .claude/meta/implementation/auth.md                      |
+|       → JWT, Bearer Token, Auth-Flows                          |
+|   11. .claude/meta/implementation/error-handling.md            |
+|       → Exception-Mapping, Error-Response-Format              |
+|   12. .claude/meta/implementation/testing.md                   |
+|       → Test-Pattern, Data-Builder                             |
+|       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
+|                                                                |
+|  SCHREIBT (Output) - PFLICHT:                                  |
+|    1. Code: Gesamtsystem-Tests + System-Konfiguration         |
+|    2. Vault-First (BL-065)                                     |
+|       Implementation-Logs werden DIREKT in den Vault geschrieben:|
+|       {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-FULLSYSTEM-{SLICE}.md |
+|       Status (partial/final) wird im FRONTMATTER der Log-Datei |
+|       kodiert, NICHT ueber Pfad-Unterschied.                   |
+|       Pre-Flight-Check (verbindlich, RF-06):                   |
+|       mkdir -p {VAULT}/Backlog/{BL_SLUG}/Implementation/ |
+|       if [ $? -ne 0 ] || [ -z "$DCS_VAULT_ROOT" ]; then       |
+|         log_error "Vault unreachable: ..."                     |
+|         exit 1                                                 |
+|       fi                                                       |
+|       Schreibpfad: {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-FULLSYSTEM-{SLICE}.md |
+|       Frontmatter: status: partial|final (Feld, nicht Pfad).  |
+|       INKREMENTELL (status=partial): lokal zwischenspeichern   |
+|       .claude/analysis/synthese/{NAME}-FULLSYSTEM-{SLICE}.md   |
+|       → status: partial (N/M) oder final (M/M)               |
+|    3. {VAULT}/_manifest.md (nach JEDEM FST update)   |
+|                                                                |
+|  SCHREIBT (Output) - OPTIONAL:                                 |
+|    .claude/patterns/_pattern-library.md                       |
+|    {VAULT}/_parking-lot.md (APPEND bei Findings)     |
+|                                                                |
+|  MCP: mcp__cleancoder__query() NUR bei Unsicherheit           |
+|    MIN-Modus: max 1 Query, limit=1                            |
+|                                                                |
+|  BATCH-MODUS:                                                  |
+|    Bearbeite 1 Test pro Aufruf, dann STOPPE.                  |
+|    Gesamtsystem-Tests sind ressourcenintensiv → kleinste      |
+|    Batches. Resume liest FULLSYSTEM.md → weiss wo weiter.     |
+|                                                                |
+|  PIPELINE:                                                     |
+|    [/_I_codeSystem] → [/_I_codeFullSystem] →                  |
+|    [/_I_codeE2E] → [/_I_verify] → [FEATURE VERIFIZIERT]       |
+|                                                                |
+|  VORAUSSETZUNG:                                                |
+|    SYSTEM-{SLICE}.md existiert mit status=final               |
+|    (alle Unit + Integration + System Tests gruen)             |
+|                                                                |
+|  ERGEBNIS:                                                     |
+|    FULLSYSTEM-{SLICE}.md (status=partial oder final)          |
+|    partial → User ruft erneut auf                             |
+|    final   → /_I_codeE2E kann starten                        |
+|                                                                |
++===============================================================+
+```
+
+---
+
+## Verantwortlichkeit
+
+**FULLSYSTEM-TESTER:** Gesamtsystem-Tests (FE+BE zusammen, Cross-Service).
+
+**TUT:** Gesamtsystem-Tests schreiben (FE+BE deployed, Docker-Compose),
+Cross-Service-Interaktionen validieren, Performance-Baseline pruefen,
+externe Contract-Tests ausfuehren.
+
+**NICHT:** Unit Tests, Integration Tests, isolierte System Tests, Business Logic aendern.
+
+**Eskalation:** Bei 5+ RGR ohne Fortschritt → /_SC_observe
+
+---
+
+## Schritt 0: Resume-Check + Voraussetzungen
+
+### 0.1 Mitose-Check
+
+```
+Falls .claude/CURRENT_SLICE.md existiert:
+  → {SLICE_NAME} aus CURRENT_SLICE.md verwenden
+  → NUR an diesem Slice arbeiten
+```
+
+### 0.2 System-Phase pruefen
+
+```
+Lies SYSTEM-{SLICE}.md → Pruefe Frontmatter: status
+  → Falls status != final:
+      ABBRUCH: "/_I_codeSystem {SLICE} muss zuerst abgeschlossen werden"
+  → Falls status = final: OK, weiter
+```
+
+### 0.3 Resume-Check
+
+```
+Falls .claude/analysis/synthese/{NAME}-FULLSYSTEM-{SLICE}.md existiert:
+  → Lies Frontmatter: status, tests_done, tests_total, next_test
+  → Falls status=final:
+      AUSGABE: "FULLSYSTEM Phase bereits abgeschlossen."
+      → STOP
+  → Falls status=partial:
+      AUSGABE: "Resume: {tests_done}/{tests_total} FSTs fertig."
+      AUSGABE: "Starte bei {next_test}."
+      → Setze fort
+Falls NICHT existiert:
+  → Neuer Start bei FST1
+```
+
+### 0.4 Standard-Inputs
+
+1. Lies `plans/{NAME}-{SLICE}-PLAN.md` → FST-Liste, Cross-Service-Szenarien
+2. Lies `Task.md` → Akzeptanzkriterien
+3. Lies `SYSTEM-{SLICE}.md` → System-Test-Ergebnisse
+4. Lies `stage_4.md` → Infrastruktur-Anforderungen (Docker-Compose, Constraints)
+5. Lies `_pattern-library.md` (falls vorhanden)
+6. Bestimme BATCH_SIZE: 1 (Gesamtsystem-Tests sind am ressourcenintensivsten)
+
+---
+
+### 0.5 Optional-Input: Implementation Meta
+
+Fuer relevante Topics laden (falls Datei existiert):
+
+| Topic | Prioritaet | Wann laden |
+|-------|-----------|------------|
+| `routing.md` | KRITISCH — immer | Alle Tests mit HTTP-Calls |
+| `auth.md` | HOCH | Tests mit Auth-Flows |
+| `testing.md` | MITTEL | Test-Klassen-Struktur, Data-Builder |
+| `error-handling.md` | MITTEL | Tests die Fehlerszenarien validieren |
+
+Falls Datei nicht existiert:
+  - WARN: "`.claude/meta/implementation/{topic}.md` nicht gefunden — weiter ohne"
+  - CONTINUE (kein ABORT)
+
+Bei RESUME (status=partial): Meta-Dateien erneut lesen — kein Cache.
+
+---
+
+## Schritt 1: Infrastruktur-Check (beim ersten Aufruf)
+
+Nur beim ERSTEN Aufruf (kein Resume):
+
+```
+Lies stage_4.md → infrastruktur
+Falls Docker-Compose referenziert:
+  → Pruefe ob docker-compose.yml (oder docker-compose.test.yml) existiert
+  → Falls NICHT: WARN + weiter (Tests laufen evtl. ohne Container)
+Falls andere Infrastruktur:
+  → Infrastruktur lt. stage_4.md pruefen
+```
+
+---
+
+## Schritt 2: RGR-Loop (Batch-Modus)
+
+### Fuer den naechsten BATCH_SIZE FST aus der offenen Liste:
+
+**RED:**
+1. FST aus PLAN.md nehmen
+2. Cross-Service-Szenario definieren (Given/When/Then)
+3. Gesamtsystem-Perspektive: FE → BE → DB → Response
+4. Keine Mocks — echtes System (lt. stage_4.md)
+5. Test MUSS fehlschlagen
+
+**GREEN:**
+1. MINIMALE Konfiguration: Docker-Compose, Service-Wiring, Testdaten
+2. NUR Config und Wiring, KEINE neue Business Logic
+3. Falls Code fehlt → ZURUECK zu fruehere Phase
+4. ALLE Tests (Unit + Integration + System + FullSystem) MUESSEN gruen bleiben
+
+**REFACTOR:**
+1. Test-Fixtures konsolidieren
+2. Docker-Compose Konfiguration optimieren
+3. Cross-Service Test-Helpers extrahieren
+4. ALLE Tests MUESSEN gruen bleiben
+
+**CHECKPOINT (nach JEDEM gruenen FST):**
+1. Manifest aktualisieren
+2. FULLSYSTEM-{SLICE}.md aktualisieren (inkrementell)
+
+### Batch-Ende
+
+```
+Falls ALLE FSTs aus PLAN.md fertig:
+  → Integritaets-Check: Alle bisherigen Tests gruen?
+  → FULLSYSTEM.md mit status=final schreiben
+  → AUSGABE: "FULLSYSTEM Phase abgeschlossen ({M}/{M} Tests)."
+  → AUSGABE: "Naechster Schritt: /_I_codeE2E {SLICE}"
+
+Falls noch FSTs offen:
+  → FULLSYSTEM.md mit status=partial schreiben
+  → AUSGABE: "{done}/{total} FSTs fertig."
+  → AUSGABE: "Naechster Batch: /_I_codeFullSystem {SLICE}"
+```
+
+---
+
+## Schritt 3: MCP + Stagnation
+
+| Situation | Query |
+|-----------|-------|
+| Cross-Service-Unsicherheit | "cross-service testing for {scenario}" |
+| Docker-Compose-Problem | "docker compose testing {stack}" |
+| Performance-Baseline | "performance baseline testing {metric}" |
+| Stuck (>3 Versuche) | "getting unstuck in full system test {problem}" |
+
+Stagnation: >= 4 RGR ohne Fortschritt → MCP, >= 5 → /_SC_observe
+
+---
+
+## Output-Format: FULLSYSTEM-{SLICE}.md (INKREMENTELL)
+
+**Pfad:** `.claude/analysis/synthese/{NAME}-FULLSYSTEM-{SLICE}.md`
+
+```markdown
+---
+name: {NAME}
+slice: {SLICE_NAME}
+phase: fullsystem
+pipeline: implementation
+status: partial
+tests_total: 3
+tests_done: 1
+next_test: FST2
+batch_size: 1
+batches_completed: 1
+last_updated: {YYYY-MM-DD}
+---
+
+# FullSystem: {NAME} - {SLICE_NAME}
+
+**Tests:** {done}/{total} | **Status:** partial | **Batches:** {N}
+**Atomic:** ABGESCHLOSSEN ({N} Unit Tests gruen)
+**Integration:** ABGESCHLOSSEN ({N} ITs gruen)
+**System:** ABGESCHLOSSEN ({N} STs gruen)
+
+## Test-Ergebnisse
+
+| # | Test | Szenario | Status | RGR | Infrastruktur |
+|---|------|----------|--------|-----|---------------|
+| FST1 | {Name} | {Cross-Service Flow} | GRUEN | 1 | Docker-Compose |
+| FST2 | {Name} | {Cross-Service Flow} | OFFEN | - | - |
+
+## RGR-Protokoll
+
+### Batch 1 (FST1)
+- FST1: RED weil {X} → GREEN: {Config} → REFACTOR {Z}
+
+## Naechster Batch
+
+FST2 (/_I_codeFullSystem {SLICE_NAME})
+```
+
+Wenn status=final: Ersetze "Naechster Batch" durch:
+```markdown
+## Naechster Schritt
+/_I_codeE2E {SLICE_NAME}
+```
+
+---
+
+## Manifest-Update (nach JEDEM gruenen FST)
+
+```markdown
+**PHASE:** _I_codeFullSystem {SLICE_NAME}
+**PIPELINE:** Implementation
+**UNIT TESTS:** {N}/{N} gruen (aus Atomic)
+**INTEGRATION TESTS:** {N}/{N} gruen (aus Integration)
+**SYSTEM TESTS:** {N}/{N} gruen (aus System)
+**FULLSYSTEM TESTS:** {done}/{total}
+**STATUS:** partial | final
+**NAECHSTER TEST:** FST{done+1}: {Name}
+**BATCH:** {N} von geschaetzt {ceil(total/batch_size)}
+```
+
+---
+
+## Qualitaetskriterien
+
+- TDD Drei Gesetze strikt einhalten (auch bei Gesamtsystem-Tests!)
+- RED vor GREEN vor REFACTOR (Reihenfolge!)
+- NUR Konfiguration und Wiring in GREEN (KEINE neue Business Logic!)
+- ALLE Tests gruen nach jedem Schritt (Unit + Integration + System + FullSystem)
+- Keine Mocks — echtes System lt. stage_4.md
+- Docker-Compose als Infrastruktur-Basis (falls definiert)
+- Manifest + FULLSYSTEM.md nach JEDEM FST aktuell (inkrementell!)
+- Batch-Limit einhalten (1 FST, dann STOP)
+- Bei Stagnation eskalieren
+
+---
+
+## exit_report (PFLICHT - VOR NOTIFY)
+
+**IMMER schreiben** — egal ob status=partial oder status=final.
+Schreibe diesen Block ans Ende der FULLSYSTEM-{SLICE}.md Synthese-Datei (APPEND):
+
+```yaml
+exit_report:
+  status: partial|final
+  blocked_items: []          # FSTs die nicht bearbeitet werden konnten
+  block_reason: ""           # Warum blockiert (z.B. "Docker nicht verfuegbar")
+  recommended_strategy: ""   # Empfehlung fuer naechsten Batch
+  context_health: ""         # low|medium|high
+  findings: []               # Erkenntnisse ausserhalb des Scope
+```
+
+**Regeln:**
+- `findings` NIEMALS leer lassen wenn Erkenntnisse vorhanden
+- `context_health: low` wenn Kontext-Limit Grund fuer partial war
+- `block_reason` bei `status: final` leer lassen ("")
+- Falls `findings` nicht leer: APPEND an `{VAULT}/_parking-lot.md`
+
+---
+
+## NOTIFY (Pflicht - Allerletzter Schritt)
+
+**NUR wenn ALLES fertig ist** (exit_report geschrieben, Zusammenfassung ausgegeben):
+
+```bash
+powershell -Command "notify '{FEATURE} /_I_codeFullSystem abgeschlossen'"
+```
+
+WICHTIG: Keine Zwischen-Benachrichtigungen! NUR ganz am Ende.

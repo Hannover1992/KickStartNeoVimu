@@ -1,8 +1,12 @@
+---
+type: building-block
+---
+
 # /_I_cleanCodeSlice
 
-**Status:** NEU v3.1 (Implementierungs-Pipeline Phase 2, Mitose-Support)
+**Status:** v4.1 (ImplPipeline: Stufen-aware Sub-Blueprint Slicer + Z2 Sub-Blueprint-Schema)
 **Actor:** SLICE-PLANER (Uncle Bob via MCP)
-**Zweck:** Einzelnen Slice PLANEN (Test-Strategie, Pattern Reuse, Architektur)
+**Zweck:** Gross-Blueprint in Sub-Blueprints zerlegen — stufen-spezifisches Slicing mit Test-Inventar
 
 ---
 
@@ -10,65 +14,55 @@
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  COMMAND: /_I_cleanCodeSlice {SLICE_NAME} [easy|normal|hard]              ║
+║  COMMAND: /_I_cleanCodeSlice {NAME} --stufe {N} [easy|normal|hard]       ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
-║    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)                  ║
-║       → Welcher Slice in diesem Worktree? (Isolation!)                  ║
-║       → Falls nicht vorhanden: {SLICE_NAME} aus Argument verwenden      ║
-║    3. .claude/SLICE-BRIEFINGS.md (falls vorhanden)                       ║
-║       → Konkrete Code-Aenderungen, Dateien, Tests pro Slice            ║
-║    4. .claude/analysis/synthese/{NAME}-ARCHITECT.md                      ║
-║       → Slice-Definition (Komponenten, Dependencies, Reihenfolge)       ║
-║    5. .claude/models/{NAME}_Model.md (falls vorhanden, IST-Zustand)     ║
-║    6. .claude/patterns/_pattern-library.md                               ║
-║       → Bekannte Patterns fuer Horizontale Suche                        ║
+║    1. {VAULT}/_manifest.md                                      ║
+║    2. .claude/analysis/blueprints/{NAME}/S{N}/blueprint.md               ║
+║       → Gross-Blueprint dieser Stufe (von /_I_cleanCodeArchitect)       ║
+║       → Muss qg_blueprint: approved haben (nach blueprintQG PASS)      ║
+║    3. .claude/meta/implementation/stage_{N}.md                           ║
+║       → Stufen-Metadaten: fanout, mocks_erlaubt, blueprint_perspektive ║
+║    4. PRIMAER: {VAULT}/.../Model/{NAME}_Model.md (IST-Zustand)         ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                         ║
+║    5. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                               ║
 ║       (Graceful Degradation: Ohne Library = direkte Codebase-Suche)     ║
+║    5b. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                                     ║
+║        (optional, W221/RF-PI-002: Layer-Routing + Stufen-Routing fuer   ║
+║         kontextabhaengige Pattern-Auswahl, Sektion 2.3 + 2.5)          ║
+║    6. .claude/analysis/synthese/{NAME}-ARCHITECT.md (Kontext)            ║
 ║    7. Codebase (via Glob/Grep/Read fuer aehnliche Impl.)               ║
 ║    8. MCP Clean Code (Uncle Bob Queries)                                 ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md                         ║
-║      → Test-Liste (Kent Beck Style: Tests VOR Code auflisten)          ║
-║      → Test-Strategie (Outside-In, Canary)                              ║
-║      → Pattern Reuse (Horizontale Suche Ergebnisse)                     ║
-║      → Architektur-Entscheidungen (DIP, Interfaces)                    ║
-║      → Uncle Bob Empfehlungen (MCP Queries)                             ║
-║      → Implementierungs-Checkpoints                                     ║
-║    .claude/analysis/_manifest.md (aktualisieren)                         ║
+║    PRIMAER:  {VAULT}/Backlog/{BL_SLUG}/Blueprint/S{N}/sub-{SLICE-NR}.md ║
+║    FALLBACK: .claude/analysis/blueprints/{NAME}/S{N}/sub-{SLICE-NR}.md   ║
+║      → Sub-Blueprint (Small Blueprint) pro Slice                        ║
+║      → Frontmatter: variant=small, parent_blueprint=Vault-Pfad wenn erreichbar ║
+║      → Scope-Grenze: Worker darf NUR innerhalb dieses Sub-Blueprints   ║
+║      → Test-Inventar: betroffen/anzupassen/Kanarienvogel          ║
+║    {VAULT}/_manifest.md (aktualisieren)                         ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - OPTIONAL:                                           ║
-║    .claude/patterns/_pattern-library.md (Update bei neuen Patterns)     ║
-║    .claude/_parking-lot.md (APPEND, falls Incidental Findings)          ║
-║                                                                          ║
-║  MCP INTEGRATION:                                                        ║
-║    - mcp__cleancoder__query() fuer Uncle Bob Weisheiten                 ║
-║    - Query Topics:                                                       ║
-║      * "testable architecture for {SLICE description}"                  ║
-║      * "test-first approach for {component type}"                       ║
-║      * "pattern reuse for {similar functionality}"                      ║
-║      * "dependency inversion for {boundary crossing}"                   ║
+║    {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1) (Update bei neuen Patterns)     ║
+║    {VAULT}/_parking-lot.md (APPEND, falls Incidental Findings)          ║
 ║                                                                          ║
 ║  MCP-BREMSE:                                                             ║
 ║    ┌─────────────────────────────────────────────────────────┐           ║
 ║    │  easy:   MIN-Modus    → max 1 Query,  limit=1          │           ║
 ║    │  normal: MIDDLE-Modus → max 3 Queries, limit=3         │           ║
 ║    │  hard:   MAX-Modus    → max 5 Queries, limit=5         │           ║
-║    │                                                         │           ║
-║    │  Modi:  min=1Q/1R  middle=3Q/3R  max=5Q/5R            │           ║
-║    │  Planer-Phase: Schwierigkeit bestimmt Modus             │           ║
 ║    └─────────────────────────────────────────────────────────┘           ║
 ║                                                                          ║
-║  PIPELINE-POSITION:                                                      ║
-║    [/_I_fanOut] → [/_I_cleanCodeSlice] → [/_I_codeAtomic]              ║
-║    (nach Mitose+FanOut, pro Worktree)                                   ║
+║  PIPELINE-POSITION (ImplPipeline):                                       ║
+║    [/_I_blueprintQG] → [/_I_cleanCodeSlice] → [/_I_fanOut]             ║
+║    (Schritt 4 im 10-Schritt-Sub-Ablauf, im Mothership)                 ║
 ║                                                                          ║
 ║  ACTOR: SLICE-PLANER (Uncle Bob)                                         ║
-║    Plant die Implementierung eines einzelnen Slice:                     ║
-║    - Test-Liste (SOLL-Model als Spezifikation)                          ║
-║    - Pattern Reuse (Horizontale Suche)                                   ║
-║    - Architektur-Entscheidungen (Testbarkeit)                           ║
+║    Zerlegt den Gross-Blueprint in parallelisierbare Sub-Blueprints:     ║
+║    - Stufen-spezifisches Slicing (Isolation/Ueberlappung/Ressource)    ║
+║    - Test-Inventar (betroffen/anzupassen/Kanarienvogel)          ║
+║    - Pattern-Zuweisung pro Sub-Blueprint                                ║
 ║    KEINE Code-Aenderungen, KEINE Tests schreiben.                       ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
@@ -98,20 +92,66 @@ Was der Slice-Planer **NICHT TUT**:
 
 ---
 
-## Pipeline-Position
+## Pipeline-Position (ImplPipeline 10-Schritt-Sub-Ablauf)
 
 ```
-ARCHITECT → **CLEANCODESLICE** → CODEATOMIC → CODEINTEGRATION
-                  |
-                  ↓
-            {SLICE}-PLAN.md
-            (Test-Liste + Patterns + Architektur)
+blueprintQG → **CLEANCODESLICE** → fanOut → TDD-Workers
+                    |
+                    ↓
+          sub-{SLICE-NR}.md (pro Slice)
+          (Small Blueprint = Scope-Grenze fuer Worker)
 ```
 
-**Prev:** /_I_cleanCodeArchitect (ARCHITECT.md)
-**Next:** /_I_codeAtomic (TDD Red-Green-Refactor)
+**Schritt:** 4 von 10 (nach blueprintQG, vor fanOut)
+**Prev:** /_I_blueprintQG (QG PASS auf Gross-Blueprint)
+**Next:** /_I_fanOut (Sub-Blueprints in Worktrees verteilen)
 
-**Wiederholung:** Pro Slice einmal ausfuehren
+**Ausfuehrung:** Einmal pro Stufe im Mothership (NICHT in Worktrees)
+
+**PIPELINE-POSITION:** cleanCodeSlice laeuft NACH cleanCodeArchitect/blueprintQG, VOR fanOut.
+Der Sub-Blueprint wird von fanOut in alle Worktrees verteilt.
+
+---
+
+## Sub-Blueprint erstellen (Stufen-Modus)
+
+Falls `--stufe {N}` Parameter gesetzt und Gross-Blueprint vorhanden:
+
+1. Lies `.claude/analysis/blueprints/{NAME}/S{N}/blueprint.md`
+2. Extrahiere relevante Sektionen fuer diesen Slice:
+   - Scope-relevante Abhaengigkeiten
+   - Pattern-Zuweisungen fuer diesen Slice
+   - TDD-Aufgaben aus dem Blueprint
+3. Schreibe `sub-{SLICE-NR}.md`:
+
+**Frontmatter:**
+
+```yaml
+---
+type: sub_blueprint
+parent_blueprint: "{NAME}/S{N}/blueprint.md"
+stufe: {N}
+slice: {SLICE_NAME}
+variant: small
+part: 1
+part_of: 1
+architect_model: claude-opus-4-6
+status: draft
+---
+```
+
+**Pflicht-Sektionen:**
+- ## Ziel (was wird implementiert)
+- ## Scope (welche Dateien/Klassen)
+- ## Abhaengigkeiten (was braucht dieser Slice)
+- ## Pattern-Zuweisung (aus Gross-Blueprint uebernehmen)
+- ## TDD-Aufgaben (konkrete Red-Green-Refactor Schritte)
+- ## Gold-Definition (WANN ist das Ziel erreicht — Akzeptanzkriterien)
+- ## Kanarienvoegel (bestehende Tests die NICHT brechen duerfen)
+- ## Exit-Kriterien (wann ist dieser Slice done)
+- ## Ring-Entwurf (stufen-adaptiv, code-agnostisch, siehe unten)
+
+**Graceful Degradation:** Falls kein Gross-Blueprint vorhanden → klassischer PLAN.md Output (wie bisher).
 
 ---
 
@@ -131,31 +171,39 @@ ARCHITECT → **CLEANCODESLICE** → CODEATOMIC → CODEINTEGRATION
 
 ## Schritt 0: Inputs lesen
 
-### 0.1 Mitose-Check (Worktree-Isolation)
+### 0.1 Pipeline-Modus erkennen
 
 ```
-Falls .claude/CURRENT_SLICE.md existiert:
-  → Du bist in einem Mitose-Worktree!
-  → Lies CURRENT_SLICE.md → {SLICE_NAME} ist dort definiert
-  → Du darfst NUR an diesem Slice arbeiten
-  → Ignoriere {SLICE_NAME} Argument falls es anders ist (Warnung ausgeben)
+Falls --stufe {N} Parameter vorhanden:
+  → Stufen-Modus (ImplPipeline): Lese blueprint.md + stage_{N}.md
+  → cleanCodeSlice laeuft im MOTHERSHIP (vor fanOut)
+  → Output: Sub-Blueprints (sub-{SLICE-NR}.md)
 
-Falls NICHT existiert:
-  → Normaler Modus, verwende {SLICE_NAME} aus Argument
+Falls KEIN --stufe Parameter:
+  → Legacy-Modus: Lese ARCHITECT.md + SLICE-BRIEFINGS.md
+  → cleanCodeSlice laeuft in WORKTREE (nach fanOut)
+  → Output: PLAN.md (alter Pfad)
 ```
 
-### 0.2 Standard-Inputs
+### 0.2 Stufen-Modus Inputs (--stufe {N})
+
+1. Lies `_manifest.md` → aktueller {NAME}, impl_test_stages[{N}]
+2. Lies `.claude/analysis/blueprints/{NAME}/S{N}/blueprint.md`
+   → Gross-Blueprint (von /_I_cleanCodeArchitect, QG PASS)
+   → Extrahiere: Scope, Stufen-Block, Pattern-Zuweisung, Test-Inventar, Slice-Plan
+3. Lies `.claude/meta/implementation/stage_{N}.md`
+   → Stufen-Metadaten: fanout, mocks_erlaubt, blueprint_perspektive, testbefehl, testpfad
+   → Extrahiere `max_container_parallel` (Stufe 3+4: Docker-Hardbound)
+4. Lies `{NAME}_Model.md` → IST-Zustand als Kontext
+5. Lies `_pattern-library.md` (Graceful Degradation: ohne = Codebase-Suche)
+6. Lies `{NAME}-ARCHITECT.md` (Kontext)
+
+### 0.3 Legacy-Modus Inputs (ohne --stufe)
 
 1. Lies `_manifest.md` → aktueller {NAME}
-2. Lies `SLICE-BRIEFINGS.md` (falls vorhanden)
-   → Finde Sektion fuer {SLICE_NAME}
-   → Konkrete Code-Aenderungen, Dateien, Tests
-3. Lies `{NAME}-ARCHITECT.md` → Slice-Definition fuer {SLICE_NAME}
-   - Vertikale Komponenten (FE, BE, DB)
-   - Dependencies
-   - API-Schnittstellen
-4. Lies `_pattern-library.md` (falls vorhanden)
-5. Lies `{NAME}_Model.md` (falls vorhanden) → IST-Zustand als Kontext
+2. Lies `CURRENT_SLICE.md` (falls in Worktree → Mitose-Check)
+3. Lies `SLICE-BRIEFINGS.md` / `{NAME}-ARCHITECT.md`
+4. Lies `_pattern-library.md`, `{NAME}_Model.md`
 
 ---
 
@@ -246,6 +294,39 @@ Erhoehungen:
 | > 0.8 | **GRAY** | Fast 1:1 kopierbar |
 | 0.5-0.8 | **ORANGE** | Anpassungen noetig |
 | < 0.5 | **RED** | Custom Implementation |
+
+---
+
+## Schritt 2b: Modul-Register erstellen (NUR Stufe 2)
+
+Falls `--stufe 2`:
+
+1. Aus Schritt 2 (Horizontale Suche): Sammle alle Dateien/Module im Slice-Scope
+2. Klassifiziere jedes Modul:
+   - **Rolle:** `primary` (nur dieser Slice beruehrt es) oder `shared` (mehrere Slices beruehren es)
+   - **Slices:** Welche Slices beruehren dieses Modul? (aus Gross-Blueprint)
+   - **Konflikt-Risiko:** `niedrig` (nur Adds), `mittel` (Aenderungen an bestehenden Methoden), `hoch` (Interface-/Signatur-Aenderung)
+3. Erstelle `.claude/analysis/blueprints/{FEATURE}/S2/module-register.md`:
+
+```yaml
+---
+feature: {NAME}
+stufe: 2
+erstellt_von: cleanCodeSlice
+erstellt_am: {YYYY-MM-DD}
+---
+```
+
+| Modul/Datei | Slice(s) | Rolle | Konflikt-Risiko |
+|-------------|----------|-------|-----------------|
+| {Pfad}      | {S1, S3} | shared | hoch           |
+| {Pfad}      | {S2}     | primary | niedrig       |
+
+4. Pflichtfelder: Modul/Datei, Slice(s), Rolle, Konflikt-Risiko
+5. Rolle=shared wenn Datei in >1 Slice vorkommt
+6. Konflikt-Risiko=hoch wenn Rolle=shared UND Interface-Aenderung
+7. Pfad-Autoritaet: SPEC = `blueprints/{FEATURE}/S2/module-register.md`
+8. Falls NICHT Stufe 2 → SKIP (Graceful Degradation)
 
 ---
 

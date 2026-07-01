@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Startet Arbeit an einer PR-Gruppe - alle neuen Commits gehoeren zu dieser Gruppe.
 
 $ARGUMENTS = Gruppen-Nummer (z.B. "1", "6")

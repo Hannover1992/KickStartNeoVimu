@@ -1,4 +1,4 @@
-﻿# /_WP_chapterModel - Chapter Knowledge Model
+# /_WP_chapterModel - Chapter Knowledge Model
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-08
 op: WritePaper
 phase: Knowledge
-type: chapterModel
+type: building-block
 chain_position: chapterModel
 difficulty_scaling: true
 mcp_critical: false

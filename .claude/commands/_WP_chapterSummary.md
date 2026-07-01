@@ -6,15 +6,10 @@ version: 1.0.0
 created: 2026-02-24
 op: WritePaper
 phase: Post-Synthesis
-type: write
+type: building-block
 chain_position: post-synthesis
 difficulty_scaling: false
 mcp_critical: false
-changelog: |
-  v1.0: Initialer Entwurf. One-Shot Learning aus paperSummery.md.
-        Liest final-draft.md, generiert strukturierte Kapitel-Zusammenfassung.
-        Haengt Summary als letzte Sektion an final-draft.md.
-        Schreibt Standalone-Summary fuer Schnell-Referenz.
 ```
 
 ---

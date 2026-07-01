@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Gruppen-Details und Umsetzungsplan anzeigen.
 
 $ARGUMENTS = Gruppen-Nummer (z.B. "1", "6", "14")

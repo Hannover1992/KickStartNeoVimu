@@ -1,6 +1,7 @@
 ---
 name: DickBob
 description: Uncle Bob Martin - Clean Code Master & Tournament Champion
+model: opus
 version: 4.0.0
 ---
 

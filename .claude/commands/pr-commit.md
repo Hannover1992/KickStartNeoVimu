@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Commit erstellen und mit PR-Gruppe verknuepfen.
 
 $ARGUMENTS = Gruppen-Nummer (z.B. "1", "6", "14")

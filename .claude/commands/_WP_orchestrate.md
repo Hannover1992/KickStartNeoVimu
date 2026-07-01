@@ -2,29 +2,19 @@
 
 ```yaml
 status: active
-version: 3.0.0
+version: 3.3.0
 created: 2026-02-14
-updated: 2026-02-21
+updated: 2026-04-03
 op: WritePaper
 phase: Meta
 type: orchestration
 chain_position: meta
 difficulty_scaling: true
 team_based: true
-changelog: |
-  v3.0: KURZLEBIG_PROMPT Migration (Stateless Agents Redesign EC-B).
-        Persistenter Worker (wp-writer) eliminiert.
-        PHASE 2: KURZLEBIG_PROMPT statt WORKER-PROMPT (37 LOC statt 108).
-        PHASE 3: Aktives Spawning statt passives Monitoring.
-        Agent-Naming: wp-{chapter}-{command} statt wp-writer.
-        WP_PIPELINE_STATE Block im Manifest.
-        Wellen-Phase (wp-draft/wp-review) UNVERAENDERT (bereits R-konform).
-        ACCEPT/ABORT: Kein shutdown_request noetig (Agents bereits dead).
-  v2.1: Source Diversity in Assessment + Discovery-Loop fuer INTERNAL_ONLY.
-        assess meldet jetzt DISCOVERY wenn external_ratio < 0.3.
-        Team Lead erstellt Discovery-Tasks bei DISCOVERY Decision.
-  v2.0: Kompletter Rewrite. 1 Task = 1 Command. Task 0 fuer Init.
-        Worker-Prompt, ITERATE/CONVERGE Steering, HiL-Pause.
+bl_134_pflaster: true
+bl_134_pflaster_inserted: 2026-04-25
+bl_134_pflaster_real_refactor_in: BL-138
+bl_140_pflaster_code: true
 ```
 
 ---
@@ -66,7 +56,7 @@ changelog: |
 ## Aufruf
 
 ```
-/_WP_orchestrate [chapter_number] [difficulty] [ceiling] [floor]
+/_WP_orchestrate [chapter_number] [difficulty] [ceiling] [floor] [--bl-source=BL-NNN]
 ```
 
 **Parameter:**
@@ -77,12 +67,14 @@ changelog: |
 | `difficulty` | normal | easy, normal, hard | Steuert Agent-Anzahl, Iterations, RAG-Queries |
 | `ceiling` | sonnet | haiku, sonnet, opus | Hoechstes Modell (Worker + Synthese-Wellen) |
 | `floor` | haiku | haiku, sonnet | Niedrigstes Modell (Exploration-Wellen) |
+| `--bl-source` | null | BL-NNN | BL-043 AK-02-03: Quell-BL-Item ID (optional, von SDF M9 uebergeben) |
 
 **Beispiele:**
 ```
 /_WP_orchestrate 1                     → Kap. 1, normal, sonnet/haiku
 /_WP_orchestrate 2 hard opus haiku     → Kap. 2, hard, opus ceiling
 /_WP_orchestrate 1 easy sonnet sonnet  → Kap. 1, easy, alles sonnet
+/_WP_orchestrate 1 normal sonnet haiku --bl-source=BL-043  → mit Quell-BL-Item
 ```
 
 **Voraussetzungen:**
@@ -118,26 +110,15 @@ Freiheitsgrad 2 (Modell): floor=haiku (Explorer) / middle=sonnet (Drafter) / cei
 
 ## GLOBALE PARAMETER (/_param Override)
 
-Lies `.claude/analysis/_manifest.md` und suche nach GLOBAL_* Feldern.
-Falls gesetzt, ueberschreiben sie die lokalen Parameter-Defaults:
-
-| Manifest-Feld | Wirkung |
-|---|---|
-| `GLOBAL_DIFFICULTY` | Ueberschreibt lokalen `difficulty` Default |
-| `GLOBAL_CEILING` | Kappt lokales ceiling: `effektiv = min(lokal, GLOBAL_CEILING)` |
-| `GLOBAL_FLOOR` | Hebt lokalen floor an: `effektiv = max(lokal, GLOBAL_FLOOR)` |
+Lies `{VAULT}/_session_params.md` (4 Zeilen, 4 Parameter):
 
 **Berechnung:**
 ```
-Hierarchie: opus=3, sonnet=2, haiku=1
-IF GLOBAL_DIFFICULTY gesetzt UND != "(nicht gesetzt)": difficulty = GLOBAL_DIFFICULTY
-IF GLOBAL_CEILING gesetzt UND != "(nicht gesetzt)":    ceiling = min(ceiling, GLOBAL_CEILING)
-IF GLOBAL_FLOOR gesetzt UND != "(nicht gesetzt)":      floor = max(floor, GLOBAL_FLOOR)
-Validierung: ceiling >= floor (sonst ceiling = floor + Warning ausgeben)
-middle = sonnet wenn ceiling=opus, haiku wenn ceiling=sonnet, haiku wenn ceiling=haiku
+params = lies("_session_params.md")
+difficulty = params.difficulty
+ceiling    = min(ceiling, params.ceiling)
+floor      = max(floor, params.floor)
 ```
-
-**Falls KEINE GLOBAL_* Felder gesetzt:** Lokale Defaults gelten unveraendert.
 
 ---
 
@@ -173,6 +154,19 @@ DELEGIERT AN AGENT-TASKS:
   - output/pdf/chapter-{N}/chapter-{N}.pdf       (Task 12: PDF)
   - output/reflection/chapter-{N}/reflection-report.json (Task 13: Reflect)
 
+DELEGIERT NACH ACCEPT (BL-010, v3.2):
+  - /_backlog {wp_task_name} --mode=create  (WP→BL Rueckkopplung, non-blocking)
+
+SCHREIBT NACH ACCEPT (BL-043, v3.3, BL-050 Vault-First):
+  - PRIMAER: {VAULT}/Backlog/{BL_SLUG}/Crumbs/{bl_source_name}_wp_crumbs.md
+  - FALLBACK: .claude/crumbs/{bl_source_name}_wp_crumbs.md  (wenn Vault nicht erreichbar)
+  - {VAULT_BASE}/BL-{NNN}-{slug}.md → raw_source APPEND  (WP-Crumbs-Pfad, non-blocking)
+
+LIEST FUER BL-043:
+  - {VAULT}/_backlog_index.md  (bl_source_id → bl_source_name Lookup)
+  - output/reflection/chapter-{N}/reflection-report.json  (Crumbs-Quelle: Learnings)
+  - output/synthesis/chapter-{N}/final-draft.md  (Crumbs-Quelle: Kern-Thesen, erste 3 Absaetze)
+
 WICHTIG:
   - Team Lead fuehrt KEINE /_WP_* Commands selbst aus (nur Workers)
   - Team Lead schreibt KEIN metadata.json oder review-matrix.json direkt
@@ -180,6 +174,91 @@ WICHTIG:
   - Im Team-Modus: Write-Agents schreiben KEIN metadata.json (Race Condition)
   - Im Team-Modus: Review-Agents schreiben KEIN review-matrix.json (Race Condition)
 ```
+
+---
+
+## SCHRITT 0: BL-140 Batch-Pflaster (echter Branch)
+
+<!-- BL-144 L4: Echter Branch-Header fuer Batch-Pflaster. INV-WP-PFLASTER-3 unten. -->
+
+## BL-134 PFLASTER: Batch-Input-Adapter (Sub-Pipeline)
+
+**Eingefuegt:** 2026-04-25 als Teil von BL-134 Slice 3.
+
+Diese Pipeline akzeptiert ab BL-134 oberflaechlich einen `batch={PL-Items}` Parameter
+vom SDF-executionDispatch und iteriert intern **sequentiell** durch die Items
+(kein paralleler Batch-Refactor).
+
+### Vertrag (Pflaster)
+
+- **LIEST:** Wenn `batch=` Param gesetzt -> Liste der PL-Items aus `DF_BATCH_STATE.batch_items` (vom executionDispatch durchgereicht).
+- **ITERIERT INTERN:** `FOR item IN batch_items: pipeline_aufruf(item)` (sequentiell).
+- **SCHREIBT pro Item:** `DF_BATCH_STATE.item_done.append(item_id)` nach erfolgreichem Pipeline-Durchlauf (Recovery-Hook).
+- **EXIT:** Wenn alle Items DONE.
+
+### BL-134-PFLASTER-MARKER (Pseudo-Code)
+
+```
+batch = lies CLI_PARAM("batch") ?? null
+IF batch != null:
+  Logge: "[BL-134-PFLASTER] wp_orchestrate batch-modus: {len(batch)} Items sequentiell."
+  FOR item IN batch:
+    skip_if_done = item IN DF_BATCH_STATE.item_done
+    IF skip_if_done: Logge "[BL-134-PFLASTER] SKIP {item} (bereits done)"; CONTINUE
+    pipeline_aufruf(item)
+    DF_BATCH_STATE.item_done.append(item)
+    manifest.update()
+  RETURN
+
+# kein batch-Param -> normaler Single-Item-Pfad (Legacy)
+```
+
+### Echter Batch-Refactor
+
+Dieser Pflaster ist Uebergangs-Loesung. Echter Batch-Support (paralleler
+intern-Loop, Aggregat-Kontext) folgt im jeweiligen Pipeline-Refactor:
+
+- **wp_orchestrate echter Refactor:** BL-138 (pruefen ob WP separates BL benoetigt)
+
+### INV-WP-PFLASTER-1
+
+Pflaster-Pfad MUSS sequentiell bleiben bis Folge-BL den echten Refactor liefert.
+Paralleler intern-Loop ohne explizite BATCH_STATE-Race-Locks ist VERBOTEN.
+
+### BL-140 PFLASTER-CODE (echte Implementation)
+
+```
+# CLI-Param oder Manifest
+batch = lies CLI_PARAM("batch") OR DF_BATCH_STATE.batch_items
+IF batch != null AND |batch| > 0:
+  Logge: "[BL-140-PFLASTER] wp_orchestrate Batch-Modus: {len(batch)} Items sequentiell"
+  FOR item IN batch:
+    # Skip falls schon DONE
+    IF item IN DF_BATCH_STATE.item_done:
+      Logge: "[BL-140-PFLASTER] SKIP {item} (bereits in item_done)"
+      CONTINUE
+
+    # Original-Pipeline-Aufruf fuer dieses Item
+    pipeline_main_logic(item)
+
+    # Recovery-Hook
+    DF_BATCH_STATE.item_done.append(item)
+    manifest.update()
+
+  RETURN  # Batch-Modus fertig
+
+# Fallback: kein batch -> Single-Item-Pfad (Legacy)
+pipeline_main_logic(NAME)
+```
+
+INV-WP-PFLASTER-2 (NEU, BL-140):
+Pflaster-Code MUSS sequentiell iterieren (kein paralleler Loop ohne Race-Lock).
+Pflaster-Code MUSS item_done.append nach JEDEM erfolgreichen Item.
+Pflaster-Code MUSS RETURN am Ende des batch-Pfads (NICHT in den Legacy-Pfad fallen).
+
+INV-WP-PFLASTER-3 (BL-144):
+Echter Batch-Branch IM Pipeline-Body -- NICHT nur Doku am Datei-Ende.
+Der SCHRITT-0-Block MUSS vor PHASE 1 aktiv ausgefuehrt werden (kein toter Doku-Anhang).
 
 ---
 
@@ -445,8 +524,14 @@ RAG:         {rag_collection}
 
 ═══ SCHRITTE ═══
 
-1. Lies Command-Datei: .claude/commands/_WP_{COMMAND}.md
-2. Fuehre Command aus.
+1. Lade den Command via Skill-Tool:
+   Skill(skill="_WP_{COMMAND}", args="Kap.{N}")
+   Beispiele:
+     Skill(skill="_WP_write", args="Kap.3")
+     Skill(skill="_WP_review", args="Kap.3")
+     Skill(skill="_WP_qualityGate", args="Kap.3")
+   WICHTIG: Nutze das Skill-Tool — NICHT die .md-Datei direkt lesen!
+2. Fuehre den geladenen Skill vollstaendig aus.
 3. TaskUpdate {TASK_ID} status=completed
 4. SendMessage an "team-lead":
    "WP_{COMMAND} Kap.{N}: [2-3 Saetze Summary]"
@@ -455,6 +540,7 @@ RAG:         {rag_collection}
 
 - KEIN git commit, KEIN git push
 - KEIN Sub-Agent spawnen (W7-Constraint)
+- IMMER Skill-Tool verwenden — niemals .md-Datei manuell lesen als Ersatz
 - NUR dieser eine Command, dann fertig (KEIN TaskList-Loop)
 - NUR RAG-Quellen zitieren. KEIN eigenes Wissen einbringen.
 - Alle Outputs in den Projekt-Ordner schreiben ({project_path}/output/).
@@ -479,6 +565,19 @@ Task-ID:     {TASK_ID}
 Kapitel:     {N} - {chapter_title}
 Projekt:     {project_path}
 RAG:         {rag_collection}
+
+═══ SP-FIX-8: Stille-Post-Schutz (Draft/Review-Kaskade) ═══
+
+STILLE-POST-SCHUTZ fuer Draft-Agents:
+  Drafts anderer Agents sind INSPIRATION, nicht Faktenquelle.
+  Zitiere NUR aus RAG-Quellen ({rag_collection}). Verifiziere JEDE Aussage
+  an den PRIMAERQUELLEN (RAG-Chunks, chapter-model, research_questions).
+  Uebernimm KEINE Behauptungen blind aus anderen Drafts oder Assessment-Outputs.
+
+STILLE-POST-SCHUTZ fuer Review-Agents (SP-FIX-9):
+  Draft-Texte sind Pruefgegenstand, nicht Wahrheitsquelle.
+  Pruefe Zitate und Aussagen gegen RAG-Quellen. Markiere ungestuetzte
+  Behauptungen als FINDING. Dein Review basiert auf EIGENER RAG-Pruefung.
 
 ═══ ROLLEN-ERKENNUNG ═══
 
@@ -553,6 +652,8 @@ WP_PIPELINE_STATE:
   chapter_nr: {N}
   iteration: {I}
   phase: "{aktuelle-phase}"
+  bl_source_id: {BL-NNN | null}     # BL-043 AK-02-01: Quell-BL-Item (aus SDF oder --bl-source Parameter)
+  bl_source_name: {NAME | null}     # BL-043 AK-02-02: Abgeleitet aus bl_source_id via _backlog_index.md Lookup. Fallback: wp_task_name
   resume_zaehler:
     init: 0
     session: 0
@@ -572,6 +673,39 @@ WP_PIPELINE_STATE:
     reflect: 0
   aktive_agent_ids: []
 ```
+
+## WP_STEPS Enum (AK-06-01, BL-036)
+
+WP_PIPELINE_STATE.phase nimmt exakt diese 16 Werte an:
+
+| # | Step              | Manifest-Wert       | Parallel? |
+|---|-------------------|----------------------|-----------|
+| 1 | init              | init                 | nein      |
+| 2 | session           | session              | nein      |
+| 3 | structure         | structure            | nein      |
+| 4 | assess            | assess               | nein      |
+| 5 | chapterModel      | chapterModel         | nein      |
+| 6 | chapterGap        | chapterGap           | nein      |
+| 7 | write             | write                | ja (N Agents) |
+| 8 | aggregation       | aggregation          | nein      |
+| 9 | visual            | visual               | nein      |
+|10 | qualityGate       | qualityGate          | nein      |
+|11 | convergence       | convergence          | nein      |
+|12 | review            | review               | ja (N Agents) |
+|13 | reviewAggregation | reviewAggregation    | nein      |
+|14 | synthesis         | synthesis            | nein      |
+|15 | chapterPDF        | chapterPDF           | nein      |
+|16 | reflect           | reflect              | nein      |
+
+## Konvergenz-Enforcement (AK-06-02, BL-036)
+
+Manifest-Feld: WP_PIPELINE_STATE.convergence_count (Zaehler, startet bei 0)
+Max-Iterationen pro Schwierigkeit:
+  easy=2, normal=3, hard=5
+
+Guard: IF convergence_count >= max_iterations[difficulty]:
+  → FORCE convergence (qualityGate PASS erzwingen, WARN loggen)
+  → KEIN endloser Loop
 
 ### 3.2 Bei ITERATE-Decision
 
@@ -722,17 +856,146 @@ AskUserQuestion:
 ```
 1. Keine aktiven Agents (kurzlebig, bereits terminiert)
 2. TeamDelete
-3. Optional: /_W_push_orchestrate {chapter_title} {difficulty} {ceiling} {floor}
-   → Kapitel-Wissen in RAG + Vault sichern (model finish → gap → push_global →
-     modelSplit → sync_orchestrate hard --co-work → retrospektive)
-   → Nur wenn Kapitel-Model existiert (.claude/models/{chapter}_Model.md)
+2a. Fire-Together Trigger — ENTFERNT (BL-050 Vault-First DirectWrite)
+    # _W_fireTogether ist OBSOLET. Synthese-Commands schreiben direkt in Vault.
+2b. P3 Trigger: ObsidianSync — ENTFERNT (BL-050 Vault-First DirectWrite)
+    # _W_sync_orchestrate / _W_obsidianSync sind OBSOLET. Vault-Sync inline erledigt.
+3. _W_push_orchestrate — ENTFERNT (BL-050 Vault-First DirectWrite)
+   # wpush=SKIPPED_OBSOLET — DirectWrite macht post-hoc Vault-Sync ueberfluessig.
 4. Optional: /_finish {chapter_title}
    → Offene Items pruefen (parking-lot, Task.md, offene ECs)
    → Manifest auf READY setzen
    → Nur wenn Kapitel vollstaendig abgeschlossen (letztes Kapitel oder Paper-Ende)
+4a. BL-Item erzeugen (automatische Rueckkopplung WP→Backlog, BL-010):
+    # Nach WP DONE: Neues BL-Item fuer WP-Ergebnisse im Backlog persistieren
+    # Damit WP-Recherche-Ergebnisse als implementierungsfaehiges Paket verfuegbar sind
+    IF WP_PIPELINE_STATE.phase == "DONE" OR WP_PIPELINE_STATE.phase == "ACCEPTED":
+      wp_task_name = WP_PIPELINE_STATE.wp_task_name
+      TRY:
+        Skill(skill="_backlog", args="{wp_task_name} --mode=create --source=wp --reifegrad=SC-REIF")
+        Logge: "[WP→BL] BL-Item erzeugt fuer WP-Ergebnis '{wp_task_name}'"
+      CATCH:
+        WARN: "BL-Item-Erzeugung fehlgeschlagen fuer '{wp_task_name}'. Weiter ohne BL-Item (non-blocking)."
+4b. WP-Crumbs erzeugen (Rueckkanal WP→Crumbs, BL-043 RF-01):
+    # Nach ACCEPT: Strukturierte Crumbs aus Reflection-Report extrahieren
+    # ADR-01: Reflection-Report als Quelle (nicht full-draft — bereits strukturierte Learnings)
+    # AK-01-02: Non-blocking — Fehler blockiert Pipeline NICHT
+    TRY:
+      # AK-02-01/AK-02-02: bl_source_name bestimmen
+      bl_source_id = WP_PIPELINE_STATE.bl_source_id      # z.B. "BL-043" oder null
+      IF bl_source_id != null:
+        # Lookup in _backlog_index.md: bl_source_id → Feature-Name
+        index_zeile = LIES _backlog_index.md → Zeile mit {bl_source_id}
+        bl_source_name = index_zeile.name                 # z.B. "WP_Crumbs_Rueckkanal"
+      ELSE:
+        bl_source_name = WP_PIPELINE_STATE.wp_task_name   # Fallback: wp_task_name
+      Logge: "[WP→CRUMBS] bl_source_name='{bl_source_name}' (bl_source_id={bl_source_id})"
+
+      # AK-01-01: Crumbs-Datei aus Reflection-Report + final-draft erzeugen
+      N = WP_PIPELINE_STATE.chapter_nr
+      reflection = LIES "output/reflection/chapter-{N}/reflection-report.json"
+      final_draft = LIES "output/synthesis/chapter-{N}/final-draft.md" → erste 3 Absaetze
+      learnings = reflection.learnings   # Array von {text, kategorie, konfidenz}
+
+      # AK-01-03: Dateiname folgt bestehendem Schema ({NAME}_wp_crumbs.md)
+      # BL-050 Vault-First: Crumbs PRIMAER in Vault, FALLBACK lokal
+      vault_crumbs_pfad = vault_resolve(
+        "{VAULT}/Backlog/{BL_SLUG}/Crumbs/{bl_source_name}_wp_crumbs.md"
+      )
+      IF vault_erreichbar(vault_crumbs_pfad):
+        crumbs_pfad = vault_crumbs_pfad
+      ELSE:
+        crumbs_pfad = ".claude/crumbs/{bl_source_name}_wp_crumbs.md"
+        WARN: "Vault nicht erreichbar, FALLBACK auf .claude/crumbs/"
+
+      SCHREIBE crumbs_pfad:
+        ---
+        type: crumbs
+        feature: {bl_source_name}
+        bl-item: {bl_source_id}
+        source_chapter: {N}
+        bl_source_id: {bl_source_id}
+        bl_source_name: {bl_source_name}
+        wp_task_name: {WP_PIPELINE_STATE.wp_task_name}
+        created: {HEUTE}
+        updated: {HEUTE}
+        crumbs_count: {|learnings|}
+        tags:
+          - bl/{bl_source_id}
+          - type/crumbs
+          - pipeline/post-phase
+        ---
+
+        # WP-Crumbs: {bl_source_name} (Kapitel {N})
+
+        ## Kern-Thesen (aus final-draft)
+        {final_draft_erste_3_absaetze}
+
+        ## Learnings (aus Reflection-Report)
+        FUER JEDES learning IN learnings:
+          ### Crumb: {learning.text | erste 60 Zeichen}
+          - **Kategorie:** {learning.kategorie}
+          - **Konfidenz:** {learning.konfidenz}
+          - **Detail:** {learning.text}
+
+      Logge: "[WP→CRUMBS] {|learnings|} Crumbs geschrieben nach {crumbs_pfad}"
+    CATCH:
+      WARN: "WP-Crumbs-Erzeugung fehlgeschlagen (non-blocking, AK-01-02). Weiter ohne Crumbs."
+4c. raw_source Append im Quell-BL-Item (BL-043 RF-03):
+    # Nach Crumbs-Erzeugung: WP-Crumbs-Pfad in raw_source des Quell-BL-Items anhaengen
+    # AK-03-01: APPEND — bestehende raw_source Eintraege bleiben erhalten
+    # AK-03-02: crumbs_ref bleibt single-value (kein Schema-Breaking-Change)
+    # AK-03-03: Non-blocking — Fehler blockiert Pipeline NICHT
+    IF bl_source_id != null:
+      TRY:
+        # Vault-Pfad aus _backlog_index.md Lookup
+        vault_pfad = index_zeile.vault_pfad  # z.B. "{VAULT_BASE}/BL-043-wp-crumbs-rueckkanal.md"
+        IF DATEI EXISTIERT(vault_pfad):
+          # Frontmatter lesen
+          bestehende_raw_source = LIES Frontmatter(vault_pfad).raw_source  # String oder Liste
+          # APPEND: WP-Crumbs-Pfad anhaengen
+          IF bestehende_raw_source IST String:
+            neue_raw_source = [bestehende_raw_source, crumbs_pfad]
+          ELIF bestehende_raw_source IST Liste:
+            neue_raw_source = bestehende_raw_source + [crumbs_pfad]
+          ELSE:
+            neue_raw_source = [crumbs_pfad]
+          # Frontmatter-Feld aktualisieren (NUR raw_source, Rest bleibt)
+          SCHREIBE Frontmatter(vault_pfad).raw_source = neue_raw_source
+          Logge: "[WP→RAW_SOURCE] raw_source erweitert in {vault_pfad}: +{crumbs_pfad}"
+        ELSE:
+          WARN: "Vault-Datei nicht gefunden: {vault_pfad}. raw_source-Append uebersprungen."
+      CATCH:
+        WARN: "raw_source-Append fehlgeschlagen fuer {bl_source_id} (non-blocking, AK-03-03). Weiter ohne Append."
+    ELSE:
+      Logge: "[WP→RAW_SOURCE] SKIP — bl_source_id ist null (kein Quell-BL-Item zugeordnet)"
 5. _manifest.md aktualisieren:
    chapter_{N}_status=ACCEPTED
    W_PUSH_ORCHESTRATE: {YYYY-MM-DD HH:MM}  ← (falls W_push_orchestrate ausgefuehrt)
+5a. BL-206 AK-6: WP Re-Entry-Signal (NEU 2026-05-24)
+    # Wenn WP via BL-206 Bottleneck-Route getriggert wurde (bottleneck_trigger=true),
+    # idf_reentry_signal in WP_PIPELINE_STATE schreiben fuer IDF Re-Entry.
+    IF WP_PIPELINE_STATE.bottleneck_trigger == true:
+      # Welche W{n} wurden durch WP bestaetigt? Aus WP-Crumbs oder reflection.learnings
+      confirmed_w_refs = extract_confirmed_w_refs(reflection.learnings) ?? []
+      affected_items   = WP_PIPELINE_STATE.bottleneck_affected_items ?? []
+
+      WP_PIPELINE_STATE.idf_reentry_signal = {
+        "triggered":          true,
+        "reason":             "WP-Done via BL-206 Bottleneck-Route (extern-Bottleneck geloest)",
+        "affected_pl_items":  affected_items,
+        "updated_w_refs":     confirmed_w_refs,
+        "srs_refresh_needed": len(confirmed_w_refs) > 0,
+        "loop_count_increment": 1,
+        "wp_chapter_nr":      N,
+        "completed_at":       now()
+      }
+      # _manifest.md wird im naechsten Schritt geschrieben
+      Logge: f"[BL-206 AK-6] WP Re-Entry-Signal: {len(affected_items)} PLs, {len(confirmed_w_refs)} W{{n}} confirmed"
+      audit_jsonl_append({type: "BL206_WP_REENTRY_SIGNAL",
+                          affected_items: affected_items, w_updated: confirmed_w_refs})
+    ELSE:
+      Logge: "[BL-206 AK-6] Kein Bottleneck-WP-Kontext — kein idf_reentry_signal noetig"
 6. session-state.json aktualisieren: next_chapter={N+1}
 7. Melde User:
    "Kapitel {N} abgeschlossen.
@@ -1369,6 +1632,16 @@ WICHTIG:
   - Review-Agents nutzen {middle}-Modell (nicht ceiling)
   - Synthese/Aggregation/Sequentielle nutzen {ceiling}-Modell
 ```
+
+## Wellen-Konfiguration write/review (AK-06-03, BL-036)
+
+| Step   | easy | normal | hard | Modell  |
+|--------|------|--------|------|---------|
+| write  | 1    | 3      | 5    | ceiling |
+| review | 1    | 2      | 3    | ceiling |
+
+State-Transition: write → PARALLEL(N agents) → aggregation → sequential
+                   review → PARALLEL(N agents) → reviewAggregation → sequential
 
 ---
 

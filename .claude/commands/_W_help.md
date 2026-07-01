@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Wissens-Koaleszenz - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Wissens-Koaleszenz (/_W_*) Commands.
@@ -7,6 +11,28 @@ Zeige die Uebersicht der Wissens-Koaleszenz (/_W_*) Commands.
 ```
 /_W_help
 ```
+
+---
+
+## Updates 2026-05-19 (BL-173/174/175 Cross-Cutting)
+
+**Manifest-Routing (BL-173) — Vault-State splits:**
+- Vault-State wird aufgeteilt: `{vault}/_factory_manifest.md` (BDF+GLOBAL_*) vs. `{bl_folder}/_manifest.md` (pipeline-spezifisch)
+- W-Pipeline liest/schreibt Vault-weite State via `manifest_reader.read_factory_block(...)`
+- BL-spezifische W-State-Eintraege via `manifest_reader.read_bl_block(bl_id, ...)`
+- Migration: `migrate_manifest_split.py migrate --vault-root=... --rollback-tag=YYYY-MM-DD`
+
+**Session-Params Per-BL (BL-174):**
+- 3-Stufen-Inheritance: BL-Override → Vault-Default → Framework-Default
+- Resolver: `session_params_resolver.resolve_param(name, bl_id=None)`
+- `/_param` mit `--bl-id=BL-XXX` schreibt BL-spezifisch (W-Params pro BL isolierbar)
+
+**BDF Factory-Lock (BL-175):**
+- `acquire/release/heartbeat` via `factory_lock.py`
+- TTL+Heartbeat, kein fcntl, eigenes `_factory_lock.md`
+- Race-Condition-safe fuer 5-10 parallele BDFs
+
+(siehe `/_help` TEIL 8c, BL-173/174/175 Spec-Dateien)
 
 ---
 
@@ -300,7 +326,7 @@ Gib dem User folgende Uebersicht aus:
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
-Dann lies `.claude/analysis/_manifest.md` falls vorhanden und zeige den Wissens-Koaleszenz-Status:
+Dann lies `{VAULT}/_manifest.md` falls vorhanden und zeige den Wissens-Koaleszenz-Status:
 
 ```
 WISSENS-KOALESZENZ STATUS:

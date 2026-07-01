@@ -9,7 +9,24 @@ import json
 import sys
 from pathlib import Path
 from datetime import datetime
-import fcntl
+
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
+def _lock_shared(f):
+    if _HAS_FCNTL:
+        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+
+def _lock_exclusive(f):
+    if _HAS_FCNTL:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+
+def _unlock(f):
+    if _HAS_FCNTL:
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 # Root-Ordner bestimmen (wo .claude/ liegt)
 SCRIPT_DIR = Path(__file__).parent.absolute()
@@ -22,13 +39,12 @@ def atomic_write_state(status):
 
     # Lese aktuellen State (oder erstelle neuen)
     if STATE_FILE.exists():
-        with open(STATE_FILE, 'r') as f:
-            # File Lock für atomaren Read
-            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+        with open(STATE_FILE, 'r', encoding='utf-8') as f:
+            _lock_shared(f)
             try:
                 state = json.load(f)
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                _unlock(f)
     else:
         state = {"status": "idle", "current_phase": 0}
 
@@ -37,14 +53,13 @@ def atomic_write_state(status):
     state["timestamp"] = datetime.now().isoformat()
 
     # Atomisches Schreiben mit File Lock
-    with open(STATE_FILE, 'w') as f:
-        # Exclusive Lock während Schreibvorgang
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    with open(STATE_FILE, 'w', encoding='utf-8') as f:
+        _lock_exclusive(f)
         try:
             json.dump(state, f, indent=2)
-            f.flush()  # Force write to disk
+            f.flush()
         finally:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            _unlock(f)
 
 def main():
     try:
@@ -57,7 +72,7 @@ def main():
             atomic_write_state("completed")
 
             # Log für Debugging
-            with open(LOG_FILE, "a") as log:
+            with open(LOG_FILE, "a", encoding="utf-8") as log:
                 log.write(f"[{datetime.now()}] ✅ Completion flag set (Root: {ROOT_DIR})\n")
 
         # Erfolg zurückmelden
@@ -65,7 +80,7 @@ def main():
 
     except Exception as e:
         # Fehler loggen aber Hook nicht blockieren
-        with open(LOG_FILE, "a") as log:
+        with open(LOG_FILE, "a", encoding="utf-8") as log:
             log.write(f"[{datetime.now()}] ❌ Error: {e}\n")
         print(json.dumps({"continue": True}))
 

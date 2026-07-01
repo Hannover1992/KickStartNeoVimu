@@ -1,65 +1,71 @@
-<#
-.SYNOPSIS
-    Oeffnet einen oder mehrere PR-Kommentare im Browser
-
-.EXAMPLE
-    .\open.ps1 -Ids 121074
-    .\open.ps1 -Ids 121074,121075,121076
-    .\open.ps1 -Ids "121074, 121075, 121076"
-#>
 param(
-    [Parameter(Mandatory=$true)]
     [string]$Ids,
-    [int]$PrId = 18979,
-    [int]$DelayMs = 500
+    [int]$PrId = 0,
+    [string]$StateFile = ""
 )
 
-$BaseUrl = "https://tfs.itsg.de/tfs/ITSGCollection/DCS_Pflege/_git/DCSRE/pullrequest/$PrId"
-$JsonFile = "C:\Users\Administrator\Documents\Work\Code2\DCSRE\Sources\Backend\pr-$PrId-comments.json"
+. "$PSScriptRoot\_common.ps1"
 
-# IDs parsen (kommasepariert, mit oder ohne Leerzeichen)
-$idList = $Ids -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
+$PrId = Resolve-PrId -PrId $PrId
+$baseUrl = Get-PrWebUrl -PrId $PrId
 
-if ($idList.Count -eq 0) {
-    Write-Error "Keine gueltigen IDs angegeben"
+if ([string]::IsNullOrEmpty($StateFile)) {
+    $StateFile = Get-StateFile -PrId $PrId
+}
+
+# IDs parsen (komma-separiert)
+$threadIds = $Ids -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+
+if ($threadIds.Count -eq 0) {
+    Write-Host "Keine Thread-IDs angegeben." -ForegroundColor Red
+    Write-Host "Verwendung: open.ps1 -Ids '121074,121075,121076'"
     exit 1
 }
 
-Write-Host "Oeffne $($idList.Count) Kommentar(e) im Browser..." -ForegroundColor Cyan
-Write-Host ""
-
-# JSON laden fuer Datei-Pfade
-$threads = @{}
-if (Test-Path $JsonFile) {
-    $json = Get-Content $JsonFile -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($thread in $json.value) {
-        if ($thread.threadContext) {
-            $threads[$thread.id] = $thread.threadContext.filePath
+# State laden um Pfade zu finden
+$threadPaths = @{}
+if (Test-Path $StateFile) {
+    $state = Get-Content $StateFile -Raw | ConvertFrom-Json
+    foreach ($group in $state.Groups) {
+        foreach ($thread in $group.Threads) {
+            $threadPaths[$thread.Id.ToString()] = $thread.File
         }
     }
 }
 
-# Jeden Kommentar oeffnen
-foreach ($id in $idList) {
-    $filePath = $threads[$id]
+Write-Host "Oeffne $($threadIds.Count) Thread(s) im Browser..." -ForegroundColor Cyan
+Write-Host "  PR: $baseUrl" -ForegroundColor DarkGray
+
+# Sammle alle URLs zuerst
+$urls = @()
+foreach ($id in $threadIds) {
+    $filePath = $threadPaths[$id]
 
     if ($filePath) {
-        $url = "$BaseUrl`?_a=files&path=$filePath&discussionId=$id"
-        Write-Host "  [$id] $filePath" -ForegroundColor Green
+        $encodedPath = "/Sources/Backend/$filePath" -replace '/', '%2F'
+        $url = "$baseUrl`?_a=files&discussionId=$id&path=$encodedPath"
     } else {
-        # Fallback ohne Pfad
-        $url = "$BaseUrl`?_a=files&discussionId=$id"
-        Write-Host "  [$id] (Pfad unbekannt)" -ForegroundColor Yellow
+        $url = "$baseUrl`?_a=files&discussionId=$id"
     }
 
-    # Neues Fenster mit Chrome (--new-window)
-    Start-Process "chrome" -ArgumentList "--new-window", $url
-
-    # Kurze Pause zwischen Tabs damit Browser nicht ueberlastet
-    if ($idList.Count -gt 1) {
-        Start-Sleep -Milliseconds $DelayMs
+    $urls += $url
+    Write-Host "  -> Thread $id" -ForegroundColor Gray
+    if ($filePath) {
+        Write-Host "     $filePath" -ForegroundColor DarkGray
     }
 }
 
-Write-Host ""
-Write-Host "Fertig! $($idList.Count) Fenster geoeffnet." -ForegroundColor Green
+# Oeffne NEUES Chrome-Fenster mit erstem Tab, dann weitere Tabs hinzufuegen
+$isFirst = $true
+foreach ($url in $urls) {
+    if ($isFirst) {
+        Start-Process "chrome" -ArgumentList "--new-window", $url
+        $isFirst = $false
+        Start-Sleep -Milliseconds 1000
+    } else {
+        Start-Process "chrome" -ArgumentList $url
+        Start-Sleep -Milliseconds 300
+    }
+}
+
+Write-Host "Fertig!" -ForegroundColor Green

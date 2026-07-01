@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Datenfluss-Diagramm: Implementierungs-Pipeline v3.0
 
 **Version:** 3.0
@@ -47,7 +51,8 @@ graph TD
         TASK[Task.md]
         MODEL[Model.md]
         PL[_parking-lot.md]
-        MANIFEST[_manifest.md]
+        MANIFEST_STATE[_manifest.md<br/>State &lt;200Z]
+        MANIFEST_PROTOKOLL[_manifest_protokoll.md<br/>Protokoll unbegrenzt]
         PATTERNS[_pattern-library.md]
     end
 
@@ -75,14 +80,15 @@ graph TD
     style W1_IMPL fill:#2ECC71,color:#fff
     style W1_ERG fill:#3F51B5,color:#fff
     style PL fill:#FDD835,color:#000
-    style MANIFEST fill:#00BCD4,color:#fff
+    style MANIFEST_STATE fill:#00BCD4,color:#fff
+    style MANIFEST_PROTOKOLL fill:#00838F,color:#fff
     style PATTERNS fill:#8D6E63,color:#fff
 ```
 
 **Prinzip:**
 - Pipeline v3.0 = schneller Pfad (TDD, bekanntes Terrain)
 - Zyklus v2.2 = Eskalations-Pfad (Forschung, unbekanntes Terrain)
-- Gemeinsame Infrastruktur: Model.md, _parking-lot.md, _manifest.md, _pattern-library.md
+- Gemeinsame Infrastruktur: Model.md, _parking-lot.md, _manifest.md (State) + _manifest_protokoll.md (Protokoll), _pattern-library.md
 
 ---
 

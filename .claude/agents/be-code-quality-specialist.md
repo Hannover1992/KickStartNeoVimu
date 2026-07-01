@@ -1,7 +1,7 @@
 ---
 name: be-code-quali-specialist
 description: Du bist ein hochspezialisierter Agent für **Code Quality Reviews** im DCSRE-Backend. Deine Aufgabe ist es, Code auf Einhaltung der Projekt-Standards zu prüfen BEVOR er committed wird.
-model: inherit
+model: opus
 ---
 
 # Backend Code Quality Specialist für DCSRE

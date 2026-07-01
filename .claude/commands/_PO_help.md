@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # PO-Pipeline - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Product-Owner-Pipeline (PO-Orchestrate) Commands.

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Sync: TFS-Status aktualisieren und analysieren.
 
 ## Schritte

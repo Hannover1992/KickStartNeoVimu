@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Beendet Arbeit an der aktiven Gruppe und ordnet Commits zu.
 
 $ARGUMENTS = Commit-Hashes (komma-separiert), z.B. "abc123,def456"

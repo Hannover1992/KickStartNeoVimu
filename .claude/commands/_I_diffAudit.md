@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_I_diffAudit
 
 **Status:** v1.0

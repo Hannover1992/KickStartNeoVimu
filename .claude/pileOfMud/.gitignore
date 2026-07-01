@@ -1,0 +1,6 @@
+# pileOfMud = Briefkasten / Drop-Zone fuer Rohmaterial (Audio, Transkripte, Jira-MDs).
+# Inhalt ist transient + projekt-instanz-spezifisch -> NICHT in git.
+# Der Ordner selbst bleibt via dieser .gitignore nach Redeploy bestehen (leer).
+# /_backlog {NAME} verschlingt den gesamten Inhalt (intake-from-inbox, 2026-06-01).
+*
+!.gitignore

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Wir haben uns gerade ueber ein Dokument unterhalten. Gib mir den vollen Pfad dieses Dokuments.
 
 ## Vorgehen (BEIDE Schritte ausfuehren!)

@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Workflow Hilfe anzeigen.
 
 Zeige folgende Uebersicht:

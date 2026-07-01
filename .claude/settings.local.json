@@ -1,5 +1,8 @@
 {
   "enabledMcpjsonServers": [
     "cleancoder-local"
-  ]
+  ],
+  "enabledPlugins": {
+    "lua-lsp@claude-plugins-official": true
+  }
 }

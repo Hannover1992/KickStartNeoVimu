@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # /_transkriptRaffinieren
 
 **Status:** v1.0
@@ -36,7 +40,7 @@
 |       → Rohes Meeting-Transkript, beliebig lang                |
 |                                                                |
 |  LIEST (Input) - OPTIONAL:                                     |
-|    2. .claude/analysis/_manifest.md                             |
+|    2. {VAULT}/_manifest.md                             |
 |       → Vault-Pfad fuer Output-Location                        |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |

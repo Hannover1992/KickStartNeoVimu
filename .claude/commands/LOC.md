@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # LOC Statistiken für Patryk Krzyzanski
 
 Berechne die Lines of Code (LOC) Statistiken pro Tag für den angegebenen Zeitraum.

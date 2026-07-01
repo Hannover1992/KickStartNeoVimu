@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Paper-Pipeline - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Paper-Pipeline (WritePaper) Commands.
@@ -16,7 +20,7 @@ Gib dem User folgende Uebersicht aus:
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║  PAPER-PIPELINE: RAG-basiertes akademisches Schreiben (19 Commands)    ║
+║  PAPER-PIPELINE: RAG-basiertes akademisches Schreiben (21 Commands)    ║
 ║                                                                         ║
 ║  ═══ SETUP (Projekt + Session) ═══                                     ║
 ║                                                                         ║
@@ -217,7 +221,7 @@ Gib dem User folgende Uebersicht aus:
 ╚═══════════════════════════════════════════════════════════════════════════╝
 ```
 
-Dann lies `.claude/analysis/_manifest.md` falls vorhanden und zeige den WritePaper-Status:
+Dann lies `{VAULT}/_manifest.md` falls vorhanden und zeige den WritePaper-Status:
 
 ```
 AKTUELLER STAND WritePaper:

@@ -1,6 +1,10 @@
+---
+type: building-block
+---
+
 # /_I_codeIntegration
 
-**Status:** v4.1 (exit_report Pflichtblock + Parking-Lot Aktivierung — PN-1 I-ExitReport)
+**Status:** v4.2 (BL-065: Vault-First DirectWrite, Hybrid-Marker ersetzt)
 **Actor:** INTEGRATIONS-CODER
 **Zweck:** Integration Tests + Boundary Code via RGR (Batch: 2-3 Tests pro Aufruf)
 
@@ -14,7 +18,7 @@
 +===============================================================+
 |                                                                |
 |  LIEST (Input) - PFLICHT:                                      |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |    2. .claude/CURRENT_SLICE.md (falls Mitose-Worktree)        |
 |    3. .claude/analysis/plans/{NAME}-{SLICE}-PLAN.md            |
 |       → Integration Test-Liste (IT1, IT2, ...)                |
@@ -23,33 +27,46 @@
 |       → VORAUSSETZUNG: status=final (alle Unit Tests gruen)   |
 |    5. .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md  |
 |       → RESUME: Falls vorhanden, lies status + done Tests     |
-|    6. .claude/patterns/_pattern-library.md                    |
+|    6. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                    |
 |    7. Codebase (Production Code + bestehende Tests)           |
 |                                                                |
 |  LIEST (Input) - OPTIONAL bei Code-Generierung:               |
-|    8. .claude/meta/implementation/testing.md                   |
+|    8. {META}/implementation/testing.md                   |
 |       → TestBase<T> Vererbung, TestBuilder, Fixtures           |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
-|    9. .claude/meta/implementation/routing.md                   |
+|    9. {META}/implementation/routing.md                   |
 |       → Controller-Conventions, Routing-Attribute             |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
-|   10. .claude/meta/implementation/auth.md                      |
+|   10. {META}/implementation/auth.md                      |
 |       → Auth-Conventions, Policy-Namen, ClaimTypes            |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
-|   11. .claude/meta/implementation/validation.md                |
+|   11. {META}/implementation/validation.md                |
 |       → FluentValidation-Regeln, Custom Validators            |
 |       → Falls fehlt: WARN + CONTINUE (kein ABORT)             |
 |                                                                |
 |  SCHREIBT (Output) - PFLICHT:                                  |
 |    1. Code: Integration Tests + Boundary/Wiring Code          |
-|    2. .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md  |
-|       → INKREMENTELL: Nach JEDEM gruenen IT aktualisieren     |
+|    2. Vault-First (BL-065)                                     |
+|       Implementation-Logs werden DIREKT in den Vault geschrieben:|
+|       {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-INTEGRATION-{SLICE}.md |
+|       Status (partial/final) wird im FRONTMATTER der Log-Datei |
+|       kodiert, NICHT ueber Pfad-Unterschied.                   |
+|       Pre-Flight-Check (verbindlich, RF-06):                   |
+|       mkdir -p {VAULT}/Backlog/{BL_SLUG}/Implementation/ |
+|       if [ $? -ne 0 ] || [ -z "$DCS_VAULT_ROOT" ]; then       |
+|         log_error "Vault unreachable: ..."                     |
+|         exit 1                                                 |
+|       fi                                                       |
+|       Schreibpfad: {VAULT}/Backlog/{BL_SLUG}/Implementation/{NAME}-INTEGRATION-{SLICE}.md |
+|       Frontmatter: status: partial|final (Feld, nicht Pfad).  |
+|       INKREMENTELL (status=partial): lokal zwischenspeichern   |
+|       .claude/analysis/synthese/{NAME}-INTEGRATION-{SLICE}.md  |
 |       → status: partial (N/M) oder final (M/M)               |
-|    3. .claude/analysis/_manifest.md (nach JEDEM IT update)    |
+|    3. {VAULT}/_manifest.md (nach JEDEM IT update)    |
 |                                                                |
 |  SCHREIBT (Output) - OPTIONAL:                                 |
-|    .claude/patterns/_pattern-library.md                       |
-|    .claude/analysis/_parking-lot.md (APPEND bei Findings)     |
+|    {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)                       |
+|    {VAULT}/_parking-lot.md (APPEND bei Findings)     |
 |                                                                |
 |  MCP: mcp__cleancoder__query() NUR bei Boundary-Unsicherheit  |
 |    MIN-Modus: max 1 Query, limit=1                            |
@@ -150,7 +167,7 @@ Fuer relevante Topics laden (falls Dateien existieren):
 Lade NUR Topics die fuer den aktuellen IT-Batch relevant sind.
 
 Falls Datei nicht existiert:
-  - WARN: "⚠️ `.claude/meta/implementation/{topic}.md` nicht gefunden — weiter ohne"
+  - WARN: "⚠️ `{META}/implementation/{topic}.md` nicht gefunden — weiter ohne"
   - CONTINUE (kein ABORT)
 
 Falls Datei vorhanden: Regeln R1..Rn extrahieren und als Vorgaben in RED/GREEN/REFACTOR nutzen.
@@ -344,7 +361,7 @@ exit_report:
 - `findings` NIEMALS leer lassen wenn Erkenntnisse vorhanden — diese werden Parking-Lot-Kandidaten
 - `context_health: low` wenn Kontext-Limit Grund fuer partial war
 - `block_reason` bei `status: final` leer lassen ("")
-- Falls `findings` nicht leer: APPEND an `.claude/analysis/_parking-lot.md`
+- Falls `findings` nicht leer: APPEND an `{VAULT}/_parking-lot.md`
 
 ---
 

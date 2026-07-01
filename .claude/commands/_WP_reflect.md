@@ -1,4 +1,4 @@
-﻿# /_WP_reflect - Kapitel Retrospektive & OUTER-Loop Controller
+# /_WP_reflect - Kapitel Retrospektive & OUTER-Loop Controller
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-10
 op: WritePaper
 phase: Core Transformation
-type: Decision + MCP + HiL
+type: building-block
 chain_position: reflect
 difficulty_scaling: true
 mcp_critical: true

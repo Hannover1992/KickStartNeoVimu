@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # GraphRAG Enhancement: Forschungszyklus-Commands erweitern
 
 Du analysierst ALLE Forschungszyklus-Commands und erstellst einen strukturierten
@@ -25,7 +29,7 @@ Optional wendest du die Aenderungen direkt an.
 |  LIEST (Input):                                                |
 |    1. .claude/commands/_*.md                                   |
 |       -> Alle 14 Command-Dateien des Forschungszyklus          |
-|    2. .claude/analysis/_manifest.md                            |
+|    2. {VAULT}/_manifest.md                            |
 |       -> NAME, FEATURE, aktueller Stand                        |
 |    3. .mcp.json (falls vorhanden)                              |
 |       -> GraphRAG MCP Server Konfiguration pruefen             |
@@ -37,7 +41,7 @@ Optional wendest du die Aenderungen direkt an.
 |       -> Strukturierter Enhancement-Report (IMMER)             |
 |    2. .claude/commands/_*.md (NUR bei --apply)                 |
 |       -> 10 von 14 Command-Dateien erweitert                   |
-|    3. .claude/analysis/_manifest.md                            |
+|    3. {VAULT}/_manifest.md                            |
 |       -> Enhancement-Status aktualisieren                      |
 |                                                                |
 |  KERNREGEL:                                                    |
@@ -55,7 +59,7 @@ Optional wendest du die Aenderungen direkt an.
 **Command-Max:** opus (effektiv = min(SYSTEM-MODEL, opus))
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md
    -> Ermittle {NAME}, {FEATURE}
    -> Lies SYSTEM-MODEL aus System-Konfiguration
    -> Bestimme effektives Modell: min(SYSTEM-MODEL, opus)
@@ -249,17 +253,17 @@ HOOK 2: KEINE
 
 DIFF (Schritt 0):
   VORHER:
-    1. Lies .claude/analysis/_manifest.md
-    2. Lies .claude/Task.md
+    1. Lies {VAULT}/_manifest.md
+    2. Lies {VAULT}/Task.md
     3. Lies .claude/pileOfMud/*
 
   NACHHER:
-    1. Lies .claude/analysis/_manifest.md
+    1. Lies {VAULT}/_manifest.md
     1b. [GraphRAG] Falls MCP verfuegbar:
         query("global", "Vorwissen zu {NAME}", top_k=5)
         → Ergebnisse als "## Vorwissen (GraphRAG)" bereitstellen
         Falls MCP NICHT verfuegbar: → WARNUNG, weiter ohne
-    2. Lies .claude/Task.md
+    2. Lies {VAULT}/Task.md
     3. Lies .claude/pileOfMud/*
 ```
 

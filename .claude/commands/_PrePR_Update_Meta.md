@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # /_PrePR_Update_Meta - Meta-Datei mit manuellem Fund ergaenzen
 
 **Zweck:** Dinge die Pre-PR NICHT gefunden hat aber manuell gefixt wurden, als neue Regel in die zustaendige Meta-Datei schreiben. Damit lernt das naechste Pre-PR daraus.

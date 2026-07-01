@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Architectural Boundaries (Teilproblem-Dekomposition + Vertikale Suche)
 
 Du zerlegst das Problem in unabhaengige Teilprobleme mit klaren Grenzen.
@@ -29,11 +33,11 @@ Kein easy-Modus (Dekomposition erfordert ganzheitliche Perspektive).
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
+║    1. {VAULT}/_manifest.md                                      ║
 ║    2. .claude/models/{NAME}_Model.md  ◄── MUSS EXISTIEREN               ║
 ║    3. .claude/analysis/synthese/{NAME}-ANALYSE{CYCLE}.md                 ║
 ║       ◄── Mindestens die erste Analyse muss existieren                  ║
-║    4. .claude/patterns/_pattern-library.md  ◄── NEU: Layer-Definitionen  ║
+║    4. {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)  ◄── NEU: Layer-Definitionen  ║
 ║       (Graceful Degradation: Ohne Pattern-Library = manuelle Suche)      ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - PFLICHT:                                            ║
@@ -45,7 +49,7 @@ Kein easy-Modus (Dekomposition erfordert ganzheitliche Perspektive).
 ║       → Optionen/Abzweigungen pro Teilproblem                           ║
 ║       → NEU: Datei-Mapping (Vertikale Suche, Sektion 6)                 ║
 ║       → NEU: Aenderungs-Kategorien (NEW/MODIFY/EXTEND pro TP)          ║
-║    2. .claude/analysis/_manifest.md (aktualisieren)                      ║
+║    2. {VAULT}/_manifest.md (aktualisieren)                      ║
 ║                                                                          ║
 ║  EINMALIG (oder bei signifikanter Scope-Aenderung):                     ║
 ║    Bei erneutem Aufruf wird BOUNDARIES.md UEBERSCHRIEBEN                ║
@@ -86,7 +90,7 @@ Kein easy-Modus (Dekomposition erfordert ganzheitliche Perspektive).
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`
@@ -99,7 +103,7 @@ Kein easy-Modus (Dekomposition erfordert ganzheitliche Perspektive).
    - Falls nicht vorhanden → FEHLER: "Keine Analyse gefunden. Starte erst /_SC_observe"
    - Findings als Basis fuer Teilproblem-Identifikation
    - Falls vorhanden: Kohaesion-Check und Model-Split-Empfehlung beruecksichtigen
-4. **NEU:** Lies `.claude/patterns/_pattern-library.md` (falls vorhanden)
+4. **NEU:** Lies `{VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)` (falls vorhanden)
    - Layer-Definitionen (Kap. 4) fuer Glob-Pattern-Auswahl in Vertikaler Suche
    - Datei-Suffix-Konventionen fuer Pfad-Inferenz
    - Falls nicht vorhanden: Nutze Standard-Heuristik aus Schritt 3.1
@@ -448,7 +452,7 @@ Vertikale Suche durch. Ziel: Abstrakte TP-Namen zu konkreten Dateipfaden aufloes
 ### 3.1 Layer bestimmen
 
 Fuer jedes TP: Ordne es einem Layer aus der Pattern-Library zu.
-Falls `.claude/patterns/_pattern-library.md` existiert, nutze die Layer-Definitionen (Kap. 4).
+Falls `{VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)` existiert, nutze die Layer-Definitionen (Kap. 4).
 Falls nicht: Nutze folgende Standard-Heuristik:
 
 | TP-Hinweis | Layer-ID | Glob-Basis-Pattern |
@@ -459,6 +463,11 @@ Falls nicht: Nutze folgende Standard-Heuristik:
 | "Service" (Backend) | BE-SVC | `**/Services/**/*Service.cs` |
 | "Repository", "Data Access" | BE-REPO | `**/Repositories/**/*Repository.cs` |
 | "DTO", "Model", "Request", "Response" | BE-DTO | `**/DTOs/**/*Dto.cs` |
+
+> **HINWEIS (ARCH-Delta-11):** Mapping-Tabelle ist DCSRE-Beispiel.
+> Echtes Mapping kommt aus `python3 .claude/scripts/load_layers.py`
+> (Vault-First, projekt-spezifisch).
+
 | "Entity", "Domain" | BE-ENT | `**/Entities/**/*.cs` |
 | "Migration", "Schema" | DB-MIG | `**/Migrations/**/*.cs` |
 | "Docker", "Container" | INF-DOCK | `**/docker-compose*.yml` |
@@ -521,6 +530,11 @@ Fuer JEDE gefundene (oder inferierte) Ziel-Datei:
 | BE-SVC | Interface (I{Name}Service.cs), Tests ({Name}Tests.cs), DTOs |
 | BE-REPO | Entity-Klasse, DbContext-Registrierung |
 | BE-DTO | Entity-Klasse (Mapping-Quelle) |
+
+> **HINWEIS (ARCH-Delta-11):** Mapping-Tabelle ist DCSRE-Beispiel.
+> Echtes Mapping kommt aus `python3 .claude/scripts/load_layers.py`
+> (Vault-First, projekt-spezifisch).
+
 | DB-MIG | DbContext, Entity-Klasse |
 
 **Import-Analyse (optional, bei existierenden Dateien):**

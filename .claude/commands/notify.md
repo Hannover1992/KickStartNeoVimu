@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 Wenn du mit der aktuellen Aufgabe fertig bist oder eine Frage an mich hast, benachrichtige mich mit diesem Befehl:
 
 ```bash

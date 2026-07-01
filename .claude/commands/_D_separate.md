@@ -6,15 +6,9 @@ version: 1.0.0
 created: 2026-02-26
 op: Debloat
 phase: separation
-type: single-command
+type: building-block
 chain_position: pre-kollaps
 team_based: false
-changelog: |
-  v1.0.0: Initialer Entwurf (S1_DOrchestrate, ModelBloat-Implementation).
-          Erstellt {FEATURE}_Protokoll.md aus W{n}-Bloecken des Models.
-          Nutzt Protokoll_Template.md (S2_Protokoll) als Basis.
-          Klassifiziert W{n}: Beobachtung → Protokoll, Mechanismus → Model.
-          KURZLEBIG: 1 Agent = 1 Command = 1 Response (kein Worker-Loop).
 ```
 
 ---

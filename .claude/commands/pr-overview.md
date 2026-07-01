@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 PR-Overview: Detailansicht einer oder mehrerer Gruppen.
 
 $ARGUMENTS = Gruppen-Nummern (z.B. "2" oder "2,4,11")

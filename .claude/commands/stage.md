@@ -1,76 +1,98 @@
-# /stage Command
+# /stage — Commit-Normen-Dokument
 
-Gruppiere alle ge?nderten Dateien nach Fix-Typ und stage sie schrittweise.
+Dieses Dokument definiert verbindliche Commit-Message-Normen fuer alle Produkt-Commits.
+Maschinenlesbare Quelle fuer `/_stage_orchestrate`.
 
-## Phase 1: ?bersicht
+---
 
-1. F?hre `git status --short` aus um alle ge?nderten Dateien zu sehen
-2. Gruppiere die Dateien nach Fix-Typ (z.B. "Constructor visibility", "Unused methods", etc.)
-3. F?r jede Gruppe erkl?re:
-   - **a) Was wurde gemacht:** Beschreibe die ?nderung
-   - **b) Welche Dateien:** Liste alle Dateien dieser Gruppe
-4. Frage: "Soll ich Gruppe X stagen? (ja/nein)"
+## 1. Commit-Message-Normen
 
-## Phase 2: Staging (nur wenn JA)
+| Norm | Regel | Schwere | Pruef-Pattern |
+|------|-------|---------|---------------|
+| Format | `$branch: $Title` — Pflichtformat | KRITISCH | `^[A-Z0-9_-]+: .+` |
+| Laenge | Nur EINE Zeile (kein Mehrzeiler) | KRITISCH | Anzahl Zeilen == 1 (nach Trim) |
+| Co-Worker | Kein `Co-Authored-By` in Message | KRITISCH | `(?i)co-authored-by` |
+| Anthropic | Keine Erwaehnung von `Anthropic` | KRITISCH | `(?i)anthropic` |
+| Claude | Kein `Claude` als Co-Author | KRITISCH | `(?i)claude` (in Trailer-Kontext) |
+| Description | Kein Description-Block (nur Titel) | MITTEL | Zeilen > 1 nach erster Leerzeile |
+| Separator | Kein `---` nach Titel-Zeile | MITTEL | `^---` nach erster Zeile |
 
-1. F?hre NUR `git add` aus f?r die Dateien dieser Gruppe
-2. **NICHT committen!**
-3. Schlage Commit-Message vor im Format:
-   ```
-   $branch: $Title
-   ```
-   Beispiel: `DCSRE-1189: S3442 - Constructor visibility auf protected ge?ndert`
+**Beispiel-Commit (korrekt):**
+```
+DCSRE-1189: S3442 - Constructor visibility auf protected geaendert
+```
 
-   **Keine Description, nur Titel!**
+**Beispiel-Commit (falsch — wird von stage_orchestrate abgelehnt):**
+```
+DCSRE-1189: S3442 - Constructor visibility geaendert
 
-4. **Clipboard:** Kopiere die Commit-Message automatisch in die Zwischenablage:
+Co-Authored-By: Claude Sonnet <noreply@anthropic.com>
+```
+
+---
+
+## 2. Security-Verbote
+
+| Verbot | Pattern (case-insensitive) | Reaktion bei Verstoss |
+|--------|---------------------------|----------------------|
+| Co-Authored-By Trailer | `co-authored-by:` | KRITISCH: Zeile entfernen |
+| Co-Author Variante | `co-author:` | KRITISCH: Zeile entfernen |
+| Anthropic-Erwaehnung | `anthropic` | KRITISCH: Manuell pruefen |
+| Claude als Co-Author | `claude` im Trailer-Kontext | KRITISCH: Zeile entfernen |
+
+**Pruef-Befehl (stage_orchestrate intern):**
+```bash
+git log --format="%B" | grep -i "co-authored-by\|co-author:\|anthropic"
+```
+
+---
+
+## 3. Korrektur-Prozedur
+
+**Modus-Quelle (PFLASTER 2026-06-11, BL-295 AK-5 — Live-Bug DCSRE-1944):** Ob die Korrektur
+im HiL- oder Dark-Factory-Modus laeuft, entscheidet AUSSCHLIESSLICH der `hil`-Param
+(Session-Params via BL-174-Resolver: `py -3 .claude/scripts/session_params_resolver.py resolve
+--param=hil --bl-id={BL_ID}`; Fallback `{VAULT}/_session_params.md` **HiL:**). `GLOBAL_MODUS` ist
+KEIN HiL-Proxy mehr (PL-S2-06: BDF/Modus und HiL sind ORTHOGONAL). `hil=off` ⇒ Dark-Factory-Pfad
+(autonom, KEIN Go-Gate) — fuer small_dark_factory UND big_dark_factory. Der alte Check erkannte
+nur `small_dark_factory`; `big_dark_factory` fiel faelschlich in den HiL-Zweig → „Go?"-Gate trotz
+hil=off.
+
+### 3.1 HiL-Modus (Normal — `hil` != off)
+
+1. Verstoesse anzeigen: Hash, Message-Ausschnitt, Verstoss-Typ, Schwere
+2. User-Frage: "Commit korrigieren? (ja/nein/abbruch)"
+3. Bei `ja`: Korrektur-Vorschlag anzeigen, User bestaetigt
+4. Bei `nein`: Commit bleibt unveraendert → stage_gate_status=FAIL
+5. Bei `abbruch`: Command stoppt, kein Manifest-Update
+
+### 3.2 Dark Factory Modus (`hil` = off — gilt fuer small UND big_dark_factory)
+
+1. Alle KRITISCH-Verstoesse autonom korrigieren
+2. Kein HiL, keine Bestaetigung
+3. Rebase-Script (Option C) fuer mehrere Commits:
    ```bash
-   echo -n "$COMMIT_MESSAGE" | xclip -selection clipboard 2>/dev/null || echo -n "$COMMIT_MESSAGE" | clip.exe 2>/dev/null
+   # Letzter Commit:
+   git commit --amend --message "BRANCH: Korrigierter Titel" --no-edit
+
+   # Mehrere Commits (non-interaktiv):
+   GIT_SEQUENCE_EDITOR="sed -i 's/pick/reword/g'" git rebase -i BASE_BRANCH
    ```
-   Danach kurz bestaetigen: `(in Clipboard kopiert)`
+4. Bei Rebase-Konflikt: FAIL-Status, HiL anfordern (kein stilles Fehlschlagen)
 
+### 3.3 Gemeinsame Nachbedingungen (beide Modi)
 
-   Falsch Ausgabe Fur Phase 2:
-    ● Phase 2: Commit-Message
-    
-      DCSRE-1189: S4136 - LINQ-Aufrufe vereinfacht (.Where().First/Single() → .First/Single(predicate))
-    
-      ---
-      Welche Gruppe als nächstes? (3-8)
-    
-    ──────────────────────────────────────────
+- Kein Commit mit Co-Autor-Signatur im Branch
+- `stage_gate_status` in Manifest gesetzt (PASS / FAIL / CORRECTED)
+- Report in `.claude/analysis/findings/` geschrieben
 
-    Richtige Ausgabe Fur Phase 2:
-    DCSRE-1189: S4136 - LINQ-Aufrufe vereinfacht (.Where().First/Single() → .First/Single(predicate))
+---
 
-    Falsche Ausgabe:
-    ```
-    DCSRE-1189: S4136 - LINQ-Aufrufe vereinfacht (.Where().First/Single()  .First/Single(predicate))
-    ```
+## 4. Geheimhaltungs-Filter
 
-    Positive Ausgabe:
-    DCSRE-1189: S4136 - LINQ-Aufrufe vereinfacht (.Where().First/Single()  .First/Single(predicate))
+stage_orchestrate prueft AUSSCHLIESSLICH Produkt-Commits (Feature-Branch Commits).
 
-    Noch ein Beispiel:
-
-    > Negativ:
-    DCSRE-946: SA1609/SA1623 - Property-Dokumentation mit value-Tags und korrekten Präfixen (ManualTestRunner Models)
-    
-      ---
-      Welche Gruppe als nächstes? (2-4)
-    
-    Positiv:
-    
-    DCSRE-946: SA1609/SA1623 - Property-Dokumentation mit value-Tags und korrekten Präfixen (ManualTestRunner Models)
-
-
-
-## Regeln
-
-- Eine Gruppe nach der anderen abarbeiten
-- Warte auf Best?tigung bevor du stagst
-- Nach dem Stagen einer Gruppe, frage nach der n?chsten
-- Der User macht den Commit selbst
-- In Phase 2: Gibst du Nur die Vorgeschlagene Commit message. So das der user Deine Ausgabe 1 zu 1 copieren kann. 
-- Der User sagt dir dann danach z.b Gruppe 2, und dann fange wieder von phase 1 , bzw den teil wo du dann sagt dise date gehor zu sammen wil , a b c und dann fra soll ich sit stage user sagt ja und wir sind wieder in phase 2 
-
+**Filter-Regeln:**
+- `.claude/commands/*.md` Dateien werden NICHT geprueft
+- `.claude/analysis/` Pfade werden NICHT in Commit-Messages geschrieben
+- K-R4: OmniCommand-Existenz darf nicht in git-History erscheinen

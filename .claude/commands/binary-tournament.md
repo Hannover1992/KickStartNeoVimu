@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Binary Elimination Tournament System
 
 **Tournament Topic:** {topic}

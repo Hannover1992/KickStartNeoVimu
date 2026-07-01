@@ -1,6 +1,7 @@
 ---
 name: _Pre_PR_Konstanten
 description: Pre-PR Konstanten Quality Gate - findet Magic Strings und Magic Numbers
+type: building-block
 ---
 
 # /_Pre_PR_Konstanten
@@ -22,7 +23,7 @@ description: Pre-PR Konstanten Quality Gate - findet Magic Strings und Magic Num
 ║  COMMAND: /_Pre_PR_Konstanten                                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  LIEST:                                                      ║
-║    1. .claude/meta/codeKonvention/konstanten.md              ║
+║    1. {META}/codeKonvention/konstanten.md              ║
 ║    2. Git Diff (develop...HEAD)                              ║
 ║    3. Alle *.cs Dateien im DIRTY-Scope                       ║
 ║  SCHREIBT:                                                   ║
@@ -58,10 +59,10 @@ DIRTY-SCOPE: [Anzahl] CS-Dateien gefunden
 **Aktion:** Konvention laden.
 
 ```bash
-cat .claude/meta/codeKonvention/konstanten.md
+cat {META}/codeKonvention/konstanten.md
 ```
 
-**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei .claude/meta/codeKonvention/konstanten.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
+**Fehlerbehandlung:** Falls die Datei nicht existiert → FEHLER: "Knowledge-Datei {META}/codeKonvention/konstanten.md nicht gefunden. Starte _I_fanOut oder erstelle die Datei manuell." → EXIT 1
 
 **Regeln extrahieren:**
 - R1: String-Literale in Konstanten (WARNUNG, Auto-Fix TEILWEISE)

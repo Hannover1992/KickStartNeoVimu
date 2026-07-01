@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # /_D_migrate
 
 **Status:** v1.0
@@ -17,7 +21,7 @@
 ║    2. .claude/templates/Protokoll_Template.md (Ziel-Format)                ║
 ║                                                                             ║
 ║  LIEST (Input) - OPTIONAL:                                                  ║
-║    3. .claude/analysis/_manifest.md (Kontext)                              ║
+║    3. {VAULT}/_manifest.md (Kontext)                              ║
 ║                                                                             ║
 ║  SCHREIBT (Output) - PFLICHT:                                               ║
 ║    Backup (vor Aenderung):                                                  ║

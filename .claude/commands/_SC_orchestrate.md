@@ -2,85 +2,57 @@
 
 ```yaml
 status: active
-version: 2.1.0
+version: 3.5.0
 created: 2026-02-15
-updated: 2026-02-26
+updated: 2026-06-03
 op: ScientificCycle
 phase: Meta
 type: orchestration
 chain_position: meta
 difficulty_scaling: true
 team_based: true
-changelog: |
-  v1.0: Initialer Entwurf. Spiegelt /_WP_orchestrate v2.1 Struktur.
-        1 Task = 1 Command. Team Lead + N Worker (Wellen-PARALLEL).
-        PRE-CYCLE → SC-CYCLE ⟲ → POST-CYCLE → HiL.
-        Integriert _W_fetch (Start), _W_push_temp (strategisch),
-        _W_push_global + _W_obsidianSync + _W_modelSplit (Ende).
-  v1.1: -I Flag (SC-Spec-Modus, OmniCommand EC-3).
-        Default=THEORETISCH (skip _implement). -I=IMPLEMENT.
-        Cold-Start T-1 Checkliste (EC-1).
-        Decision-Tree SC/I/WP (EC-2).
-        MODUS-Feld im Manifest.
-  v2.0: KURZLEBIG_PROMPT Migration (Stateless Agents Redesign EC-A, EC-E).
-        Persistenter Worker (sc-worker) eliminiert.
-        PHASE 2: KURZLEBIG_PROMPT statt WORKER-PROMPT (37 LOC statt 98).
-        PHASE 3: Aktives Spawning statt passives Monitoring.
-        Agent-Naming: sc-{name}-{command} statt sc-worker.
-        SC_PIPELINE_STATE Block im Manifest.
-        Wellen-Phase und Sub-Commands UNVERAENDERT (bereits R-konform).
-  v2.1: ImplementationHandOff (EC-2/OP-9) + Post-I Review-Modus (EC-7/E5).
-        POST-CYCLE: HandOff-Dokument als Pflicht-Step vor W_push_orchestrate.
-        --mode=review Flag: Post-I SC-Zyklen mit Gate 6, separater Protokoll-Pfad.
-        Verhindert semantischen ModelBloat bei Post-Implementation-Quality-Review.
+depends_on:
+  - _W_fetch
+  - _A_orchestrate
+feeds_into:
+  - _SDF_orchestrate
+  - _I_orchestrate
+  - _W_push_orchestrate
+related:
+  - _TDD_orchestrate
+bl_134_pflaster: true
+bl_134_pflaster_inserted: 2026-04-25
+bl_134_pflaster_real_refactor_in: BL-136
+bl_140_pflaster_code: true
+# BL-142 Caller-Migration (2026-04-26):
+# - A_PIPELINE_STATE.recommendation: GESTRICHEN (A liefert nur aggregat_*, Mode-Decision → SDF C3)
+# - A→SC Guard: ersetzt durch SDF→SC Guard (bereits in Schritt 1.1 vorhanden)
+# - complexity_auto_tdd_pending → aggregat_auto_tdd_pending (RF-A-RENAME)
+# - complexity_switch_recommendation → aggregat_switch_recommendation (RF-A-RENAME)
+# - complexity_trend, complexity_score: GESTRICHEN (Felder entfallen in A_PIPELINE_STATE)
 ```
 
 ---
 
-```
-╔══════════════════════════════════════════════════════════════════════╗
-║  VERTRAG: /_SC_orchestrate                                           ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  LIEST:                                                              ║
-║    .claude/analysis/_manifest.md  (Startpunkt, NAME, Phase)         ║
-║    .claude/Task.md                (Aufgabendefinition, optional)     ║
-║    .claude/models/{NAME}_Model.md (existierendes Model, optional)    ║
-║    .claude/pileOfMud/             (Rohmaterial, optional)            ║
-║                                                                      ║
-║  SCHREIBT:                                                           ║
-║    .claude/analysis/_manifest.md  (nach jeder Welle aktualisieren)  ║
-║    sc_status im Manifest (RUNNING/DONE/DONE_DISCOVERY_ONLY/BLOCKED) ║
-║    (alle anderen Outputs via Worker-Tasks)                           ║
-║                                                                      ║
-║  AUSGABEN DURCH WORKER:                                              ║
-║    .claude/models/{NAME}_Model.md         (via _model)               ║
-║    .claude/analysis/synthese/{NAME}-OBSERVE{N}.md  (via _SC_observe) ║
-║    .claude/analysis/synthese/{NAME}-ERGEBNIS{N}.md (via _SC_ergebnis)║
-║    .claude/analysis/exploration/{NAME}-E*.md  (Welle 1, Explorer)   ║
-║    .claude/analysis/drafts/{NAME}-*-D*.md     (Welle 2, Drafter)    ║
-║    .claude/analysis/synthese/{NAME}-HANDOFF.md (Team Lead, DONE)    ║
-║    .claude/analysis/post-impl/{NAME}-REVIEW-PROTOKOLL.md            ║
-║      (nur bei --mode=review: Reparatur-Findings, NICHT ins Model)   ║
-║                                                                      ║
-║  HAUPTPRODUKT: MODEL                                                 ║
-║    (Zentrales Artefakt dieser Phase: Wissensbasis / Model)           ║
-╚══════════════════════════════════════════════════════════════════════╝
-```
+## BL-173 Manifest-Routing (NEU 2026-05-18)
 
-### Lifecycle-Guard: Artefakt-Namespaces (v2.2+, I-11)
+**Manifest-Scope-Split aktiv** (siehe BL-173, INV-MANIFEST-SPLIT-1..4):
 
-Artefakte in `.claude/analysis/` folgen einer Phase-Prefix-Konvention.
-Keine Vermischung zwischen Phasen-Namespaces erlaubt.
+| State-Block | Heimat | Helper |
+|---|---|---|
+| SC_PIPELINE_STATE | `{bl_folder}/_manifest.md` | `manifest_reader.read_bl_block(bl_id, "SC_PIPELINE_STATE")` |
 
-| Phase | Prefix/Ordner | Beispiel-Artefakte | Erzeuger |
-|-------|---------------|-------------------|----------|
-| A-Phase (Analyse) | `exploration/{NAME}-E*`, `drafts/{NAME}-model-D*` | E01-architektur.md, model-D01-validierung.md | `/_model`, `/_A_orchestrate` |
-| SC-Phase (Scientific Cycle) | `drafts/{NAME}-observe*-D*`, `synthese/{NAME}-OBSERVE*`, `synthese/{NAME}-HYPOTHESEN*` | observe3-D01-code.md, OBSERVE3.md, HYPOTHESEN-I3.md | `/_SC_observe`, `/_SC_hypothese` |
-| I-Phase (Implementation) | `synthese/{NAME}-HANDOFF.md`, `post-impl/{NAME}-REVIEW-*` | HANDOFF.md, REVIEW-PROTOKOLL.md | `/_SC_orchestrate` (DONE), `/_I_orchestrate` |
+**Pfad-Aufloesung:**
+- Factory-State: `manifest_reader.read_factory_block(...)` ODER direkt `{vault_root}/_factory_manifest.md`
+- BL-State: `manifest_reader.read_bl_block(bl_id, ...)` ODER direkt `{bl_folder}/_manifest.md`
+- Legacy-Fallback aktiv solange `is_split_active() == False` (1-Sprint-Uebergang)
 
-**Regel:** Ein SC-Worker darf KEINE A-Phase-Artefakte (exploration/) ueberschreiben.
-Ein I-Worker darf KEINE SC-Synthese-Dokumente (OBSERVE, HYPOTHESEN) ueberschreiben.
-Verletzung → Lifecycle-Guard-Alarm im Manifest dokumentieren.
+**Migration:** `py -3 .claude/scripts/migrate_manifest_split.py migrate --vault-root="..." --rollback-tag=YYYY-MM-DD`
+
+> **Registry-Loader (MLG S3 Log-Doppel):** Dieses Command nutzt `.claude/hooks/load_registries.py::resolve()` fuer Model-Resolution (ModelLeakGuard Feature, 4-Stufen-Kette: Welle-Schema → Session-Cap → Command-Override → Spawn).
+> Jeder Wellen-/Pipeline-Spawn ruft vor `Agent(...)` das Pattern auf:
+> `r = resolve(command="{CMD}", wave="w1|w2|w3|seq", difficulty={difficulty}, session_ceiling={ceiling}, session_floor={floor})`
+> → `r.subagent_type` und `r.model` sind die Soll-Werte. Der `[SPAWN]`-Top-Log protokolliert sie VOR dem Agent-Call. Der Worker quittiert spiegelnd mit `[AGENT]`-Bottom-Log (Schritt 0, KURZLEBIG_PROMPT).
 
 ---
 
@@ -89,1487 +61,688 @@ Verletzung → Lifecycle-Guard-Alarm im Manifest dokumentieren.
 | META-COMMAND: /_SC_orchestrate                                       |
 +======================================================================+
 |                                                                        |
-| ACTOR: TEAM LEAD (DU - die ausfuehrende Claude-Instanz)              |
+| ACTOR: TEAM LEAD (DU — reiner Orchestrator)                          |
+|   CONSTRAINT: Team Lead fuehrt KEINE Commands aus.                   |
+|   NUR spawnen, tracken, entscheiden.                                  |
+|                                                                        |
 | WORKER: Kurzlebige Single-Command-Agents (1 Agent = 1 Command)       |
 |         + N Wellen-Agents (PARALLEL: Explorer/Drafter/Synthese)      |
 |                                                                        |
-| ZWECK: Orchestriert kurzlebige Agents durch den kompletten            |
-|        wissenschaftlichen Forschungszyklus. Team Lead erstellt Team,   |
-|        Tasks und spawnt pro Pipeline-Step einen frischen Agent.        |
-|        Jeder Agent fuehrt genau 1 Command aus und stirbt danach.      |
-|        Team Lead steuert aktiv: Agent-Ergebnis pruefen, naechsten     |
-|        Agent spawnen, Zyklen-Entscheidung treffen.                    |
-|                                                                        |
 | PRINZIP: 1 Agent = 1 Command = stirbt danach (KURZLEBIG_PROMPT).    |
-|          State lebt in DOKUMENTEN (Vertraegen), nicht im Agenten.     |
+|          State lebt in DOKUMENTEN, nicht im Agenten.                  |
 |          Kein Worker-Loop, kein TaskList-Polling.                      |
-|          Team Lead entscheidet nach jedem Zyklus den naechsten Schritt.|
+|          Kein Worker spawnt Sub-Agents (W7-Constraint).               |
 |                                                                        |
-| WELLEN-STEUERUNG: Commands die intern Wellen haben (Exploration →    |
-|   Drafts → Synthese) werden vom TEAM LEAD orchestriert via           |
-|   Wellen-Tasks. Workers fuehren NUR die ihnen zugewiesene Welle aus. |
-|   KEIN Worker spawnt Sub-Agents. (W7-Constraint)                     |
+| FLOW:  W_FETCH → PRE-CYCLE → SC-CYCLE ⟲ → POST-CYCLE → HiL         |
 |                                                                        |
-| FLOW:                                                                  |
-|   W_FETCH → PRE-CYCLE → SC-CYCLE ⟲ → POST-CYCLE → HiL              |
+| MODUS: FULL | INLINE (-I) | REVIEW (--mode=review) | ANALYSE        |
 |                                                                        |
-| MODUS: THEORETISCH (Default) | IMPLEMENT (mit -I Flag)               |
-|         | REVIEW (mit --mode=review Flag)                              |
-|   THEORETISCH: _implement wird UEBERSPRUNGEN, _hypothese = Haupt-     |
-|                Produktions-Phase, Verifikation V-S1 bis V-S4          |
-|   IMPLEMENT:   _implement wird AUSGEFUEHRT, Verifikation V1-V5       |
-|   REVIEW:      Post-Implementation-Quality-Review. Gate 6 statt       |
-|                Standard-Gates. Findings in .claude/analysis/post-impl/ |
-|                statt ins Haupt-Model. Kein SRS-Baseline noetig.       |
+| META-DATEIEN (on-demand per Read-Tool):                               |
+|   {META}/sc/task-templates.md    (Task 0-11 Beschreibungen)    |
+|   {META}/sc/decision-tables.md   (3 Decision Tables)           |
+|   {META}/sc/sc-i-gate.md         (Gate + Finale Verifikation)  |
+|   {META}/sc/symbiose-protocol.md (SC⟲I FULL-Modus)            |
+|   {META}/sc/review-modus.md      (Post-I Review Details)       |
+|   {META}/sc/handoff-template.md  (HandOff-Dokument Template)   |
 +======================================================================+
 ```
+
+---
+
+## VERTRAG
+
+```
+WORKING_DIR = resolve_bl_path(BL_ID)  # INV-VAULT-9
+
+LIEST:
+  {VAULT}/_manifest.md           (Startpunkt, NAME, Phase)
+  {VAULT}/Task.md                (Aufgabendefinition, optional)
+  # PRIMAER: Vault (BL-065)
+  {VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md (existierendes Model, optional)
+  # FALLBACK: lokal (Legacy)
+  # fallback-read: expected vault, using .claude/
+  .claude/models/{NAME}_Model.md (existierendes Model, Fallback)
+  .claude/pileOfMud/             (Rohmaterial, optional)
+
+SCHREIBT STATE (_manifest.md):
+  sc_status: RUNNING/DONE (Einzeiler)
+  SC_PIPELINE_STATE: {YAML-Block, nur laufender Zyklus}
+  SC_PIPELINE_STATE.sc_verdict: {Enum, BL-238 AK-7 — Saettigungs-Verdikt am Phase-5-Exit}
+
+SCHREIBT (Output) — BL-238 AK-7 (Saettigungs-Signal, Slot-Isolation PT-CMD-008):
+  SC_PIPELINE_STATE.sc_verdict ∈ {SATURATED_READY_FOR_IMPL, EXPERIMENT_OPEN, ABORT}
+    # Geschrieben am Phase-5 AUTOCHAIN-EXIT (VOR Skill(_SDF_orchestrate_post)).
+    # Lebt im SC_PIPELINE_STATE-Slot (NICHT modus-Slot) — KEIN INV-MODUS-5-Bypass-Feld.
+    # Reader: dispatch_implement.js (Consumer AK-1) — runPhase3-Trigger ausserhalb BATCH_DONE.
+  i_gate_response: {Einzeiler-Ergebnis nach POST-CYCLE}
+  sdf_mode_original: {SDF-Mode Rohwert aus DF_BATCH_STATE.modus, z.B. "M5"}
+  sdf_mode_override: {true/false — CLI-Modus weicht von SDF-Dispatch ab}
+  next_cycle_context: {YAML-Block, 7 Felder aus i_core_result + PRE-FILTER}
+  pre_filter_veto: {true/false — VETO gegen DONE}
+  pre_filter_reason: {Liste der VETO-Gruende}
+  pt_feature_summary: {Einzeiler — N DRAFTs, N PROMOTED (POST-CYCLE Schritt 5, NON-BLOCKING)}
+  Pattern A fuer sc_status + i_gate_response
+  Pattern B fuer SC_Z{N-2}_* Rollover (bei CONTINUE in Phase 3.3.0)
+
+  # BL-165 AK-11 PL-11-05: DF_BATCH_STATE Marker (geschrieben von SC-Berater, gelesen von SDF Phase 4)
+  DF_BATCH_STATE.sc_cycle_count_per_batch: {batch_1: N, batch_2: M}
+    # Schreiber: Phase 0 Resume-Check bei sc_resume_from="ergebnis" (increment)
+    # Reader: SDF Phase 4 loopDecision (beobachtet Anzahl SC-Zyklen pro Batch)
+  # LIEST (nicht schreibt):
+  DF_BATCH_STATE.sc_resume_from: "ergebnis" | "observe" | null
+    # Schreiber: SDF Phase 4 loopDecision (INV-MODUS-9 BL-165) — SC schreibt dieses Feld NICHT
+
+SCHREIBT PROTOKOLL (_manifest_protokoll.md):
+  ## SC Zyklus Z{N-2} Archiv (Pattern B, bei Rollover in 3.3.0)
+  ## sc_i_gate [{Datum}] (Pattern C, bei POST-CYCLE Schritt 2)
+  Prepend-Mechanismus (W18): last_append + append_count aktualisieren
+  Frontmatter: last_append={Datum}, append_count++ (vor Eintrag)
+
+SCHREIBT NICHT:
+  _manifest_protokoll.md direkt ohne Prepend-Mechanismus (W18)
+
+
+AUSGABEN DURCH WORKER (BL-045 Vault-First):
+  {VAULT}/.../Model/{NAME}_Model.md                 (via _model)
+    FALLBACK: .claude/models/{NAME}_Model.md
+  {WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{N}.md    (via _SC_observe — per-Story BL-155 AK-1)
+  {WORKING_DIR}/.claude/analysis/synthese/{NAME}-ERGEBNIS{N}.md   (via _SC_ergebnis)
+  {WORKING_DIR}/.claude/analysis/exploration/{NAME}-E*.md          (Welle 1)
+  {WORKING_DIR}/.claude/analysis/drafts/{NAME}-*-D*.md             (Welle 2)
+  {VAULT}/Backlog/{BL_SLUG}/SC/{NAME}-HANDOFF.md                   (Team Lead, DONE — BL-151 + PL-D 2026-05-07)
+  {WORKING_DIR}/.claude/analysis/post-impl/{NAME}-REVIEW-PROTOKOLL.md (nur --mode=review)
+
+HAUPTPRODUKT: MODEL (Wissensbasis)
+
+INVARIANTEN:
+  - Team Lead fuehrt KEINE Commands aus (R2)
+  - 1 Agent = 1 Command = 1 Batch (R3, R4)
+  - Kein Agent spawnt Sub-Agents (W7, R9)
+  - Manifest-Update nach JEDER Welle und jedem Batch-Zyklus
+
+PROZESS-INVARIANTEN (BL-016 Epic E3):
+
+  INV-PM-1 (RF-06, AK-06-01): Worker-Pflicht ABSOLUT
+    Auch bei Inline/Easy/Trivial MUSS ein Worker gespawnt werden.
+    Team Lead fuehrt KEINE Analyse/Synthese selbst aus — IMMER Worker.
+
+  INV-PM-2 (RF-06, AK-06-02): Handschuh-Wechsel = Skill-Load (frisch)
+    Agent() statt Skill() ist Prozess-Verletzung UNABHAENGIG vom Ergebnis.
+
+  INV-AO-CALLER (Sanity-Check V11/V12, 2026-05-07/2026-05-08):
+    Skill(_SC_orchestrate) DIREKT vom Team Lead — kein Hub-Delegate via
+    `Agent(general-sonnet, prompt="orchestrate ...")`. Sub-Agent wird Mega-
+    Agent (Zyklus-Berater werden Inline-Logik). CLAUDE.md Z6 + _A_orchestrate
+    INVARIANTEN. Beweis: DCSRE-2014 Hot-Fix.
+
+  INV-HW-1 (RF-07, AK-07-01): SC ↔ SDF ↔ I — IMMER durch SDF
+    SC ruft I NICHT direkt auf. I ruft TDD NICHT direkt auf.
+    Heilige Trinitaet: SC ↔ SDF ↔ I ↔ SDF ↔ TDD (Hub-Invariante).
+    SC setzt SC_NEEDS_IMPL → EXIT → SDF routet (CaseStudy DCSRE-1430).
+
+  INV-SP-1 (RF-08, AK-08-01..03): Anti-Stille-Post Primaerquellen-Pflicht
+    Jede Welle (Explorer, Drafter, Synthese) MUSS ihre EIGENE Analyse
+    an den ORIGINAL-QUELLEN machen (Model, Commands, Task.md, Code).
+    Vorgaenger-Output dient NUR als Kompass/Scope-Eingrenzung.
+    Explorer-Outputs sind Wegweiser, KEINE Faktenquelle fuer Drafter.
+    Drafts sind Inspiration, KEINE Faktenquelle fuer Synthese.
+
+  INV-SP-2 (RF-08, AK-08-04): SD-Agents Primaerquellen DIREKT
+    Spec-Drafter lesen Primaerquellen DIREKT, nie ueber Drafts-Output.
+
+  INV-SP-3 (RF-08, AK-08-05): IDD-Feature Schwester-Vergleich
+    Bei IDD-Feature ist die Schwester-Implementierung der Vertrag.
+    Direkter Code-Vergleich obligatorisch (nicht ueber Wellen-Output).
+```
+
+### Lifecycle-Guard: Artefakt-Namespaces (v2.2+, I-11)
+
+| Phase | Prefix/Ordner | Erzeuger |
+|-------|---------------|----------|
+| A-Phase | `exploration/{NAME}-E*`, `drafts/{NAME}-model-D*` | `/_model`, `/_A_orchestrate` |
+| SC-Phase | `drafts/{NAME}-observe*-D*`, `synthese/{NAME}-OBSERVE*` | `/_SC_observe`, `/_SC_hypothese` |
+| I-Phase | `{VAULT}/Backlog/{BL_SLUG}/SC/{NAME}-HANDOFF.md`, `post-impl/{NAME}-REVIEW-*` | `/_SC_orchestrate`, `/_I_orchestrate` |
+
+**Regel:** Keine Vermischung zwischen Phasen-Namespaces.
+
+### Lifecycle-Guard: Feature-Prefix-Isolation (v3.1+, CaseStudy F-03/SV-2)
+
+**INVARIANTE:** Jedes Artefakt das ein Worker erstellt MUSS mit `{NAME}-` prefixed sein.
+
+```
+NACH JEDER WELLE (Team Lead prueft):
+  Fuer jede neue/geaenderte Datei in exploration/, drafts/, synthese/:
+    IF Dateiname startet NICHT mit "{NAME}-":
+      → FEHLER: "Namespace-Verletzung: {datei} hat Prefix != {NAME}"
+      → Worker erneut spawnen mit Korrektur-Kontext
+    IF Datei gehoert zu anderem Feature:
+      → FEHLER: "Fremdartefakt: {datei} gehoert zu {anderes_feature}"
+      → Datei NICHT in Manifest aufnehmen
+```
+
+**Warum:** In DCSRE-882 landeten 5 Fremdartefakte im Analyse-Verzeichnis,
+in OmniCommand 19 newsPage-Dateien. Ohne Guard ist Namespace-Verschmutzung
+unsichtbar und korrumpiert spaetere Synthesen.
+
+### Lifecycle-Guard: OBSERVE Mode-Infix (v3.1+, CaseStudy F-09/SV-3)
+
+**INVARIANTE:** Bei Mode-Wechsel (z.B. THEORETISCH→ANALYSE) MUSS der alte
+OBSERVE-Satz umbenannt werden, damit Erkenntnisse nicht still ueberschrieben werden.
+
+```
+BEI MODE-WECHSEL (Team Lead, VOR neuem Zyklus):
+  alter_modus = SC_PIPELINE_STATE.sc_mode (aus letztem Zyklus)
+  neuer_modus = angeforderter Modus
+
+  IF alter_modus != neuer_modus:
+    Fuer jede {NAME}-OBSERVE{N}.md in synthese/:
+      RENAME → {NAME}-OBSERVE{N}-{alter_modus}.md
+    Manifest: mode_transitions APPEND: "{alter_modus}→{neuer_modus} (Zyklus {C})"
+    Log: "Mode-Infix: {K} OBSERVE-Dateien archiviert als *-{alter_modus}.md"
+```
+
+**Warum:** In DCSRE-882 wechselte der SC von THEORETISCH (Sprint-kritisch) zu
+ANALYSE (Architektur-Fragen). Die neuen OBSERVE-Dateien ueberschrieben die alten
+lautlos — Erkenntnisse aus dem THEORETISCH-Zyklus gingen verloren. Mit Mode-Infix
+bleiben beide Saetze nebeneinander erhalten.
+
+---
+
+## SCHRITT 0: BL-140 Batch-Pflaster (echter Branch)
+
+<!-- BL-144 L4: Echter Branch-Header fuer Batch-Pflaster. INV-SC-PFLASTER-3 unten. -->
+
+## BL-134 PFLASTER: Batch-Input-Adapter (Sub-Pipeline)
+
+**Eingefuegt:** 2026-04-25 als Teil von BL-134 Slice 3.
+
+Diese Pipeline akzeptiert ab BL-134 oberflaechlich einen `batch={PL-Items}` Parameter
+vom SDF-executionDispatch und iteriert intern **sequentiell** durch die Items
+(kein paralleler Batch-Refactor).
+
+### Vertrag (Pflaster)
+
+- **LIEST:** Wenn `batch=` Param gesetzt -> Liste der PL-Items aus `DF_BATCH_STATE.batch_items` (vom executionDispatch durchgereicht).
+- **ITERIERT INTERN:** `FOR item IN batch_items: pipeline_aufruf(item)` (sequentiell).
+- **SCHREIBT pro Item:** `DF_BATCH_STATE.item_done.append(item_id)` nach erfolgreichem Pipeline-Durchlauf (Recovery-Hook).
+- **EXIT:** Wenn alle Items DONE.
+
+### BL-134-PFLASTER-MARKER (Pseudo-Code)
+
+```
+batch = lies CLI_PARAM("batch") ?? null
+IF batch != null:
+  Logge: "[BL-134-PFLASTER] sc_orchestrate batch-modus: {len(batch)} Items sequentiell."
+  FOR item IN batch:
+    skip_if_done = item IN DF_BATCH_STATE.item_done
+    IF skip_if_done: Logge "[BL-134-PFLASTER] SKIP {item} (bereits done)"; CONTINUE
+    pipeline_aufruf(item)
+    DF_BATCH_STATE.item_done.append(item)
+    manifest.update()
+  RETURN
+
+# kein batch-Param -> normaler Single-Item-Pfad (Legacy)
+```
+
+### Echter Batch-Refactor
+
+Dieser Pflaster ist Uebergangs-Loesung. Echter Batch-Support (paralleler
+intern-Loop, Aggregat-Kontext) folgt im jeweiligen Pipeline-Refactor:
+
+- **sc_orchestrate echter Refactor:** BL-136
+
+### INV-SC-PFLASTER-1
+
+Pflaster-Pfad MUSS sequentiell bleiben bis BL-136 den echten Refactor liefert.
+Paralleler intern-Loop ohne explizite BATCH_STATE-Race-Locks ist VERBOTEN.
+
+### BL-140 PFLASTER-CODE (echte Implementation)
+
+```
+# CLI-Param oder Manifest
+batch = lies CLI_PARAM("batch") OR DF_BATCH_STATE.batch_items
+IF batch != null AND |batch| > 0:
+  Logge: "[BL-140-PFLASTER] sc_orchestrate Batch-Modus: {len(batch)} Items sequentiell"
+  FOR item IN batch:
+    # Skip falls schon DONE
+    IF item IN DF_BATCH_STATE.item_done:
+      Logge: "[BL-140-PFLASTER] SKIP {item} (bereits in item_done)"
+      CONTINUE
+
+    # Original-Pipeline-Aufruf fuer dieses Item
+    pipeline_main_logic(item)
+
+    # Recovery-Hook
+    DF_BATCH_STATE.item_done.append(item)
+    manifest.update()
+
+  RETURN  # Batch-Modus fertig
+
+# Fallback: kein batch -> Single-Item-Pfad (Legacy)
+pipeline_main_logic(NAME)
+```
+
+INV-SC-PFLASTER-2 (NEU, BL-140):
+Pflaster-Code MUSS sequentiell iterieren (kein paralleler Loop ohne Race-Lock).
+Pflaster-Code MUSS item_done.append nach JEDEM erfolgreichen Item.
+Pflaster-Code MUSS RETURN am Ende des batch-Pfads (NICHT in den Legacy-Pfad fallen).
+
+INV-SC-PFLASTER-3 (BL-144):
+Echter Batch-Branch IM Pipeline-Body -- NICHT nur Doku am Datei-Ende.
+Der SCHRITT-0-Block MUSS vor PHASE 1 aktiv ausgefuehrt werden (kein toter Doku-Anhang).
 
 ---
 
 ## Aufruf
 
 ```
-/_SC_orchestrate [name] [difficulty] [ceiling] [floor] [-I] [--mode=review]
+/_SC_orchestrate [name] [difficulty] [ceiling] [floor] [-I] [--mode=review] [--mode=analyse] [--symbiose] [--full-symbiose] [--only-I] [--resume-at=ergebnis]
 ```
-
-**Parameter:**
 
 | Parameter | Default | Werte | Beschreibung |
 |-----------|---------|-------|-------------|
-| `name` | (PFLICHT) | String | Feature-/Forschungsname (fuer Task.md, Model, Team) |
-| `difficulty` | normal | easy, normal, hard | Steuert Agent-Anzahl, Wellen-Tiefe, MCP-Queries |
-| `ceiling` | sonnet | haiku, sonnet, opus | Hoechstes Modell (Worker + Synthese-Wellen) |
-| `floor` | haiku | haiku, sonnet | Niedrigstes Modell (Exploration-Wellen) |
-| `-I` | (nicht gesetzt) | Flag | SC-Spec-Modus: `-I` = IMPLEMENT (inkl. _SC_implement), ohne = THEORETISCH (Default, nur Spec-Output) |
-| `--mode=review` | (nicht gesetzt) | Flag | Post-I Review-Modus: Gates auf Post-Implementation kalibriert, Findings in separatem Protokoll-Pfad. **INKOMPATIBEL mit -I** (review = NACH Implementation, -I = WAEHREND Implementation) |
+| `name` | (Manifest) | String | Feature-/Forschungsname. Falls nicht angegeben: lese `NAME:` aus `{VAULT}/_manifest.md`. Falls kein Manifest: FEHLER. |
+| `difficulty` | normal | easy, normal, hard | Agent-Anzahl, Wellen-Tiefe |
+| `ceiling` | sonnet | haiku, sonnet, opus | Hoechstes Modell |
+| `floor` | haiku | haiku, sonnet | Niedrigstes Modell |
+| `-I` | - | Flag | INLINE: /_SC_implement (1 IC, 100 LOC) |
+| `--mode=review` | - | Flag | Post-I Review (separater Pfad) |
+| `--mode=analyse` | - | Flag | Reine Analyse ohne Implementation |
+| `--symbiose` | - | Flag | (Z4: RF-33) Gate 6 Mode-Switch-Check erzwungen (auch Zyklus 1) |
+| `--full-symbiose` | - | Flag | (Z4: RF-33) Gate 6 SKIP, sofort sc_mode=FULL + I core |
+| `--only-I` | - | Flag | (Z4: RF-33) SC sofort POST-CYCLE, I-STANDALONE (scope_mode=full) starten |
+| `--resume-at` | - | ergebnis | SDF-HUB Resume: SC springt direkt zum Ergebnis-Schritt (nach SDF→I→TDD Return). CaseStudy DCSRE-1430. |
 
-**Beispiele:**
+**4 Modi + I-STANDALONE:**
+
+| Modus | Implement-Step | Max Zyklen (e/n/h) |
+|-------|---------------|-------------------|
+| FULL (Default / --symbiose / --full-symbiose) | /_I_orchestrate (SYMBIOSE) | 3/5/8 |
+| INLINE (-I) | /_SC_implement (klein) | 3/5/8 |
+| REVIEW | SKIP | 2/3/5 |
+| ANALYSE | SKIP | 1/2/3 |
+| I_STANDALONE (--only-I) | Direkt /_I_orchestrate (scope_mode=full) | — |
+
+**Dark Factory max_cycles Override (W225, ADR-5):**
 ```
-/_SC_orchestrate ChapterPDF                  → normal, sonnet/haiku
-/_SC_orchestrate TwoTierBridge hard opus haiku  → hard, opus ceiling
-/_SC_orchestrate QuickFix easy sonnet sonnet    → easy, alles sonnet
-/_SC_orchestrate OmniCommand normal opus haiku       → THEORETISCH (Default, kein _implement)
-/_SC_orchestrate MyFeature normal opus haiku -I       → IMPLEMENT (inkl. _implement)
-/_SC_orchestrate MyFeature normal opus haiku --mode=review  → Post-I Review (Gate 6, separater Pfad)
+# Nach max_cycles Berechnung aus Tabelle oben:
+Lies dark_factory_max_cycles_override aus _manifest.md (falls vorhanden)
+IF dark_factory_max_cycles_override vorhanden UND dark_factory_max_cycles_override > 0:
+  max_cycles = dark_factory_max_cycles_override
+  Logge: "Dark Factory Override: max_cycles={max_cycles} (statt Standard)"
+# Effekt: hard=9 statt hard=8 im Dark Factory Modus
 ```
 
-**Voraussetzungen:**
-- KEINE — der Orchestrator startet den kompletten Zyklus von Null.
-- Falls Model/Task.md bereits existieren: Worker prueft und baut darauf auf.
-- Falls Vault/RAG bereits Wissen hat: W_fetch findet es automatisch.
+**Inkompatibilitaeten (9 Paare → ABBRUCH bei Verletzung): (Z4: RF-12)**
 
-**Modell-Zuordnung und Skalierung:**
+Bestehend (3): -I + --mode=review, -I + --mode=analyse, --mode=review + --mode=analyse
+
+Neu (6):
+- -I + --symbiose
+- -I + --full-symbiose
+- --symbiose + --full-symbiose
+- --only-I + -I
+- --only-I + --symbiose
+- --only-I + --full-symbiose
+- (implizit: --only-I + --mode=analyse, --symbiose + --mode=analyse, --full-symbiose + --mode=analyse)
+
+**Modell-Zuordnung:**
 
 | Rolle | easy | normal | hard |
 |-------|------|--------|------|
 | Team Lead | DU (Opus) | DU (Opus) | DU (Opus) |
 | Synthese (Welle 3) | 1 {ceiling} | 1 {ceiling} | 1 {ceiling} |
 | Drafter (Welle 2) | --- | 3 {middle} | 5 {middle} |
-| Explorer (Welle 1) | --- | 5 {floor} | 9 {floor} |
+| Explorer (Welle 1)* | --- | 5 {floor} | 9 {floor} |
 
-**WICHTIG:** Team Lead spawnt ALLE Wellen-Tasks PARALLEL. Worker spawnt NICHTS.
-- hard:   9 {floor} (Explorer PARALLEL) → 5 {middle} (Drafter PARALLEL) → 1 {ceiling} (Synthese)
-- normal: 5 {floor} (Explorer PARALLEL) → 3 {middle} (Drafter PARALLEL) → 1 {ceiling} (Synthese)
-- easy:   1 {ceiling} (Synthese solo, Team Lead spawnt 1 Worker)
+*Explorer-Welle gilt NUR fuer `/_model` (3-Wellen-Pattern). SC-Commands (observe, hypothese, ergebnis) starten direkt mit Draftern/Sammlern.
 
-**WELLEN-PRINZIP:** Innerhalb einer Welle laufen ALLE Agents PARALLEL (keine gegenseitige Blockierung).
-Nur die NAECHSTE Welle wird durch Abschluss der vorherigen Welle blockiert.
+---
+
+## Command-spezifische Wellen-Konfiguration (SC-Zyklus)
+
+### Wellen-Commands (SC_orchestrate)
+
+| Command | Welle 1 | Welle 2 | Welle 3 | Fokus-Quelle | Modell-Override |
+|---------|---------|---------|---------|--------------|-----------------|
+| /_SC_observe | Drafter (D01-D03/D05) | Synthese | --- | /_SC_observe "Worker-Vertraege" | Standard |
+| /_SC_hypothese | Drafter (D01-D03/D05) | Synthese | --- | /_SC_hypothese "Worker-Vertraege" | Standard |
+| /_SC_ergebnis | Sammler (DS01-DS05/DS09) | Synthese | --- | /_SC_ergebnis "Worker-Vertraege" | Downgrade (W7) |
+
+### Modell-Override fuer _SC_ergebnis (niedrig-kognitiv)
+
+| Ceiling | Sammler | Synthese |
+|---------|---------|----------|
+| opus | sonnet | sonnet |
+| sonnet | haiku | sonnet |
+| haiku | haiku | haiku |
+
+**Begruendung:** _SC_ergebnis ist explizit NIEDRIG-KOGNITIV (docker ps parsen,
+Zahlen abzaehlen, SRS-Formel anwenden). Sonnet/Haiku reichen fuer mechanische Sammlung.
+
+---
+
+## Wellen-Statusanzeige (RF-9)
+
+Team Lead gibt nach JEDER Wellen-Transition folgende Tabelle aus:
+
+```
+┌───────┬──────────────────────────────┬────────┬─────────┐
+│ Welle │        Worker                │ Modell │ Status  │
+├───────┼──────────────────────────────┼────────┼─────────┤
+│ W1    │ {N} Drafter/Sammler (D01-DN) │ {mod}  │ {status}│
+│ W2    │ 1 Synthese                   │ {ceil} │ {status}│
+└───────┴──────────────────────────────┴────────┴─────────┘
+Command: /_SC_observe {NAME} | Zyklus: Z{N}
+```
+
+**Status-Werte:** DONE, RUNNING, PENDING
+**Wann:** Nach Abschluss jeder Welle (W1→W2, W2→fertig)
+**Modell-Override:** Bei _SC_ergebnis Modell-Spalte aus Override-Tabelle lesen
+**Bei easy:** Nur 1 Zeile (Synthese solo)
+
+---
+
+## Prozess-Statusanzeige (RF-10)
+
+Team Lead gibt nach JEDEM Schrittwechsel folgende Tabelle aus.
+**Ziel: Alles auf 1 Blick** — Schritt, Agenten, Modell, Status, Inhalt.
+
+```
+┌────┬─────────────┬──────────────────────┬────────┬──────────┬──────────────────────────────────────────────────────┐
+│ #  │ Schritt     │ Agenten              │ Modell │ Status   │ Inhalt (Mini-Assay, NUR bei DONE)                    │
+├────┼─────────────┼──────────────────────┼────────┼──────────┼──────────────────────────────────────────────────────┤
+│ 1  │ observe     │ 5 Drafter PARALLEL   │ sonnet │ ✓ DONE   │ Provider hat 3 undokumentierte Sonderfaelle,         │
+│    │             │                      │        │          │ Status-Mapping weicht vom Domain-Model ab             │
+│ 2  │ modelMaint  │ 1 (sequentiell)      │ opus   │ ✓ DONE   │ 4 neue W{n}, Kern: Event-Replay hat Race Condition   │
+│ 3  │ qualityGate │ 1 (sequentiell)      │ opus   │ ► ACTIVE │                                                      │
+│ 4  │ hypothese   │ 3 Drafter PARALLEL   │ sonnet │ · PENDING│                                                      │
+│ 5  │ implement   │ modus-abhaengig      │ varies │ · PENDING│                                                      │
+│ 6  │ ergebnis    │ 1 (sequentiell)      │ opus   │ · PENDING│                                                      │
+└────┴─────────────┴──────────────────────┴────────┴──────────┴──────────────────────────────────────────────────────┘
+Zyklus 2/5 | SRS: 71.5 | K-Score: 42 (MEDIUM) | Route: SC-INLINE
+```
+
+**Inhalt-Spalte:** 1-2 Saetze was INHALTLICH gefunden/produziert wurde (nicht prozess-spezifisch).
+**Status-Symbole:** ✓ DONE, ► ACTIVE, · PENDING, — SKIP, ✗ FAIL
+**Modell-Regel:** Explorer={floor}, Drafter={middle} (IMMER sonnet bei ceiling>=sonnet), Synthese={ceiling}
+**SC-spezifisch:** Unter der Tabelle zusaetzlich Zyklus-Nr, SRS-Wert und Route anzeigen.
+**Wann:** Nach Abschluss jedes Schritts und vor Start des naechsten.
 
 ---
 
 ## GLOBALE PARAMETER (/_param Override)
 
-Lies `.claude/analysis/_manifest.md` und suche nach GLOBAL_* Feldern.
-Falls gesetzt, ueberschreiben sie die lokalen Parameter-Defaults:
-
-| Manifest-Feld | Wirkung |
-|---|---|
-| `GLOBAL_DIFFICULTY` | Ueberschreibt lokalen `difficulty` Default |
-| `GLOBAL_CEILING` | Kappt lokales ceiling: `effektiv = min(lokal, GLOBAL_CEILING)` |
-| `GLOBAL_FLOOR` | Hebt lokalen floor an: `effektiv = max(lokal, GLOBAL_FLOOR)` |
-
-**Berechnung:**
 ```
-Hierarchie: opus=3, sonnet=2, haiku=1
-IF GLOBAL_DIFFICULTY gesetzt UND != "(nicht gesetzt)": difficulty = GLOBAL_DIFFICULTY
-IF GLOBAL_CEILING gesetzt UND != "(nicht gesetzt)":    ceiling = min(ceiling, GLOBAL_CEILING)
-IF GLOBAL_FLOOR gesetzt UND != "(nicht gesetzt)":      floor = max(floor, GLOBAL_FLOOR)
-Validierung: ceiling >= floor (sonst ceiling = floor + Warning ausgeben)
-middle = sonnet wenn ceiling=opus, haiku wenn ceiling=sonnet, haiku wenn ceiling=haiku
+Lies _session_params.md → difficulty, ceiling, floor, HiL.
+difficulty = params.difficulty
+ceiling    = min(ceiling, params.ceiling)
+floor      = max(floor, params.floor)
+Validierung: ceiling >= floor (sonst ceiling = floor + Warning)
+middle = sonnet wenn ceiling=opus, sonnet wenn ceiling=sonnet, haiku wenn ceiling=haiku
 ```
 
-**Falls KEINE GLOBAL_* Felder gesetzt:** Lokale Defaults gelten unveraendert.
+---
+
+## PHASE 0: RESUME-CHECK (BL-165 AK-11, PL-11-02)
+
+> INV-MODUS-9 (BL-165): SDF Phase 4 loopDecision setzt `DF_BATCH_STATE.sc_resume_from`
+> vor jedem SC-Aufruf. Phase 0 liest diesen Marker und bestimmt START_AT.
+
+```
+# Phase 0: Resume-Check — START_AT Bestimmung (BL-165 AK-11)
+sc_resume_from = lies DF_BATCH_STATE.sc_resume_from aus _manifest.md ?? null
+
+SWITCH sc_resume_from:
+  "ergebnis":
+    START_AT = "_SC_ergebnis"
+    Logge: "[PHASE-0] sc_resume_from=ergebnis → START_AT=_SC_ergebnis (SC-Re-Entry mit prior summary)"
+    # Increment cycle_count_per_batch (INV-MODUS-9)
+    current_batch = DF_BATCH_STATE.current_sub_batch_id ?? "default"
+    DF_BATCH_STATE.sc_cycle_count_per_batch[current_batch] += 1
+    Logge: "[PHASE-0] cycle_count_per_batch[{current_batch}]={count}"
+
+  "observe" | null:
+    START_AT = "_SC_observe"
+    Logge: "[PHASE-0] sc_resume_from={sc_resume_from} → START_AT=_SC_observe (First-Entry, skip ergebnis)"
+
+  SONST:
+    # Unbekannter Wert — defensiv zu _SC_observe
+    START_AT = "_SC_observe"
+    Logge WARNUNG: "[PHASE-0] sc_resume_from={sc_resume_from} unbekannt → START_AT=_SC_observe (Fallback)"
+
+manifest.update(DF_BATCH_STATE.sc_cycle_count_per_batch)
+```
 
 ---
 
 ## PHASE 1: TEAM SETUP
 
-### Schritt 1.1: Kontext laden
-
-Lies folgende Dateien (falls vorhanden):
-1. `.claude/analysis/_manifest.md` → aktueller Stand, NAME, Phase
-2. `.claude/Task.md` → existierende Aufgabendefinition
-3. `.claude/models/{NAME}_Model.md` → existierendes Model
-4. `.claude/pileOfMud/` → Rohmaterial vorhanden?
-
-Bestimme Startpunkt:
-- Kein Manifest, kein Task.md → Voller Zyklus ab W_fetch
-- Task.md vorhanden, kein Model → Ab /_model
-- Model vorhanden → Ab /_SC_observe (Zyklus direkt)
-
-**Modus-Erkennung:**
-
-```
-WENN --mode=review UND -I gesetzt:
-  → FEHLER: "--mode=review ist INKOMPATIBEL mit -I.
-     -I = WAEHREND Implementation (SC-Spec-Modus).
-     --mode=review = NACH Implementation (Post-I Quality-Review).
-     Nur eines von beiden verwenden."
-  → ABBRUCH
-
-WENN --mode=review:
-  → Setze MODUS=REVIEW im Manifest (SC_PIPELINE_STATE.modus: REVIEW)
-  → Pruefe: Existiert I-Pipeline-Ergebnis?
-    (Manifest: I_PIPELINE_STATE vorhanden ODER implementierte Dateien in git)
-    WENN NEIN: WARNUNG an User:
-      "Review-Modus erfordert vorherige Implementation.
-       Keine I-Pipeline-Spuren gefunden. Fortfahren? (HiL)"
-  → Erstelle post-impl/ Verzeichnis: .claude/analysis/post-impl/
-  → Max Zyklen: easy=2, normal=3, hard=5 (statt 3/5/8)
-
-WENN -I gesetzt:
-  → Setze MODUS=IMPLEMENT
-
-SONST:
-  → Setze MODUS=THEORETISCH (Default)
-```
-
-**pipeline_mode Lifecycle-Initialisierung (EC-4, W200):**
-
-```
-Schreibe ins Manifest nach Modus-Erkennung:
-  pipeline_mode: SC
-
-  SC_I_LIFECYCLE.current_mode: SC
-  SC_I_LIFECYCLE.transition_log APPEND:
-    from_mode: (vorheriger Wert oder "init")
-    to_mode: SC
-    timestamp: {jetzt ISO8601}
-    reason: "PRE-CYCLE gestartet, Modus={MODUS}"
-    agent: "sc-orchestrate-agent"
-
-RUECKWAERTSKOMPATIBILITAET: Wenn pipeline_mode noch nicht im Manifest vorhanden →
-  initialisiere mit SC (Default gemaess ManifestSchema-SCIUebergang Abschnitt 2).
-```
-
-### Schritt 1.1a: G-SESSION-INIT (Stale-Task-Cleanup)
-
-**Zweck:** Erkennt und bereinigt stale `in_progress` Tasks aus einer vorangegangenen abgebrochenen Session (F06-Guard, W162).
-
-```
-G-SESSION-INIT Algorithmus:
-
-1. TaskList aufrufen → alle Tasks lesen
-2. Gibt es Tasks mit status=in_progress?
-   → NEIN: Keine stale Tasks → WEITER zu Schritt 1.2
-   → JA: Pruefe ob laufendes Team vorhanden
-
-3. Laufendes Team erkennbar (SendMessage-Partner erreichbar)?
-   → JA:  HiL: "Bestehendes Team mit offenen Tasks gefunden. Fortsetzen? (j/n)"
-          → j: WEITER (Team-Resume Modus)
-          → n: ABBRUCH
-   → NEIN: Auto-Cancel (Schritt 4)
-
-4. Auto-Cancel:
-   → Logge: "G-SESSION-INIT: {N} stale in_progress Tasks gefunden."
-   → Fuer jeden in_progress Task:
-     TaskUpdate(taskId=..., status="completed",
-       subject="[STALE-CANCELLED] {original_subject}")
-   → Logge: "SESSION_RESUME: Stale Tasks bereinigt, starte neu."
-```
-
-**Schutz:** Nur `in_progress` Tasks werden gecancelt. Pending Tasks bleiben unberuehrt.
+Skill(skill="_SC_berater_teamSetup", args="{NAME} {flags}")
+# BL-165 PL-11-01: _SC_berater_teamSetup registriert Team "sc-{batch_id}",
+# resolved Vault-Pfade, liest sc_resume_from, prueft Inkompatibilitaeten.
+# Output: BERATER_OUTPUTS.teamSetup.{team_name, batch_id, vault_root, bl_folder,
+#   sc_mode, sdf_guard_active, sdf_mode_normalized, sc_resume_from,
+#   puppet_master_active, startpunkt, flags, exit_code}
+IF BERATER_OUTPUTS.teamSetup.dryRun_done == true: RETURN
+IF BERATER_OUTPUTS.teamSetup.only_I_done == true: RETURN  # Skill spawnt _I_orchestrate direkt
 
 ---
+## SC Modus-Matrix (AK-03-04, BL-036)
 
-### Schritt 1.2: Team erstellen
-
-```
-TeamCreate:
-  team_name: "sc-{name}"
-  description: "Scientific Cycle - {name}"
-```
-
-### Schritt 1.3: Tasks erstellen
-
-Erstelle Tasks fuer den ERSTEN Durchlauf. Zyklus-Tasks werden
-bei CONTINUE dynamisch neu erstellt.
-
-**PRE-CYCLE (einmalig, uebersprungen wenn bereits vorhanden):**
-
-| # | Task Subject | Command | Blocked By | activeForm |
-|---|-------------|---------|------------|------------|
-| 0 | Wissen holen (Vault + RAG) | /_W_fetch {NAME} | - | Fetching knowledge from Vault and RAG |
-| 1 | Aufgabe definieren | /_taskDefinition {NAME} | Task 0 | Defining task and collecting crumbs |
-| 2 | Model aufbauen (Wellen-Tasks, siehe unten) | /_model {NAME} {difficulty} | Task 1 | Building knowledge model |
-
-**SC-CYCLE (Iteration 1):**
-
-| # | Task Subject | Command | Blocked By | activeForm |
-|---|-------------|---------|------------|------------|
-| 3 | Observe: Findings sammeln | /_SC_observe | Task 2 | Collecting observations |
-| 4 | Model pflegen | /_SC_modelMaintain | Task 3 | Maintaining model |
-| 5 | Quality Gates pruefen | /_SC_qualityGate | Task 4 | Running quality gates |
-| 6 | Hypothese formulieren | /_SC_hypothese | Task 5 | Formulating hypothesis |
-| 7 | Implementieren | /_SC_implement | Task 6 | Implementing changes |
-| 8 | Ergebnis sammeln | /_SC_ergebnis | Task 7 | Collecting results |
-
-**STRATEGISCHER PUSH (nach jedem Zyklus):**
-
-| # | Task Subject | Command | Blocked By | activeForm |
-|---|-------------|---------|------------|------------|
-| 9 | Wissen temporaer pushen | /_W_push_temp auto | Task 8 | Pushing knowledge to RAG |
-
-**Hinweis:** Tasks 3-9 werden bei CONTINUE dynamisch fuer die naechste
-Iteration neu erstellt. Der strategische Push (Task 9) sichert
-Zwischen-Ergebnisse nach jedem Zyklus im RAG.
-
-**WELLEN-TASKS fuer Wellen-Commands (Team Lead erstellt N Tasks statt 1):**
-
-Task 2 (_model) wird nach difficulty aufgesplittet — Team Lead erstellt diese Tasks
-NACH Task 1 (taskDefinition) abgeschlossen ist (reaktiv, Option B):
-
-| difficulty | Wellen-Tasks (Beispiel) | blocked_by |
-|------------|------------------------|------------|
-| easy | 2a: Model Synthese (solo) | Task 1 |
-| normal | 2a-2e: Explorer E01-E05 (Welle 1 PARALLEL) → 2f-2h: Drafter D01-D03 (Welle 2 PARALLEL) → 2i: Synthese | Task 1 → 2a-2e → 2f-2h |
-| hard | 2a-2i: Explorer E01-E09 (Welle 1 PARALLEL) → 2j-2n: Drafter D01-D05 (Welle 2 PARALLEL) → 2o: Synthese | Task 1 → 2a-2i → 2j-2n |
-
-Analog fuer _SC_observe (Task 3) und _SC_ergebnis (Task 8) — siehe Phase 3.3.
-
-**Wellen-Task-Erkennung:** Team Lead schreibt "[WORKER-MODE] Welle N:" in Task-Beschreibung.
-Worker liest Task-Beschreibung via TaskGet und fuehrt NUR die zugewiesene Welle aus.
-
-**POST-CYCLE (nach DONE-Decision):**
-
-| # | Task Subject | Command | Blocked By | activeForm |
-|---|-------------|---------|------------|------------|
-| 10 | ImplementationHandOff generieren | (Team Lead generiert Dokument) | Task 9 | Generating implementation handoff |
-| 11 | Wissens-Push orchestrieren | /_W_push_orchestrate {NAME} {difficulty} {ceiling} {floor} | Task 10 | Orchestrating knowledge push |
-| 12 | Feature finalisieren | /_finish {NAME} | Task 11 | Finalizing feature |
-
-HINWEIS: Task 10 (HandOff) wird direkt vom Team Lead erstellt (kein Agent noetig).
-Das HandOff-Dokument fasst SC-Ergebnisse fuer /_I_orchestrate zusammen.
-HINWEIS: /_W_push_orchestrate handhabt intern die 6 Steps:
-model finish → gap → push_global → modelSplit → sync_orchestrate hard --co-work → retrospektive.
-Siehe .claude/commands/_W_push_orchestrate.md fuer Details.
-
-### Schritt 1.4: Agents spawnen (KURZLEBIG_PROMPT v2.0)
-
-Team Lead spawnt Agents JE NACH PHASE:
-
-**SEQUENTIELLE PHASE** (Pipeline-Tasks: W_fetch, taskDef, modelMaintain, qualityGate, hypothese, implement, push_temp):
-
-KEIN persistenter Worker. Team Lead spawnt PRO PIPELINE-STEP einen frischen Agent:
-```
-Task tool:
-  name: "sc-{name}-{command}"       ← z.B. "sc-OmniCommand-observe"
-  subagent_type: "general-purpose"
-  model: "{ceiling}"                 ← aus Parameter (default: sonnet)
-  team_name: "sc-{name}"
-  mode: "bypassPermissions"
-  prompt: [KURZLEBIG_PROMPT, siehe Phase 2]
-```
-
-Jeder Agent fuehrt genau 1 Command aus und stirbt danach.
-Team Lead spawnt den naechsten Agent ERST wenn der aktuelle fertig ist (Phase 3).
-
-**WELLEN-PHASE** (model, observe, ergebnis bei normal/hard):
-Team Lead spawnt N Worker GLEICHZEITIG pro Welle:
-
-```
-Welle 1 (Explorer, PARALLEL):
-  FUER JEDEN Explorer-Task (E01..E{N}):
-    Task tool:
-      name: "sc-explorer-E{NN}"
-      subagent_type: "general-purpose"
-      model: "{floor}"                ← haiku fuer Explorer
-      team_name: "sc-{name}"
-      mode: "bypassPermissions"
-      run_in_background: true         ← PARALLEL!
-      prompt: [WORKER-PROMPT mit "[WORKER-MODE] Welle 1:" Task-Beschreibung]
-
-Welle 2 (Drafter, PARALLEL — erst NACH Welle 1 komplett):
-  FUER JEDEN Drafter-Task (D01..D{N}):
-    Task tool:
-      name: "sc-drafter-D{NN}"
-      subagent_type: "general-purpose"
-      model: "{middle}"               ← sonnet fuer Drafter
-      team_name: "sc-{name}"
-      mode: "bypassPermissions"
-      run_in_background: true         ← PARALLEL!
-      prompt: [WORKER-PROMPT mit "[WORKER-MODE] Welle 2:" Task-Beschreibung]
-
-Welle 3 (Synthese, 1 Agent — erst NACH Welle 2 komplett):
-    Task tool:
-      name: "sc-synthese"
-      subagent_type: "general-purpose"
-      model: "{ceiling}"              ← opus fuer Synthese
-      team_name: "sc-{name}"
-      mode: "bypassPermissions"
-      prompt: [WORKER-PROMPT mit "[WORKER-MODE] Synthese:" Task-Beschreibung]
-```
-
-**easy:** Kein Wellen-Modus, Team Lead spawnt pro Step 1 Agent (sc-{name}-{command}).
+Skill(skill="_SC_berater_modusMatrix")
+# Liest: SC_PIPELINE_STATE.sc_mode, sdf_guard_active, sdf_mode_normalized, GLOBAL_HIL, difficulty
+# Schreibt: BERATER_OUTPUTS.modusMatrix.{schritt_aktiv, sdf_guard_result, pipeline_mode_log, autonomie_modus}
+# Deckt: Modus-Tabelle, SDF-Guard, pipeline_mode State Machine, Autonomie-Modus, Tasks 1.3, Agents 1.4
 
 ---
-
 ## PHASE 2: KURZLEBIG_PROMPT (Single-Command-Agent)
 
-Pro Pipeline-Step spawnt Team Lead 1 kurzlebigen Agent.
-Jeder Agent bekommt diesen minimalen Prompt (kein Worker-Loop, kein TaskList-Polling):
-
-```
-Du bist ein Single-Command-Agent fuer den Scientific Cycle.
-Agent-Name: sc-{name}-{command}
-Team: sc-{name}
-
-═══ DEIN AUFTRAG ═══
-
-Genau 1 Command ausfuehren, dann fertig.
-
-Command:     {COMMAND_PATH} {NAME} {DIFFICULTY}
-Task-ID:     {TASK_ID}
-
-═══ WISSEN ABRUFEN (Optional) ═══
-
-Falls feature-lokales Wissen vorhanden:
-  mcp__cleancoder__query(
-    query_text="[dein Fokus]",
-    collection="local_knowledge_{FEATURE_ID}",
-    limit=3
-  )
-  {FEATURE_ID} = sanitized Feature-Name (lowercase, underscores)
-  Beispiel: "dcsre881" fuer DCSRE-881
-  → .claude/analysis/synthese/{NAME}-HANDOFF.md (ADR-Kontext, falls vorhanden)
-
-═══ SCHRITTE ═══
-
-1. Lies Command-Datei: .claude/commands/{COMMAND_FILE}.md
-2. Fuehre Command aus.
-3. TaskUpdate {TASK_ID} status=completed
-4. SendMessage an "team-lead":
-   "{COMMAND} {NAME}: [2-3 Saetze Summary]"
-
-═══ REGELN ═══
-
-- KEIN git commit, KEIN git push
-- KEIN Sub-Agent spawnen (W7-Constraint)
-- NUR dieser eine Command, dann fertig (KEIN TaskList-Loop)
-- Manifest (_manifest.md) nach Command aktualisieren
-- Arbeite gruendlich, nicht schnell
-```
-
-**Wellen-Phase Prompt** (fuer Wellen-Worker bei model, observe, ergebnis):
-
-Wellen-Worker erhalten einen spezifischen Prompt der ihre Rolle direkt enthaelt:
-
-```
-Du bist ein Wellen-Worker fuer den Scientific Cycle.
-Agent-Name: sc-{wellen-name}
-Team: sc-{name}
-
-═══ DEIN AUFTRAG ═══
-
-Genau 1 Welle ausfuehren, dann fertig.
-
-Welle:       {WELLEN-BESCHREIBUNG}
-Task-ID:     {TASK_ID}
-
-═══ ROLLEN-ERKENNUNG ═══
-
-Deine Rolle kommt direkt aus diesem Prompt (KEIN TaskGet noetig):
-- Welle 1 (Exploration): Lies Crumbs/Model, schreibe exploration/{NAME}-E{NN}-{fokus}.md
-- Welle 1 (Drafts): Lies Model, schreibe drafts/{NAME}-{phase}-D{NN}-{fokus}.md
-# SP-FIX-2: Stille-Post-Schutz (Wellen-Rollen)
-- Welle 2 (Drafts): Lies Crumbs + Model + Exploration (NUR als Kompass), schreibe drafts/*-D{NN}-*.md
-- Welle 2/3 (Synthese): Lies Crumbs + Model + Drafts (NUR als Kompass), verifiziere JEDE Aussage an Primaerquellen, schreibe finales Dokument
-
-═══ SCHRITTE ═══
-
-1. Fuehre die zugewiesene Welle aus.
-2. TaskUpdate {TASK_ID} status=completed
-3. SendMessage an "team-lead":
-   "{WELLE} {NAME}: [2-3 Saetze Summary]"
-
-═══ REGELN ═══
-
-- KEIN git commit, KEIN git push
-- KEIN Sub-Agent spawnen (W7-Constraint)
-- NUR diese eine Welle, dann fertig
-```
+Skill(skill="_SC_berater_kurzlebigPrompt")
+# Sub-Sektionen 2.0-2.3: Zyklus-Orchestrierung (Puppet Master), Single-Command-Prompt,
+# Wellen-Phase-Prompt, kontext_constraint-Template
+# Liest: BERATER_OUTPUTS.teamSetup (ceiling/floor/difficulty/sc_mode/NAME)
+# Schreibt: BERATER_OUTPUTS.kurzlebigPrompt.{prompt_string, schritt_zaehler}
 
 ---
+## PHASE 3: TEAM LEAD STEUERUNG
 
-## PHASE 3: TEAM LEAD STEUERUNG (Aktives Spawning v2.0)
-
-### 3.1 Agent-Messages empfangen und naechsten Agent spawnen
-
-Team Lead (DU) empfaengst Agent-Messages automatisch.
-Pro Message:
-
-```
-1. Agent meldet: "{COMMAND} {NAME}: Summary"
-2. Team Lead prueft: Passt das Ergebnis?
-3. Bei Erfolg: Naechsten Agent spawnen (naechster Pipeline-Step)
-   → sc-{name}-{naechster-command} mit KURZLEBIG_PROMPT
-4. Bei Problem: Neuen Agent spawnen mit Korrektur-Kontext
-   → sc-{name}-{command}-retry mit erweitertem Prompt
-5. Nach /_SC_ergebnis: → Phase 3.2 (Zyklus-Entscheidung)
-6. Nach /_W_push_temp: → Phase 3.2 Ergebnis auswerten (CONTINUE/DONE)
-```
-
-**Pipeline-Sequenz (Team Lead spawnt aktiv):**
-```
-sc-{name}-W_fetch
-  → sc-{name}-taskDef
-    → sc-{name}-model (oder Wellen-Worker)
-      → sc-{name}-observe (oder Wellen-Worker)
-        → sc-{name}-modelMaintain
-          → sc-{name}-qualityGate
-            → sc-{name}-hypothese
-              → sc-{name}-implement (nur bei -I Modus, SKIP bei REVIEW)
-                → sc-{name}-ergebnis (oder Wellen-Worker)
-                  → sc-{name}-push_temp
-```
-
-**SC_PIPELINE_STATE im Manifest (Team Lead aktualisiert nach jedem Agent):**
-```yaml
-SC_PIPELINE_STATE:
-  cycle_nr: {N}
-  stufe: "{aktueller-command}"
-  sc_status: RUNNING            # RUNNING | DONE | DONE_DISCOVERY_ONLY | BLOCKED
-  resume_zaehler:
-    W_fetch: 0
-    taskDef: 0
-    model: 0
-    observe: 0
-    modelMaintain: 0
-    qualityGate: 0
-    hypothese: 0
-    implement: 0
-    ergebnis: 0
-    push_temp: 0
-  aktive_agent_ids: []
-```
-
-### 3.2 Zyklus-Entscheidung (nach /_SC_ergebnis)
-
-Team Lead wertet folgende Signale aus:
-
-**Aus Worker-Message (/_SC_ergebnis):**
-- SRS-Score und SRS-Trend
-- Offene vs widerlegte W{n}
-- Stagnations-Zaehler
-- Fortschritts-Bewertung
-
-**Aus /_SC_qualityGate (falls Worker gemeldet hat):**
-- Gate 3: Feature-Abschluss Coverage-%
-- Gate 5: Stagnation (Schwellen)
-- BSD-Trigger (T1-T5)
-
-**Decision-Table (Standard-Modus: THEORETISCH / IMPLEMENT):**
-
-```
-┌──────────────────────────┬─────────────────────┬──────────┬───────────────┐
-│ Signal                   │ Bedingung           │ Decision │ Aktion        │
-├──────────────────────────┼─────────────────────┼──────────┼───────────────┤
-│ Feature-Coverage         │ >= 90%              │ DONE     │ Post-Cycle    │
-│ SRS-Trend                │ Konvergent + stabil │ DONE     │ Post-Cycle    │
-│ Stagnation               │ >= 7.0              │ ABORT    │ Post-Cycle*   │
-│ Stagnation               │ >= 5.0              │ FORCE    │ Post-Cycle    │
-│ Fortschritt              │ STARK oder SCHWACH  │ CONTINUE │ Neuer Zyklus  │
-│ Max Zyklen erreicht      │ easy=3, norm=5, h=8 │ FORCE    │ Post-Cycle    │
-│ User-Override            │ (via HiL)           │ varies   │ nach Feedback │
-└──────────────────────────┴─────────────────────┴──────────┴───────────────┘
-
-* ABORT: Post-Cycle OHNE /_model finish. Direkt zu /_retrospektive
-  mit ABORT-Vermerk. Meta-Analyse statt Feature-Abschluss.
-```
-
-**Decision-Table (REVIEW-Modus: --mode=review):**
-
-```
-┌──────────────────────────┬──────────────────────────┬──────────┬───────────────┐
-│ Signal                   │ Bedingung                │ Decision │ Aktion        │
-├──────────────────────────┼──────────────────────────┼──────────┼───────────────┤
-│ Review-Items             │ Alle RESOLVED/DEFERRED   │ DONE     │ Post-Cycle    │
-│ Gate 6 (Reality-Check)   │ Code↔Model konsistent    │ DONE     │ Post-Cycle    │
-│ Fortschritt              │ Items noch OPEN          │ CONTINUE │ Neuer Zyklus  │
-│ Max Zyklen erreicht      │ easy=2, norm=3, hard=5   │ FORCE    │ Post-Cycle    │
-│ User-Override            │ (via HiL)                │ varies   │ nach Feedback │
-└──────────────────────────┴──────────────────────────┴──────────┴───────────────┘
-
-REVIEW-Modus nutzt Gate 6 statt Gate 1 (Battle-Royale). SRS-Tracking ist DEAKTIVIERT.
-Findings gehen nach .claude/analysis/post-impl/{NAME}-REVIEW-PROTOKOLL.md, NICHT ins Model.
-Nur strukturelle Erkenntnisse die das Model AENDERN muessen → manuell als W{n} ins Model.
-```
-
-### 3.3 Bei CONTINUE-Decision
-
-Wenn Zyklus weitergehen soll:
-
-1. **Pruefe Iteration-Counter:**
-   - Standard-Modus: easy=3, normal=5, hard=8
-   - Review-Modus:   easy=2, normal=3, hard=5
-   - Ueberschritten? → FORCE statt CONTINUE
-
-2. **Erstelle neue CYCLE Tasks:**
-
-_SC_observe und _SC_ergebnis werden ebenfalls als Wellen-Tasks erstellt (normal/hard).
-Pattern 9-5-1 / 5-3-1 / 1 (identisch zu _model):
-Fuer easy: 1 Task (solo). Fuer normal: 5 Explorer PARALLEL → 3 Drafter PARALLEL → 1 Synthese. Fuer hard: 9 Explorer PARALLEL → 5 Drafter PARALLEL → 1 Synthese.
-Innerhalb einer Welle: ALLE Agents PARALLEL (keine gegenseitige Blockierung).
-Naechste Welle blockiert durch Abschluss der vorherigen Welle.
-
-```
-TaskCreate: "Observe: Findings sammeln (Zyklus {C+1})"
-  description: "/_SC_observe ausfuehren. Zyklus {C+1}.
-    Lies vorheriges ERGEBNIS{C}.md als Input.
-    Bei easy: Solo. Bei normal/hard: Team Lead erstellt Wellen-Tasks (D01..DN + Synthese).
-    Sammle Findings OHNE Interpretation."
-  blocked_by: (letzter completed Task, z.B. W_push_temp)
-
-TaskCreate: "Model pflegen (Zyklus {C+1})"
-  blocked_by: (observe Task)
-
-TaskCreate: "Quality Gates pruefen (Zyklus {C+1})"
-  blocked_by: (modelMaintain Task)
-
-TaskCreate: "Hypothese formulieren (Zyklus {C+1})"
-  blocked_by: (qualityGate Task)
-
-TaskCreate: "Implementieren (Zyklus {C+1})"
-  blocked_by: (hypothese Task)
-
-TaskCreate: "Ergebnis sammeln (Zyklus {C+1})"
-  blocked_by: (implement Task)
-
-TaskCreate: "Wissen temporaer pushen (Zyklus {C+1})"
-  blocked_by: (ergebnis Task)
-```
-
-3. **Starte naechsten Zyklus (Team Lead spawnt ersten Agent):**
-
-```
-Team Lead spawnt sc-{name}-observe mit KURZLEBIG_PROMPT:
-  "CONTINUE: Neuer Zyklus {C+1}. Fuehre /_SC_observe aus."
-```
-
-### 3.3a Prozessbegleitende W_sync_orchestrate Trigger (NEU v2.0)
-
-Nach bestimmten Tasks spawnt der Team Lead einen **parallelen easy-Sync Worker**,
-OHNE den Haupt-Worker zu unterbrechen.
-
-**Trigger-Punkte im SC-CYCLE:**
-
-| Nach Task | Sync-Schwierigkeit | Was wird gesynct | Wann | --co-work |
-|-----------|-------------------|-----------------|------|-----------|
-| T4 (modelMaintain) | easy | models/{NAME}_Model.md | Jeder Zyklus | Kein --co-work |
-| T8 (ergebnis) | easy/normal --co-work | ERGEBNIS + OBSERVE + QUALITYGATE + HYPOTHESEN | Jeder Zyklus | Mit --co-work (Zyklus-Abschluss) |
-| T9 (W_push_temp) | easy | wissen/*.md | Jeder Zyklus | Kein --co-work |
-
-**Parallel-Worker-Pattern:**
-
-```
-1. Team Lead erkennt Task-Completion (modelMaintain, ergebnis, W_push_temp)
-2. Team Lead entscheidet: Sync sinnvoll? (z.B. nach modelMaintain wenn Model signifikant geaendert)
-3. Team Lead spawnt Sync-Agent:
-   Task tool: sc-{name}-syncOrchestrate
-     "W_sync_orchestrate {NAME} easy [--co-work wenn nach ergebnis]: Sync nach {TASK}."
-   ODER TaskCreate mit nicht-blockierendem Task.
-4. Sync-Agent laeuft PARALLEL zum aktuellen Pipeline-Agent (nicht-blockierend)
-5. Worker meldet Ergebnis, Team Lead protokolliert
-
-CONSTRAINT (WellenRedesign R8+R9):
-  - Auch easy spawnt 1 Worker (Team Lead fuehrt Sync NICHT selbst aus)
-  - Team Lead steuert DIREKT (kein Worker spawnt weitere Worker)
-
-CEILING-VERERBUNG:
-  - Sync-Schwierigkeit = min(Parent-Schwierigkeit, requested)
-  - Easy SC-Zyklus → maximal easy Sync
-  - Normal SC-Zyklus → maximal normal Sync
-  - Hard SC-Zyklus → maximal hard Sync (aber prozessbegleitend bleibt easy/normal)
-```
-
-**Hinweis:** T13 (POST-CYCLE) bleibt als **hard** Sync fuer vollstaendigen Feature-Ende-Sync.
-Prozessbegleitende Triggers sind **zusaetzlich** zu T13, nicht als Ersatz.
-
-### 3.4 Bei DONE/FORCE-Decision
-
-Wenn Forschung abgeschlossen oder erzwungen:
-
-0. **Manifest DONE_TIMESTAMP setzen:**
-
-```
-Aktualisiere .claude/analysis/_manifest.md:
-  PHASE: DONE
-  DONE_TIMESTAMP: {ISO_DATETIME}  (z.B. 2026-02-22T14:30:00)
-  sc_status: DONE              ← W93: Formales SC-Abschluss-Signal fuer /_I_orchestrate Pre-Check
-```
-
-HINWEIS fuer DONE_DISCOVERY_ONLY (wenn Discovery abgeschlossen aber Implementation noch nicht spezifiziert):
-  → Schreibe `sc_status: DONE_DISCOVERY_ONLY` statt `DONE`
-  → /_I_orchestrate akzeptiert beide als gueltigen Start-Status.
-
-#### SC-I Handoff-Gate (v2.2+, I-31)
-
-**Zweck:** Formalisiert die SC-QUELL-Verantwortung fuer sc_status.
-Bevor die I-Pipeline gestartet wird, MUSS der SC-Orchestrator pruefen ob
-der SC-Zyklus abgeschlossen ist und den passenden sc_status setzen.
-Dies ist das Komplement zur EMPFAENGER-Seite in `_I_orchestrate` (Schritt 0.2a, Z.556-568).
-
-**Gate-Logik (SC-Orchestrator prueft VOR I-Pipeline-Start):**
-
-| sc_status (aktuell) | Bedeutung | Gate-Entscheidung |
-|----------------------|-----------|-------------------|
-| `DONE` | SC-Zyklus vollstaendig abgeschlossen | I-Pipeline starten (alle SC-Artefakte uebergeben) |
-| `DONE_DISCOVERY_ONLY` | Discovery fertig, Implementation nicht spezifiziert | I-Pipeline starten (kein SC-Review noetig) |
-| `RUNNING` | SC-Zyklus laeuft noch | HiL: "SC noch aktiv. Warten oder parallel starten?" |
-| `BLOCKED` | SC blockiert (externer Blocker) | STOPP: Blocker zuerst loesen, sc_status auf DONE setzen |
-| (kein Feld) | Kein SC-Kontext vorhanden | Normal weiter (I-Pipeline ohne SC-Vorzyklus) |
-
-**Referenz:** `_I_orchestrate` Schritt 0.2a (Z.556-568) liest diesen sc_status
-und fuehrt die EMPFAENGER-Pruefung durch. SC setzt den Wert, I liest ihn.
-Bidirektionale Konsistenz: SC-Orchestrator = Schreiber, I-Orchestrator = Leser.
-
-Dieser Timestamp wird von /_W_push_orchestrate Schritt 1.1b (CHECK 1) genutzt,
-um Out-of-Pipeline Arbeit praezise zu erkennen (praeziser als Datei-Timestamps).
-
-**POST-CYCLE Lifecycle-Schritt 0: Modus-Transition (EC-4, W180-E)**
-
-```
-Schreibe ins Manifest VOR HANDOFF-Generierung:
-  pipeline_mode: POST_CYCLE
-
-  SC_I_LIFECYCLE.current_mode: POST_CYCLE
-  SC_I_LIFECYCLE.transition_log APPEND:
-    from_mode: SC
-    to_mode: POST_CYCLE
-    timestamp: {jetzt ISO8601}
-    reason: "SC-Zyklus abgeschlossen ({Decision}: DONE|FORCE), POST-CYCLE gestartet"
-    agent: "sc-orchestrate-agent"
-
-ZWECK: I-Orchestrator Schritt 0.2a liest pipeline_mode.
-  POST_CYCLE → I-Start ABGELEHNT (POST-CYCLE noch aktiv).
-  Erst nach Finaler Verifikation (Patch 5) → pipeline_mode: READY_FOR_I.
-```
-
-1. **ImplementationHandOff generieren (Team Lead direkt, W99):**
-
-Team Lead erstellt strukturiertes HandOff-Dokument als SC→I Uebergabe-Vertrag.
-Dieses Dokument fasst den SC-Zyklus fuer /_I_orchestrate zusammen.
-
-```
-Schreibe .claude/analysis/synthese/{NAME}-HANDOFF.md:
+Skill(skill="_SC_berater_teamLeadSteuerung")
+# Sub-Sektionen 3.1-3.7:
+#   3.1 Pipeline-Sequenz + SC_PIPELINE_STATE
+#   3.2 Zyklus-Entscheidung (incl. AUTO_TDD_CHECK RF-05)
+#   3.2a SYMBIOSE
+#   3.3 CONTINUE-Decision (incl. W_sync_orchestrate Trigger, Archive-Hook)
+#   3.4 DONE/FORCE
+#   3.5 ABORT, 3.6 HiL-Pause, 3.7 User-Decision
+# Liest: BERATER_OUTPUTS.teamSetup + kurzlebigPrompt + modusMatrix
+# Schreibt: BERATER_OUTPUTS.teamLeadSteuerung.{pipelineSequenz, zyklusEntscheidung,
+#          modeSwitchResult, continueDecision, doneDecision, abortDecision}
 
 ---
-type: handoff
-feature: {NAME}
-date: {YYYY-MM-DD}
-cycles: {C}
-sc_status: {DONE|FORCE}
-srs_final: {score}
----
-
-# ImplementationHandOff: {NAME}
-
-## 1. LOESCHEN (Prototypen-Artefakte, untracked files)
-- {Liste der Dateien die VOR I-Pipeline bereinigt werden muessen}
-- Untracked files aus `git status` die nicht produktiv sind
-
-## 2. BEHALTEN (produktive Dateien + Status)
-- {Datei}: {Status} (AKTIV / ZUR_PRUEFUNG / FERTIG)
-
-## 3. OFFENE AUFGABEN (W{n} AKTIV + ZUR_PRUEFUNG)
-| # | W{n} | Beschreibung | Prioritaet |
-|---|------|-------------|-----------|
-| 1 | W{x} | {kurz} | HOCH/MITTEL/NIEDRIG |
-
-## 4. ARCHITEKTUR-ENTSCHEIDUNGEN (ADR-Zusammenfassung)
-- ADR {v}: {Entscheidung} (Status: BESTAETIGT/OFFEN)
-
-## 5. KRITISCHE HINWEISE
-- Externe Abhaengigkeiten: {Liste}
-- Risiken: {Liste}
-- Scope-Einschraenkungen: {was ist RAUS}
-
-## 6. SRS-TREND (EC-2, W180-B)
-| Zyklus | Score | Trend | Diff |
-|--------|-------|-------|------|
-| 1      | {srs_zyklus_1} | -    | -    |
-| {C}    | {srs_final}    | ↓/↑  | {diff_percent}% |
-
-Quelle: Manifest `sc_final_srs` pro Zyklus (OBSERVE{N}-Frontmatter).
-Interpretation: {z.B. "Substantielle Reduktion", "Stagnation", "Komplexitaets-Anstieg"}
-
-## 7. DISCOVERY-GAPS (EC-2, W180-B)
-Topics mit unzureichender RAG-Abdeckung (< 3 Chunks) oder offenen W{n}:
-| Topic | W{n} | Status | Chunks | Empfehlung |
-|-------|------|--------|--------|------------|
-| {topic_1} | W{x} | ZUR_PRUEFUNG | {n} | I-Phase vertiefen |
-| {topic_2} | W{y} | AKTIV        | 0   | Grundlagen fehlen |
-
-Quelle: `w_register where status IN (AKTIV, ZUR_PRUEFUNG)` + RAG gap-Analyse.
-Leer wenn alle kritischen W{n} BESTAETIGT: `- (keine offenen Gaps)`
-
-## 8. ADR-RATIONALE (EC-2, W180-B)
-Architektur-Entscheidungen mit vollstaendiger Begruendung fuer I-Agenten:
-| ADR | Entscheidung | Begruendung | Kontext | Status |
-|-----|-------------|-------------|---------|--------|
-| ADR-{v} | {Was entschieden} | {Warum} | W{n}-Referenz | BESTAETIGT/OFFEN |
-
-Quelle: Model.md ADR-Sektion + W{n}-Notizen.
-Zweck: I-Agenten verstehen das WARUM hinter Architektur-Entscheidungen
-       (nicht nur das WAS aus Sektion 4 ARCHITEKTUR-ENTSCHEIDUNGEN).
-```
-
-**POST-CYCLE Lifecycle-Schritt 1: SC-Gate schreiben (EC-5, EC-1, W180-C)**
-
-```
-Schreibe sc_i_gate Block ins Manifest (NACH HANDOFF-Generierung, VOR _W_push):
-
-sc_i_gate:
-  status: pending                     # → wird in Patch 5 auf approved/rejected gesetzt
-  criteria_met: []                    # → Checkliste: wird in sc_i_gate_check() gefuellt
-  criteria_pending:                   # 3-Tier Checkliste (C1-C7):
-    - "C1: srs_under_70"              # TIER-1 BLOCKING: SRS < 70
-    - "C2: critical_wn_coverage_85"   # TIER-1 BLOCKING: >= 85% BESTAETIGT
-    - "C3: w51_w56_confirmed"         # TIER-1 BLOCKING: Beide BESTAETIGT
-    - "C4: ec_done_2_of_3"            # TIER-2 (EC-1, EC-2, EC-5 >= 2/3)
-    - "C5: stagnation_under_075"      # TIER-2
-    - "C6: handoff_valid_4_sections"  # TIER-2 (mind. 4 Pflicht-Sektionen)
-    - "C7: hil_signature"             # TIER-3 (HiL-Bestaetigung, approved_by)
-  tier_1_passed: null                 # → gesetzt in finale Verifikation
-  tier_2_decision: null               # → gesetzt in finale Verifikation
-  tier_3_approved: null               # → gesetzt in finale Verifikation
-  approved_by: null                   # → Team Lead traegt hier ein (C7)
-  approved_at: null
-  justification: null
-
-HINWEIS FORCE_ACCEPT Sonderfall:
-  Wenn Team Lead Gate manuell ueberstimmt:
-    sc_i_gate.status: approved
-    sc_i_gate.approved_by: "{user}"
-    sc_i_gate.justification: "{Begruendung}"
-    sc_i_gate.override_warning: "Gate-Kriterien nicht erfuellt, manuell ueberstimmt"
-  → pipeline_mode: READY_FOR_I setzen (trotz Gate-Fail)
-  → I-Orchestrator respektiert override_warning als Warnung
-```
-
-**Gate-Symmetrie-Doku:**
-SC schreibt `sc_i_gate` (dieser Schritt).
-I antwortet mit `i_gate_response` (in _I_orchestrate Schritt 0.2a).
-Beide Gates bilden zusammen das bidirektionale Uebergangs-Protokoll (W202).
-
-2. **Erstelle POST-CYCLE Tasks:**
-
-```
-TaskCreate: "Wissens-Push orchestrieren"
-  description: "/_W_push_orchestrate {NAME} {difficulty} {ceiling} {floor} ausfuehren.
-    Eigener Orchestrator fuer den kompletten POST-CYCLE Wissens-Push.
-    Handhabt intern 6 Steps:
-      model finish → gap → push_global → modelSplit → obsidianSync → retrospektive.
-    Erstellt eigenes Team, spawnt kurzlebige Agents pro Step.
-    Bei FORCE: Retrospektive mit FORCE-Vermerk."
-  blocked_by: (letzter W_push_temp Task)
-
-TaskCreate: "Feature finalisieren"
-  description: "/_finish {NAME} ausfuehren.
-    Offene Items pruefen (parking-lot, Task.md, Model W{n}).
-    User fragt: PARKEN / DISCARD / ERLEDIGT.
-    .claude/* Konsistenz-Check.
-    Manifest: PHASE=READY."
-  blocked_by: (W_push_orchestrate Task)
-```
-
-2. **Starte Post-Cycle (Team Lead spawnt W_push_orchestrate Agent):**
-
-```
-Team Lead spawnt sc-{name}-wpush mit KURZLEBIG_PROMPT:
-  "DONE: Forschungszyklus abgeschlossen nach {C} Zyklen.
-   Fuehre /_W_push_orchestrate {NAME} {difficulty} {ceiling} {floor} aus."
-```
-
-### 3.4b POST-CYCLE Finale Verifikation und Gate-Abschluss (EC-4, EC-1, W180-A, W180-E)
-
-TIMING: Dieser Schritt findet statt NACHDEM W_push_orchestrate-Agent fertig gemeldet hat
-        UND _finish-Task abgeschlossen ist.
-
-```
-sc_i_gate_check() — 3-Tier Verifikation:
-
-TIER-1 (BLOCKING — alle drei muessen PASS sein):
-  C1: sc_final_srs < 70?
-    → JA:  criteria_met APPEND "srs_under_70"
-    → NEIN: TIER-1 FAIL — pipeline_mode: POST_CYCLE_RETRY, sc_i_gate.status: rejected
-            Logge: "Gate FAIL C1: SRS={srs} >= 70. SC-Zyklen fortsetzen."
-            STOP (kein READY_FOR_I)
-
-  C2: Kritische W{n} (Kategorie architektur/mechanismen) >= 85% BESTAETIGT?
-    → JA:  criteria_met APPEND "critical_wn_coverage"
-    → NEIN: TIER-1 FAIL — wie oben
-
-  C3: W51 BESTAETIGT UND W56 BESTAETIGT?
-    → JA:  criteria_met APPEND "w51_w56_confirmed"
-    → NEIN: TIER-1 FAIL — wie oben
-
-TIER-2 (Conditional — mind. 2/3 muessen PASS sein):
-  C4: Kritische ECs DONE >= 2 von 3 (EC-1, EC-2, EC-5)?
-    → JA: tier2_count++
-  C5: STAGNATION < 0.75?
-    → JA: tier2_count++
-  C6: HANDOFF.md hat mind. 4 Pflicht-Sektionen
-       (LOESCHEN, BEHALTEN, OFFENE AUFGABEN, ARCHITEKTUR)?
-    → JA: tier2_count++
-
-  IF tier2_count < 2:
-    TIER-2 FAIL → pipeline_mode: POST_CYCLE_RETRY, sc_i_gate.status: rejected
-    Logge: "Gate FAIL TIER-2: {tier2_count}/3 Conditional erfuellt."
-    STOP
-
-TIER-3 (Governance — HiL-Signatur):
-  C7: sc_i_gate.approved_by gesetzt (Team Lead Signatur)?
-    → JA:  tier_3_approved: true
-    → NEIN: status: pending_approval (kein Hard-Stop, HiL-Benachrichtigung)
-            Logge: "Gate CONDITIONAL: TIER-1+2 OK, warte auf HiL-Signatur (C7)."
-            HiL: "Forschung abgeschlossen. SC→I Gate bereit fuer Bestaetigung.
-                  SRS={srs}, W{n}-Abdeckung={coverage}%. Genehmigen?"
-            → Nach HiL-Bestaetigung: approved_by setzen, weiter zu PASS
-
-GATE PASS (alle Tier erfuellt):
-  sc_i_gate.status: approved
-  sc_i_gate.tier_1_passed: true
-  sc_i_gate.tier_2_decision: pass
-  sc_i_gate.tier_3_approved: true
-  sc_i_gate.approved_by: "{team-lead-user}"
-  sc_i_gate.approved_at: {jetzt ISO8601}
-
-  pipeline_mode: READY_FOR_I
-
-  SC_I_LIFECYCLE.current_mode: READY_FOR_I
-  SC_I_LIFECYCLE.sc_cycles_completed: {C}
-  SC_I_LIFECYCLE.transition_log APPEND:
-    from_mode: POST_CYCLE
-    to_mode: READY_FOR_I
-    timestamp: {jetzt ISO8601}
-    reason: "Finale Verifikation PASS (W204), sc_i_gate APPROVED, alle {C} Zyklen abgeschlossen"
-    agent: "sc-orchestrate-agent"
-
-  Logge: "READY_FOR_I: Gate bestanden. I-Pipeline kann starten."
-  Melde User: "SC-Phase abgeschlossen. pipeline_mode=READY_FOR_I.
-               I-Pipeline kann mit /_I_orchestrate {NAME} gestartet werden."
-```
-
-### 3.5 Bei ABORT-Decision
-
-Wenn Stagnation >= 7.0 oder unueberwindbares Hindernis:
-
-1. **Erstelle ABORT-Tasks (verkuerzt):**
-
-```
-TaskCreate: "Retrospektive (ABORT)"
-  description: "/_retrospektive ausfuehren mit ABORT-Modus.
-    Meta-Analyse: Warum stagniert der Ansatz?
-    Was wurde gelernt? Welcher alternative Ansatz?
-    KEIN /_model finish (Model bleibt unfertig als Dokument)."
-  blocked_by: (letzter completed Task)
-```
-
-2. **Optional: W_push_temp als Sicherung:**
-   - Auch bei ABORT: Bisheriges Wissen temporaer sichern
-
-### 3.6 Nach Retrospektive (Worker meldet "Retrospektive fertig")
-
-Team Lead fuehrt HiL-Pause durch:
-
-```
-AskUserQuestion:
-  header: "{NAME}"
-  question: "Forschungszyklus '{name}' abgeschlossen.
-
-    Zyklen: {C}
-    Decision: {DONE|FORCE|ABORT}
-    SRS-Score: {final_srs}
-    W{n}: {confirmed} BESTAETIGT, {refuted} WIDERLEGT, {open} OFFEN
-    Stagnation: {stagnation_counter}
-    GAP: {gap_percentage}% (IST vs SOLL)
-
-    Bitte entscheiden:"
-
-  options:
-    - label: "ACCEPT"
-      description: "Feature abgeschlossen, weiter"
-    - label: "RETRY"
-      description: "Nochmal von vorne (ich gebe Feedback)"
-    - label: "PIVOT"
-      description: "Ansatz aendern (neuen Zyklus mit anderem Fokus)"
-    - label: "ABORT"
-      description: "Feature aufgeben, nur Wissen sichern"
-```
-
-### 3.7 User-Decision verarbeiten
-
-**Bei ACCEPT:**
-```
-1. Keine aktiven Agents (kurzlebig, bereits terminiert)
-2. TeamDelete
-3. _manifest.md aktualisieren: feature_status=ACCEPTED
-5. Melde User:
-   "Feature '{name}' abgeschlossen.
-    Model: .claude/models/{name}_Model.md
-    Wissen: global_knowledge (RAG)
-    Vault: /_W_obsidianSync (falls konfiguriert)"
-```
-
-**Bei RETRY:**
-```
-1. Frage User nach Feedback (AskUserQuestion, Freitext)
-2. Erstelle neue PRE-CYCLE Tasks (ab /_SC_observe, NICHT ab W_fetch)
-3. Team Lead spawnt sc-{name}-observe mit KURZLEBIG_PROMPT:
-   "RETRY: User-Feedback: {feedback}. Fuehre /_SC_observe aus."
-4. Zurueck zu Phase 3.1 (Aktives Spawning)
-```
-
-**Bei PIVOT:**
-```
-1. Frage User nach neuem Fokus (AskUserQuestion, Freitext)
-2. Erstelle neue PRE-CYCLE Tasks (ab /_taskDefinition mit neuem Fokus)
-3. Altes Model behalten als Basis, aber neues Task.md
-4. Team Lead spawnt sc-{name}-taskDef mit KURZLEBIG_PROMPT:
-   "PIVOT: Neuer Fokus: {neuer_fokus}. Fuehre /_taskDefinition aus.
-    Bestehendes Model als Basis nutzen."
-5. Zurueck zu Phase 3.1 (Aktives Spawning)
-```
-
-**Bei ABORT:**
-```
-1. Team Lead spawnt sc-{name}-push_temp: /_W_push_temp auto (Wissen sichern)
-2. Keine aktiven Agents (kurzlebig, bereits terminiert)
-3. TeamDelete
-5. _manifest.md aktualisieren: phase=ABORTED
-6. Melde User: "Feature '{name}' abgebrochen. Zwischen-Wissen in RAG gesichert."
-```
-
----
-
-## PHASE 4: OPTIONALE ESKALATIONEN (vom Zyklus getriggert)
+## PHASE 4: OPTIONALE ESKALATIONEN
 
 ### 4.1 Architectural Boundaries (von qualityGate getriggert)
 
-Wenn Worker aus /_SC_qualityGate meldet "BSD Trigger T1-T5" oder
-"Architectural Boundaries empfohlen":
-
-```
-Team Lead erstellt Zusatz-Task:
-
-  TaskCreate: "Architectural Boundaries"
-    description: "/_architecturalBoundaries ausfuehren.
-      Teilproblem-Dekomposition + Vertikale Suche.
-      Dateipfade identifizieren fuer Implementierung."
-    blocked_by: (qualityGate Task)
-    blocks: (hypothese Task)  ← VOR Hypothese einschieben
-
-Team Lead spawnt sc-{name}-architecturalBoundaries:
-  "Architectural Boundaries Task. /_architecturalBoundaries ausfuehren."
-```
+Wenn Worker "BSD Trigger T1-T5" oder "Boundaries empfohlen" meldet:
+→ Zusatz-Task: /_architecturalBoundaries (VOR hypothese einschieben)
 
 ### 4.2 Blind-Spot Detection (von qualityGate getriggert)
 
-Wenn Worker aus /_SC_qualityGate meldet "BSD T1-T5 Muster erkannt":
-
-```
-Team Lead erstellt Zusatz-Task:
-
-  TaskCreate: "Blind-Spot Detection"
-    description: "/_blindspotDetection ausfuehren.
-      Max 7 Canary Probes AUSSERHALB des aktuellen Fokus.
-      Epistemologische Grenze → Mensch-in-the-Loop."
-    blocked_by: (qualityGate Task)
-    blocks: (hypothese Task)
-
-Team Lead spawnt sc-{name}-blindspotDetection:
-  "Blind-Spot Detection. /_blindspotDetection ausfuehren."
-```
+Wenn Worker "BSD T1-T5 Muster erkannt" meldet:
+→ Zusatz-Task: /_blindspotDetection (VOR hypothese einschieben)
 
 ### 4.3 Knowledge Deep-Dive (parallel)
 
-Wenn waehrend des Zyklus ein Thema auftaucht das tiefere Recherche
-braucht, kann Team Lead einen parallelen Task erstellen:
+Bei tieferem Recherche-Bedarf:
+→ Paralleler Task: /_knowledge {THEMA} {difficulty} (blockiert NICHT Hauptzyklus)
+
+---
+
+## PHASE 5: AUTOCHAIN-EXIT (BL-165 AK-11, PL-11-03 — kein User-Tap)
+
+> **INV-MODUS-7 (BL-165):** `_SC_orchestrate` hat KEIN Recht zu Selbst-Exit.
+> Nach jedem CYCLE-LOOP-Durchgang ist Pflicht-Autochain via `Skill(_SDF_orchestrate_post)`.
+> Re-Entry zu SC erfolgt ausschliesslich durch SDF Phase 4 loopDecision.
 
 ```
-TaskCreate: "Knowledge Deep-Dive: {THEMA}"
-  description: "/_knowledge {THEMA} {difficulty} ausfuehren.
-    Parallele Wissens-Recherche. Blockiert NICHT den Hauptzyklus.
-    Ergebnis: .claude/wissen/{THEMA}_Wissen.md"
-  blocked_by: (KEINE — parallel)
+# Phase 5: AUTOCHAIN-EXIT (PL-11-03, BL-165 AK-11)
+# Wird nach _SC_implement (Handover-Step) ausgefuehrt — KEIN User-Tap.
+# Ersetzt den internen DONE_SCHWELLE-Check (DEPRECATED, siehe unten).
 
-HINWEIS: Dieser Task laeuft parallel. Worker kann ihn zwischen
-         anderen Tasks oder nach dem Zyklus abarbeiten.
+Logge: "[PHASE-5] AUTOCHAIN-EXIT — Skill-Wechsel zu _SDF_orchestrate_post (INV-MODUS-7)"
+
+# BL-238 AK-7: Saettigungs-Verdikt explizit lesbar machen (Slot-Isolation PT-CMD-008).
+# Additiver Write VOR dem Exit — Exit-Mechanik bleibt unveraendert (Kanarienvogel :582-607).
+# sc_verdict ∈ {SATURATED_READY_FOR_IMPL, EXPERIMENT_OPEN, ABORT}, im SC_PIPELINE_STATE-Slot
+# (NICHT modus-Slot, KEIN INV-MODUS-5-Bypass-Feld).
+SC_PIPELINE_STATE.sc_verdict = (
+  "SATURATED_READY_FOR_IMPL" if SC_PIPELINE_STATE.saturated == true
+  else "EXPERIMENT_OPEN"      if SC_PIPELINE_STATE.experiment_open == true
+  else "ABORT"
+)
+manifest_reader.write_bl_block(BL_ID, "SC_PIPELINE_STATE", SC_PIPELINE_STATE)
+Logge: "[PHASE-5] sc_verdict={SC_PIPELINE_STATE.sc_verdict} geschrieben (BL-238 AK-7, Reader=dispatch_implement.js)"
+
+audit_jsonl_append({
+  type: "SC_AUTOCHAIN_EXIT",
+  from: "_SC_orchestrate",
+  to: "_SDF_orchestrate_post",
+  feature: NAME,
+  cycle: SC_PIPELINE_STATE.zyklus_count ?? 0,
+  sc_verdict: SC_PIPELINE_STATE.sc_verdict,
+  timestamp: ISO
+})
+
+Skill(_SDF_orchestrate_post, args="{NAME} --vault={VAULT}")
+# _SDF_orchestrate_post fuehrt aus:
+#   Phase 3.1 _SDF_berater_recalibrate
+#   Phase 3.2 _SDF_berater_postItem
+#   Phase 3.3 _SDF_berater_statusTransition
+#   Phase 3.5 _SDF_berater_modelSync
+#   Phase 4   _SDF_berater_loopDecision
+#     → loopDecision Ergebnis:
+#       SRS_max >= threshold_high → Skill(_SC_orchestrate, --sc_resume_from=ergebnis)  [SC-again]
+#       SRS_max < threshold_high  → Skill(_I_orchestrate, --stage=N --tdd={t|f})       [I-Dispatch]
+#       DONE                      → return SDF Phase FINAL
 ```
 
 ---
 
-## ZUSAMMENFASSUNG: Sequenz-Diagramm
+## [DEPRECATED] Interner DONE_SCHWELLE-Check (INV-MODUS-7, BL-165 PL-11-04)
 
-```
-Team Lead                    Agent (sc-{name}-{cmd})         User
-    │                              │                          │
-    ├─ TeamCreate ─────────────►   │                          │
-    ├─ TaskCreate (Tasks 0-9) ──►  │                          │
-    ├─ Spawn Worker ────────────►  │                          │
-    │                              │                          │
-    │  ═══ PRE-CYCLE ═══          │                          │
-    │                              ├─ T0: /_W_fetch           │
-    │  ◄── "Wissen geholt" ───────┤                          │
-    │                              ├─ T1: /_taskDefinition    │
-    │  ◄── "Task definiert" ──────┤                          │
-    │                              ├─ T2: /_model             │
-    │  ◄── "Model gebaut" ────────┤                          │
-    │                              │                          │
-    │  ═══ SC-CYCLE (Iteration 1) ═══                        │
-    │                              │                          │
-    │  ┌─── ZYKLUS-LOOP ────────────────────────────────┐    │
-    │  │                           │                     │    │
-    │  │                           ├─ T3: /_SC_observe   │    │
-    │  │ ◄── "Findings" ─────────┤                     │    │
-    │  │                           ├─ T4: /_SC_modelMaint│    │
-    │  │ ◄── "Model updated" ────┤                     │    │
-    │  │                           ├─ T5: /_SC_qualGate  │    │
-    │  │ ◄── "Gates checked" ────┤                     │    │
-    │  │                           │                     │    │
-    │  │  [BSD/Boundaries?]        │                     │    │
-    │  │  JA → Zusatz-Tasks ────►  │ (Escalation)       │    │
-    │  │                           │                     │    │
-    │  │                           ├─ T6: /_SC_hypothese │    │
-    │  │ ◄── "Hypothese" ────────┤                     │    │
-    │  │                           ├─ T7: /_SC_implement │    │
-    │  │ ◄── "Implementiert" ────┤                     │    │
-    │  │                           ├─ T8: /_SC_ergebnis  │    │
-    │  │ ◄── "SRS, Trend" ───────┤                     │    │
-    │  │                           │                     │    │
-    │  │  [CONTINUE?]              │                     │    │
-    │  │  JA → neue T3-T9 ─────►  │ (naechster Zyklus)  │    │
-    │  │  NEIN → DONE ────────────┼─────────────────────┘    │
-    │  └──────────────────────────┘                          │
-    │                              │                          │
-    │                              ├─ T9: /_W_push_temp auto │
-    │  ◄── "RAG gepusht" ────────┤                          │
-    │                              │                          │
-    │  ═══ POST-CYCLE ═══         │                          │
-    │                              │                          │
-    ├─ TaskCreate (T10-T11) ────►  │                          │
-    │                              ├─ T10: /_W_push_orchestrate│
-    │                              │  (intern: model finish →  │
-    │                              │   gap → push_global →     │
-    │                              │   modelSplit → obsidianSync│
-    │                              │   → retrospektive)        │
-    │  ◄── "Push done" ──────────┤                          │
-    │                              ├─ T11: /_finish            │
-    │  ◄── "Feature finalisiert" ┤                          │
-    │                              │                          │
-    ├─ AskUserQuestion ───────────────────────────────────►  │
-    │  ◄── ACCEPT/RETRY/PIVOT/ABORT ─────────────────────────┤
-    │                              │                          │
-    │  [ACCEPT]                    │                          │
-    ├─ Shutdown Worker ─────────►  │                          │
-    ├─ TeamDelete                  │                          │
-    ├─ "Feature fertig" ──────────────────────────────────►  │
-```
+> **INV-MODUS-7 (BL-165):** SC-Exit ist EXKLUSIV via SDF Phase 1.1 / loopDecision.
+> Interne SRS-Threshold-Checks / DONE_SCHWELLE-Logik sind DEPRECATED und wurden
+> durch Phase 5 AUTOCHAIN-EXIT ersetzt.
+>
+> Reminder: Versuch loggt sich als:
+>   `[INV-MODUS-7] SC-Self-Exit blockiert: feature={X} cycle={N}`
+> SDF-Re-Entry wird erzwungen.
+>
+> Alt-Code (Z725, vor BL-165): `IF srs < DONE_THRESHOLD: SC.EXIT()` — ENTFERNT.
+> Neu: Phase 5 AUTOCHAIN-EXIT (oben) mit Pflicht-Skill(_SDF_orchestrate_post).
 
 ---
 
-## TASK-BESCHREIBUNGEN (Vorlagen fuer TaskCreate)
+## POST_HANDOVER (BL-NEW-12, PFLICHT 2026-05-11) — Handschuh-Wechsel zu Post-SDF
 
-### Task 0: W_fetch
-
-```
-Subject: "Wissen holen (Vault + RAG)"
-ActiveForm: "Fetching knowledge from Vault and RAG"
-Description: |
-  Fuehre /_W_fetch {NAME} aus.
-  Lies .claude/commands/_W_fetch.md fuer Details.
-
-  Suche in Vault UND RAG nach existierendem Wissen zu "{name}".
-  Kopiere relevante Models und Wissens-Dokumente in .claude/.
-  RAG-only Hits als Referenz notieren.
-
-  Falls Vault nicht konfiguriert: Nur RAG-Suche (degraded mode).
-
-  Input: Task.md (falls vorhanden), User-Keywords
-  Output: .claude/models/*.md, .claude/wissen/*.md, _manifest.md
-
-  Melde dem Team Lead:
-    - Vault-Hits: {V} Dokumente
-    - RAG-Hits: {R} Dokumente
-    - BOTH-Hits: {B} Dokumente
-    - Kopiert: {N} Dateien nach .claude/
-    - "Keine Treffer" falls nichts gefunden
-```
-
-### Task 1: TaskDefinition
+> **INV-HANDOVER-1 (SC-Variante):** Wenn SC_orchestrate als Sub-Pipeline von SDF
+> gerufen wurde (parent in {_SDF_orchestrate, _SDF_orchestrate_pre}), MUSS es als
+> letzten Step `Skill(_SDF_orchestrate_post, ...)` aufrufen. Bei Standalone-SC
+> (z.B. /_SC_orchestrate direkt vom User) entfaellt der Handover.
+>
+> **Grund:** Skill-Context-Override — wenn SC zurueckkehrt und SDF Phase 3
+> nicht via expliziten Skill-Call laeuft, vergisst der Lead Phase 3 (BUILD-Sanity,
+> Wave 1/2, batchEnde, loopDecision). Siehe BL-NEW-12 Diagnose 2026-05-11.
 
 ```
-Subject: "Aufgabe definieren"
-ActiveForm: "Defining task and collecting crumbs"
-Description: |
-  Fuehre /_taskDefinition {NAME} aus.
-  Lies .claude/commands/_taskDefinition.md fuer Details.
+# Allerletzter Schritt — nach Hypothese/Implement/Ergebnis-Zyklus
+#
+# BL-NEW-12 Fix B2 (2026-05-11): Vereinfacht — kein PIPELINE_CALL_STACK-Check
+# (Feld nicht maintained). SC hat naturgemaess zwei Modi:
+#   --standalone (User direct /_SC_orchestrate, BDF/W-Pipeline) → kein Handover
+#   default (von SDF dispatched in M5/M6/M7) → Handover zu Post-SDF
+# Da Standalone-SC fuehlbar ist (User-Direct-Call), MUSS dieser Aufruf explizit
+# --standalone setzen. Sonst wird Post-Handover gerufen.
 
-  Sammle Material aus .claude/pileOfMud/ (Screenshots, PDFs, alte Models).
-  Erstelle Task.md mit Aufgabe, Scope, Erfolgskriterien.
-  Erstelle crumbs/{NAME}_crumbs.md mit strukturierten Kruemmeln.
+standalone_flag = args.standalone ?? false
 
-  Falls pileOfMud/ leer: Erstelle Task.md direkt aus dem Kontext.
+# ─── BL-206 AK-5: SC Re-Entry-Signal (NEU 2026-05-24) ─────────────────────
+# Nach SC-Done: idf_reentry_signal in sc_handover.md schreiben.
+# Wenn dieser SC-Lauf via BL-206 Bottleneck-Route getriggert wurde
+# (WP_PIPELINE_STATE.bottleneck_trigger=true ODER modus=M5 mit bottleneck_queue-Match),
+# signalisiert dieses Feld an IDF dass SRS-Refresh fuer betroffene PLs noetig ist.
+#
+# INV-LOOP-2: Nur W{n} die wirklich aktualisiert wurden in updated_w_refs eintragen.
+# IDF liest dieses Signal via Phase 0 resumeGuard beim Re-Entry (--from=sdf_finish).
 
-  Input: .claude/pileOfMud/*, User-Beschreibung, W_fetch-Ergebnisse
-  Output: Task.md, crumbs/{NAME}_crumbs.md
+is_bottleneck_sc = (DF_BATCH_STATE.bottleneck_queue != null
+                    AND DF_BATCH_STATE.modus == "M5"
+                    AND any(item IN (DF_BATCH_STATE.bottleneck_queue.queue_for_sc ?? [])
+                            for item in (DF_BATCH_STATE.batch_items ?? [])))
 
-  Melde dem Team Lead:
-    - Aufgabe in 1-2 Saetzen
-    - Scope (was ist DRIN, was ist RAUS)
-    - Erfolgskriterien (3-5 Punkte)
-```
+IF is_bottleneck_sc:
+  # SC-qualityGate-Output lesen — welche W{n} wurden bestaetigt?
+  qg_output     = BERATER_OUTPUTS.qualityGate ?? {}
+  updated_w_refs = qg_output.confirmed_wahrheiten ?? []
+  affected_items = [item for item in (DF_BATCH_STATE.batch_items ?? [])
+                    if item IN (DF_BATCH_STATE.bottleneck_queue.queue_for_sc ?? [])]
 
-### Task 2: Model
+  sc_handover_reentry = {
+    "idf_reentry":          true,
+    "reason":               "SC-Cycle DONE via BL-206 Bottleneck-Route",
+    "affected_pl_items":    affected_items,
+    "updated_w_refs":       updated_w_refs,
+    "srs_refresh_needed":   len(updated_w_refs) > 0,
+    "loop_count_increment": 1,
+    "completed_at":         now()
+  }
 
-HINWEIS FUER TEAM LEAD: Task 2 ist ein PLATZHALTER. Der Team Lead erstellt nach
-Abschluss von Task 1 (taskDefinition) MEHRERE Wellen-Tasks statt eines einzigen Tasks.
-Siehe WELLEN-TASKS Sektion in Schritt 1.3 fuer die genaue Task-Struktur.
+  # BL-210 M10 Fix 2026-05-24: Single-Writer-Disziplin restaurieren (INV-MODUS-8).
+  # Vorher: direkter Append zu sc_handover.md verletzte _SC_implement Single-Writer-Pflicht (BL-206 AK-5).
+  # Fix: schreibe zu separater Datei {bl_folder}/SC/idf_reentry_signal.md.
+  # _SC_implement bleibt einziger sc_handover.md-Writer. IDF Re-Entry-Detection liest
+  # beide Files (sc_handover.md UND idf_reentry_signal.md) per merged-Read in
+  # _IDF_orchestrate Phase 0 BL-206-AK7-Block.
+  reentry_signal_path = {bl_folder} + "/SC/idf_reentry_signal.md"
+  Write {reentry_signal_path}:
+    ---
+    type: idf_reentry_signal
+    source: _SC_orchestrate_BL_206_AK5
+    bl_id: {BL_ID}
+    written_at: {now}
+    ---
+    {sc_handover_reentry as YAML}
 
-**Wellen-Task-Vorlage fuer _model (easy):**
-```
-Subject: "[WORKER-MODE] Model: Welle 3 - Synthese (solo)"
-ActiveForm: "Building knowledge model"
-Description: |
-  [WORKER-MODE] Welle 3: Synthese fuer {NAME} (easy, solo)
-  INPUT: crumbs/{NAME}_crumbs.md, Task.md, bestehende Models
-  OUTPUT: .claude/models/{NAME}_Model.md
-  Frontmatter-Pflicht: wave=synthese, status=final, primaerquelle_gelesen: true
-  Aufgabe: Synthetisiere alle Inputs zu finalem Model. Kein Spawning.
-  Wenn fertig: TaskUpdate completed + SendMessage an Team Lead.
-```
+  Logge: f"[BL-206 AK-5 + BL-210 M10] SC Re-Entry-Signal geschrieben (Single-Writer-konform): {reentry_signal_path}"
+  audit_jsonl_append({
+    type: "BL206_SC_REENTRY_SIGNAL",
+    affected_items: affected_items,
+    w_updated: updated_w_refs,
+    target_file: reentry_signal_path,
+    single_writer_restored: true
+  })
 
-**Wellen-Task-Vorlage fuer _model (Explorer, Welle 1 bei hard):**
-```
-Subject: "[WORKER-MODE] Model: Welle 1 - Explorer E{NN} {fokus}"
-ActiveForm: "Exploring {fokus} for knowledge model"
-Description: |
-  [WORKER-MODE] Welle 1: Explorer E{NN} fuer {NAME}
-  FOKUS: {fokus_beschreibung}
-  INPUT: .claude/crumbs/{NAME}_crumbs.md, Task.md
-  OUTPUT: .claude/analysis/exploration/{NAME}-E{NN}-{fokus}.md
-  Frontmatter-Pflicht: wave=exploration, agent=E{NN}, status=final, primaerquelle_gelesen: true
-  Aufgabe: Kartographiere den Fokus-Bereich. Kein Spawning.
-  Wenn fertig: TaskUpdate completed + SendMessage an Team Lead.
-```
+ELSE:
+  Logge: "[BL-206 AK-5] Kein Bottleneck-SC-Kontext — kein idf_reentry_signal noetig"
+# ─── Ende BL-206 AK-5 ──────────────────────────────────────────────────────
 
-**Wellen-Task-Vorlage fuer _model (Drafter, Welle 2):**
-```
-Subject: "[WORKER-MODE] Model: Welle 2 - Drafter D{NN} {fokus}"
-ActiveForm: "Drafting {fokus} analysis"
-Description: |
-  [WORKER-MODE] Welle 2: Drafter D{NN} fuer {NAME}
-  FOKUS: {fokus_beschreibung}
-  # SP-FIX-1: Stille-Post-Schutz (Explorer nur als Kompass)
-  INPUT: .claude/crumbs/{NAME}_crumbs.md, models/{NAME}_Model.md PLUS .claude/analysis/exploration/{NAME}-E*.md (NUR als Kompass)
-  STILLE-POST-SCHUTZ: Nutze Explorer-Outputs nur zur Scope-Einteilung. Mache DEINE EIGENE Analyse an den Primaerquellen (Crumbs, Model).
-  OUTPUT: .claude/analysis/drafts/{NAME}-model-D{NN}-{fokus}.md
-  Frontmatter-Pflicht: wave=drafts, agent=D{NN}, status=final, primaerquelle_gelesen: true
-  Aufgabe: Tiefenanalyse des Fokus-Bereichs. Kein Spawning.
-  Wenn fertig: TaskUpdate completed + SendMessage an Team Lead.
-```
+IF standalone_flag == true:
+  # SC standalone — kein Handover noetig
+  Logge: "[POST-HANDOVER SC] standalone-Modus — SKIP SDF-Post-Handover"
+  audit_jsonl_append({type: "POST_HANDOVER_SKIP", from: "_SC_orchestrate", reason: "standalone_flag"})
 
-### Task 3: SC_observe (Zyklus {C})
-
-```
-Subject: "Observe: Findings sammeln (Zyklus {C})"
-ActiveForm: "Collecting observations"
-Description: |
-  Fuehre /_SC_observe aus.
-  Lies .claude/commands/_SC_observe.md fuer Details.
-
-  ACTOR: OBSERVER — sammle Findings OHNE Interpretation.
-  Lies Model + vorheriges ERGEBNIS (falls Zyklus > 1).
-  Schreibe OBSERVE{C}.md mit Findings.
-  Optional: Incidental Findings in _parking-lot.md.
-
-  REVIEW-MODUS (wenn SC_PIPELINE_STATE.modus=REVIEW):
-    Vergleiche Code mit Model. Suche Divergenzen:
-    - Code-Patterns ohne W{n} (unerklaerter Code)
-    - W{n} ohne Code-Entsprechung (nicht implementiert)
-    - Quality-Issues (Tests, Naming, Style)
-    Findings in post-impl/{NAME}-REVIEW-PROTOKOLL.md, NICHT ins Model.
-
-  Input: models/{NAME}_Model.md, ERGEBNIS{C-1}.md (falls vorhanden)
-  Output: analysis/synthese/{NAME}-OBSERVE{C}.md
-
-  Melde dem Team Lead:
-    - Anzahl Findings
-    - Top 3 Findings (kurz)
-    - Incidental Findings: {N} (falls welche)
-```
-
-### Task 4: SC_modelMaintain (Zyklus {C})
-
-```
-Subject: "Model pflegen (Zyklus {C})"
-ActiveForm: "Maintaining model"
-Description: |
-  Fuehre /_SC_modelMaintain aus.
-  Lies .claude/commands/_SC_modelMaintain.md fuer Details.
-
-  ACTOR: MODEL-MAINTAINER — pflege das Model.
-  Neue W{n} hinzufuegen, GC durchfuehren, ggf. Split ausfuehren.
-  Aktualisiere Kap. 6a (Statusaenderungen).
-
-  REVIEW-MODUS (wenn SC_PIPELINE_STATE.modus=REVIEW):
-    Reparatur-Findings → post-impl/{NAME}-REVIEW-PROTOKOLL.md (NICHT ins Model)
-    Nur strukturelle Erkenntnisse die das Model AENDERN muessen → als W{n} ins Model
-    Bug-Fixes, Refactoring-Hints, Style-Issues → post-impl/ Protokoll
-
-  Input: Model.md, OBSERVE{C}.md, ERGEBNIS{C-1}.md
-  Output: Model.md (UPDATE), ggf. Model-Topologie.md
-         [REVIEW: + post-impl/{NAME}-REVIEW-PROTOKOLL.md]
-
-  Melde dem Team Lead:
-    - Neue W{n}: {N}
-    - GC: {N} WIDERLEGT, {N} ELIMINIERT
-    - Split: Ja/Nein (falls Trigger)
-    - Gesamte W{n}: {total} AKTIV
-```
-
-### Task 5: SC_qualityGate (Zyklus {C})
-
-```
-Subject: "Quality Gates pruefen (Zyklus {C})"
-ActiveForm: "Running quality gates"
-Description: |
-  Fuehre /_SC_qualityGate aus.
-  Lies .claude/commands/_SC_qualityGate.md fuer Details.
-
-  ACTOR: QUALITY-GATE — 5 Gates pruefen (6 bei REVIEW-Modus):
-    Gate 1: Battle-Royale (SRS-Trend, Anti-Patterns R-AP1..R-AP5)
-           [REVIEW-Modus: DEAKTIVIERT, ersetzt durch Gate 6]
-    Gate 2: Kohaesion (W{n}/TC Ratio, Split-Trigger)
-    Gate 3: Feature-Abschluss (Coverage-%)
-           [REVIEW-Modus: Code-Quality Coverage statt W{n} Coverage]
-    Gate 4: Blind-Spot-Detection (T1-T5 Muster)
-    Gate 5: Stagnation (Schwellen, ABORT-Empfehlung)
-    Gate 6: Post-Implementation-Reality-Check (NUR bei REVIEW-Modus)
-           → Code↔Model Konsistenz, W{n} Coverage im Code, unerklaerter Code
-
-  Input: Model.md, OBSERVE{C}.md, ERGEBNIS{C-1}.md, Model-Topologie
-  Output: analysis/synthese/{NAME}-QUALITYGATE{C}.md
-
-  WICHTIG: Melde dem Team Lead:
-    - Gate 1-5 Ergebnisse (PASS/WARN/FAIL pro Gate)
-    - Feature-Coverage: {X}%
-    - Stagnation: {zaehler}
-    - BSD-Trigger: Ja/Nein (welches T-Muster)
-    - Empfehlung: CONTINUE / DONE / ESCALATE
-```
-
-### Task 6: SC_hypothese (Zyklus {C})
-
-```
-Subject: "Hypothese formulieren (Zyklus {C})"
-ActiveForm: "Formulating hypothesis"
-Description: |
-  Fuehre /_SC_hypothese aus.
-  Lies .claude/commands/_SC_hypothese.md fuer Details.
-
-  ACTOR: HYPOTHESEN-FORMULIERER — KREATIVE Phase.
-  Sektion 0: GC-Pruefung (PFLICHT ab Zyklus 2).
-  Sektion 1: Genau 1 falsifizierbare Hypothese.
-  Verifikations-Kriterium V1-V5 + Scope-Deklaration.
-
-  Input: Model.md, QUALITYGATE{C}.md
-  Output: analysis/synthese/{NAME}-HYPOTHESEN.md (UPDATE/APPEND)
-
-  Melde dem Team Lead:
-    - Hypothese in 1 Satz
-    - Scope: {welche Dateien/Module betroffen}
-    - Verifikations-Plan: {V1-V5 zusammengefasst}
-    - GC: {N} Hypothesen als WIDERLEGT/ELIMINIERT markiert
-```
-
-### Task 7: SC_implement (Zyklus {C})
-
-```
-Subject: "Implementieren (Zyklus {C})"
-ActiveForm: "Implementing changes"
-Description: |
-  Fuehre /_SC_implement aus.
-  Lies .claude/commands/_SC_implement.md fuer Details.
-
-  ACTOR: IMPLEMENTIERER — genau 1 IC pro Durchgang.
-  Horizontale Suche: Pattern-Matching im gleichen Layer.
-  Soft-Limits: 5 Dateien, 100 LOC.
-  Verifikations-Anleitung: 3-5 konkrete Test-Schritte.
-
-  Input: HYPOTHESEN.md, Model.md, Pattern-Library
-  Output: Code-Aenderungen, HYPOTHESEN.md (aktualisiert)
-
-  Melde dem Team Lead:
-    - IC: {was implementiert wurde}
-    - Dateien geaendert: {N}
-    - LOC: +{added} / -{removed}
-    - Verifikation: {bestanden/fehlgeschlagen}
-    - Hypothese: BESTAETIGT / WIDERLEGT / OFFEN
-```
-
-### Task 8: SC_ergebnis (Zyklus {C})
-
-```
-Subject: "Ergebnis sammeln (Zyklus {C})"
-ActiveForm: "Collecting results"
-Description: |
-  Fuehre /_SC_ergebnis aus.
-  Lies .claude/commands/_SC_ergebnis.md fuer Details.
-
-  ACTOR: ERGEBNIS-SAMMLER — DATENBANK-MODUS.
-  Drei-Kategorien-Regel:
-    ROHDATEN: sammeln, zaehlen, woertlich zitieren
-    MECHANISCHE ABLEITUNG: Formeln, Zaehler, boolesche Ausdruecke
-    INTERPRETATION: VERBOTEN (gehoert in /_SC_observe)
-
-  SRS-Messung + Widerlegungs-Marker + Stagnations-Check.
-
-  Input: HYPOTHESEN.md, Model.md, vorheriges ERGEBNIS, Logs/Tests
-  Output: analysis/synthese/{NAME}-ERGEBNIS{C}.md
-
-  WICHTIG — Melde dem Team Lead AUSFUEHRLICH:
-    - SRS-Score: {score}
-    - SRS-Trend: {steigend|fallend|stagnierend}
-    - Offene W{n}: {N} AKTIV, {M} ZUR_PRUEFUNG
-    - Widerlegte W{n}: {N} neu in diesem Zyklus
-    - Stagnations-Zaehler: {zaehler}
-    - Fortschritt: STARK / SCHWACH / KEINER
-    Team Lead entscheidet basierend auf diesen Daten.
-```
-
-### Task 9: W_push_temp (strategisch)
-
-```
-Subject: "Wissen temporaer pushen (nach Zyklus {C})"
-ActiveForm: "Pushing knowledge to RAG"
-Description: |
-  Fuehre /_W_push_temp auto aus.
-  Lies .claude/commands/_W_push_temp.md fuer Details.
-
-  Strategischer Push nach jedem Zyklus:
-  → Model, OBSERVE, ERGEBNIS in local_knowledge_{feature_id}
-  → Sichert Zwischen-Wissen fuer spaetere W_fetch-Aufrufe
-
-  Input: .claude/models/*.md, .claude/analysis/synthese/*
-  Output: RAG local_knowledge_{feature_id}, _manifest.md
-
-  Melde dem Team Lead:
-    - Dokumente gepusht: {N}
-    - Chunks erstellt: {total}
-    - Collection: local_knowledge_{feature_id}
-```
-
-### Task 10: W_push_orchestrate (Post-Cycle)
-
-```
-Subject: "Wissens-Push orchestrieren"
-ActiveForm: "Orchestrating knowledge push"
-Description: |
-  Fuehre /_W_push_orchestrate {NAME} {difficulty} {ceiling} {floor} aus.
-  Lies .claude/commands/_W_push_orchestrate.md fuer Details.
-
-  Eigener Orchestrator fuer den POST-CYCLE Wissens-Push.
-  Erstellt eigenes Team, spawnt kurzlebige Agents pro Step:
-    1. /_model {NAME} finish (Model konsolidieren)
-    2. /_gap {NAME} (Finaler IST vs SOLL Vergleich)
-    3. /_W_push_global auto (Quality Gate + RAG push)
-    4. /_W_modelSplit {NAME} (Thematisch splitten)
-    5. /_W_sync_orchestrate {NAME} {difficulty} --co-work (Vault sync + Co-Working-Links)
-    6. /_retrospektive {NAME} (Wissenstransfer)
-
-  Melde dem Team Lead:
-    - Alle 6 Steps abgeschlossen
-    - GAP: {X}% (IST vs SOLL)
-    - RAG: global_knowledge gepusht
-    - Vault: synchronisiert
-```
-
-### Task 11: Feature finalisieren (Post-Cycle)
-
-```
-Subject: "Feature finalisieren"
-ActiveForm: "Finalizing feature"
-Description: |
-  Fuehre /_finish {NAME} aus.
-  Lies .claude/commands/_finish.md fuer Details.
-
-  HINWEIS: ImplementationHandOff bereits vorhanden:
-    .claude/analysis/synthese/{NAME}-HANDOFF.md
-    (erstellt von Team Lead in Phase 3.4 / Task 10)
-    → Nutze HandOff fuer Scope-Verifikation und offene Aufgaben.
-
-  HANDOFF-Konsumption und Gate-Antwort (EC-6, W181):
-  _I_orchestrate fuehrt Schritt 0.4 aus (HANDOFF-Konsumption):
-    0.4a-0.4b: HANDOFF.md lesen (alle 8 Sektionen inkl. SRS-TREND, DISCOVERY-GAPS, ADR-RATIONALE)
-    0.4c:      Pflicht-Sektionen pruefen (LOESCHEN, BEHALTEN, ARCHITEKTUR, OFFENE AUFGABEN)
-               Fehlen Pflicht-Sektionen → i_gate_response.i_decision: reject_needs_more_sc → ABORT
-    0.4d-0.4g: Extraktion in handoff_context + Flags setzen:
-               handoff_consumed: true
-               handoff_consumed_by: "i-orchestrate-agent"
-               i_gate_response.i_decision: accept_start
-               i_gate_response.handoff_completeness: OK
-
-  SC-Recovery-Auswertung (Schritt PRE-CYCLE 0.1b, naechster Zyklus falls noetig):
-    IF i_sc_return.triggered == true:
-      → i_sc_return.sc_recommendations lesen (priorisierte Forschungs-Hinweise)
-      → recovery_cycle_count pruefen (Max: 2)
-      → pipeline_mode: SC_RECOVERY setzen
-      → Neue Zyklen mit w_focus_list aus i_sc_return.refuted_wn
-
-  Offene Items pruefen und User fragen:
-    - Parking-Lot [ ] Items
-    - Task.md offene ECs/TCs
-    - Model W{n} AKTIV/ZUR_PRUEFUNG
-  Pro Item: PARKEN / DISCARD / ERLEDIGT (HiL).
-  .claude/* Konsistenz-Check.
-  Manifest: PHASE=READY.
-
-  Melde dem Team Lead:
-    - Geparkt: {N} Items
-    - Verworfen: {M} Items
-    - Naechste Optionen fuer User
-```
-
----
-
-## QUICK-START
-
-Wenn User sagt "starte Forschungszyklus fuer X":
-
-```
-1. /_SC_orchestrate X
-2. Team Lead erstellt Team "sc-x" + Tasks 0-9
-3. Team Lead spawnt pro Step kurzlebigen Agent sc-{name}-{command}
-4. Agents: W_fetch → TaskDef → Model → Observe → ... → Ergebnis
-5. Team Lead: SRS-Trend gut? → CONTINUE (neue Zyklus-Tasks)
-6. Agents: Observe → ... → Ergebnis (Zyklus 2)
-7. Team Lead: Feature-Coverage 90%? → DONE (Post-Cycle Tasks)
-8. Agent: /_W_push_orchestrate (model finish → gap → push_global → modelSplit → sync_orchestrate hard --co-work → retro)
-9. Agent: /_finish (offene Items, Konsistenz-Check, READY)
-10. Team Lead: HiL → User entscheidet ACCEPT/RETRY/PIVOT/ABORT
-11. ACCEPT → Cleanup → "Feature '{name}' abgeschlossen"
+ELSE:
+  # SC wurde von Pre-SDF Phase 2 dispatched (M5/M6/M7-Modus) → Post-SDF muss laufen
+  Logge: "[POST-HANDOVER SC] Skill-Wechsel zu Post-SDF (BL-NEW-12)"
+  audit_jsonl_append({
+    type: "POST_HANDOVER",
+    from: "_SC_orchestrate",
+    to: "_SDF_orchestrate_post",
+    name: NAME,
+    timestamp: ISO
+  })
+  Skill(_SDF_orchestrate_post, args="{NAME} --vault={VAULT}")
 ```
 
 ---
@@ -1578,139 +751,35 @@ Wenn User sagt "starte Forschungszyklus fuer X":
 
 | Fehler | Aktion |
 |--------|--------|
-| Agent meldet MCP-Fehler | Team Lead: MCP health_check. Bei Timeout: Warte + Retry. |
-| Agent stagniert (keine Message >5min) | Team Lead: SendMessage "Status?" an Agent |
-| Agent meldet fehlende Datei | Team Lead: Pruefe ob vorheriger Task korrekt war. Ggf. wiederholen. |
-| /_SC_implement bricht ab | NON-BLOCKING. Hypothese als "OFFEN" markieren, weiter. |
-| Stagnation >= 7.0 | ABORT-Decision. Post-Cycle (verkuerzt) + Retrospektive. |
-| Agent crashed | Team Lead: Neuen Agent spawnen (sc-{name}-{command}), gleichen Task zuweisen. |
-| Vault nicht erreichbar | Degraded Mode: W_fetch/push nur RAG. ObsidianSync Skip. |
-| Budget erschoepft (MCP-Calls) | FORCE-Decision. Mit vorhandenen Ergebnissen weiter. |
+| Agent meldet MCP-Fehler | MCP health_check, bei Timeout: Warte + Retry |
+| Agent stagniert (>5min) | SendMessage "Status?" |
+| Fehlende Datei | Vorherigen Task pruefen, ggf. wiederholen |
+| Implement bricht ab | NON-BLOCKING, Hypothese "OFFEN", weiter zu ergebnis |
+| Stagnation >= 7.0 | ABORT-Decision |
+| Agent crashed (einzeln) | Neuen Agent spawnen, gleichen Task. Max. 1 Retry. Bei 2. Crash: AskUserQuestion (Skip oder Abort). |
+| Partial-Wellen-Failure (<= 50%) | Weiter mit vorhandenen Ergebnissen (degraded). Notiz im Manifest. |
+| Partial-Wellen-Failure (> 50%) | Gesamte Welle neu spawnen (max. 1 Retry). Bei erneutem Failure: AskUserQuestion. |
+| Vault nicht erreichbar | Degraded Mode: nur RAG |
+| Budget erschoepft | FORCE-Decision |
 
 ---
 
-## LIFECYCLE-INTEGRATION
+## QUICK-START
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║  VOLLSTAENDIGER FEATURE-LEBENSZYKLUS                        ║
-║                                                              ║
-║  /_W_fetch ──► /_SC_orchestrate ──► /_I_* Pipeline         ║
-║      ↑          (dieser Command)        │                   ║
-║      │              │                   │                   ║
-║      │         Forschung + Model    Code + Tests            ║
-║      │              │                   │                   ║
-║      │              ▼                   ▼                   ║
-║      │         /_W_push_global    /_I_verify               ║
-║      │              │                   │                   ║
-║      │              ▼                   ▼                   ║
-║      │         /_W_obsidianSync  /_Pre_PR_orchestrate       ║
-║      │              │                   │                   ║
-║      │              ▼                   ▼                   ║
-║      └───── /_W_modelSplit ◄── /_retrospektive             ║
-║                                                              ║
-║  Forschung (/_SC_*) → liefert Model + Hypothesen           ║
-║  Pipeline (/_I_*) → nutzt Model + Hypothesen fuer Code     ║
-║  Paper (/_WP_*) → nutzt RAG fuer akademisches Schreiben    ║
-║                                                              ║
-║  DREI WELTEN, EINE Wissens-Schicht:                         ║
-║    _W_fetch (HOLEN) → Arbeit → _W_push (SICHERN)          ║
-╚══════════════════════════════════════════════════════════════╝
-```
+GROSSER ZYKLUS (Default):
+1. /_SC_orchestrate X → Team "sc-x" + Tasks
+2. PRE-CYCLE: W_fetch → TaskDef → Model
+3. SC-CYCLE:  Observe → ModelMaintain → QG → Hypothese
+4. /_I_orchestrate X (SYMBIOSE, core I-Pipeline)
+5. SC-Ergebnis (misst ECHTE Fortschritte)
+6. CONTINUE? → neuer Zyklus | DONE? → Post-Cycle
+7. Post-Cycle: HandOff → Gate → W_push → finish
+8. HiL: ACCEPT / RETRY / PIVOT / ABORT
 
----
-
-## POST-I REVIEW-MODUS (--mode=review, v2.1)
-
-### Zweck
-
-Post-Implementation SC-Zyklen (SC→I→SC) unterscheiden sich fundamental von Discovery-Zyklen:
-- Code existiert bereits → kein SRS-Baseline noetig
-- Findings sind Reparatur-Findings → gehoeren NICHT ins Haupt-Model
-- Gates muessen auf Code-Quality kalibriert sein, nicht auf Wissens-Expansion
-
-**Evidenz:** DCSRE-93 Cycles 5+6 waren inhaltlich wertvoll (IK-Bug, DTO-Kompatibilitaet),
-aber hatten keine passende Pipeline-Struktur. Reparatur-Findings trieben ModelBloat.
-
-### Aktivierung
-
-```
-/_SC_orchestrate {NAME} [difficulty] [ceiling] [floor] --mode=review
-```
-
-### Unterschiede zum Standard-Modus
-
-| Aspekt | Standard (Discovery) | Review (Post-I) |
-|--------|---------------------|-----------------|
-| Gate 1 (Battle-Royale) | SRS-Tracking aktiv | SRS-Tracking DEAKTIVIERT (kein Baseline) |
-| Gate 3 (Feature-Abschluss) | W{n} Coverage | Code-Quality Coverage (Tests, Audit) |
-| Gate 6 (Post-Impl-Check) | NICHT AKTIV | AKTIV (Reality-Check gegen Prod-Code) |
-| Findings-Pfad | Haupt-Model (models/) | Separater Pfad (analysis/post-impl/) |
-| W{n}-Schreibziel | {NAME}_Model.md | {NAME}-REVIEW-PROTOKOLL.md |
-| Max Zyklen | easy=3, normal=5, hard=8 | easy=2, normal=3, hard=5 |
-| DONE-Bedingung | Feature-Coverage 90% | Alle Review-Items RESOLVED oder DEFERRED |
-
-### Gate 6: Post-Implementation-Reality-Check
-
-Gate 6 ersetzt Gate 1 (Battle-Royale) im Review-Modus:
-
-```markdown
-## Gate 6: Post-Implementation-Reality-Check
-
-### Code-Quality Pruefung
-
-| Pruefung | Status | Details |
-|----------|--------|---------|
-| Tests vorhanden fuer alle Aenderungen | ✅/❌ | {N}/{M} Tests |
-| Keine Regressions-Findings | ✅/❌ | {Details} |
-| ADR-Konformitaet geprueft | ✅/❌ | {Abweichungen} |
-| Model↔Code-Konsistenz | ✅/❌ | {Divergenzen} |
-
-**Empfehlung:** {RESOLVED | REPARATUR NOETIG | DEFERRED}
-```
-
-### Separater Findings-Pfad
-
-Review-Findings werden NICHT ins Haupt-Model geschrieben:
-
-```
-Standard: .claude/models/{NAME}_Model.md           → W{n} direkt
-Review:   .claude/analysis/post-impl/{NAME}-REVIEW-PROTOKOLL.md → Reparatur-Findings
-```
-
-Dies verhindert semantischen ModelBloat durch kurzlebige Code-Quality-Findings.
-Nur Findings die nach Review als "permanent relevant" bewertet werden,
-werden vom Team Lead manuell ins Haupt-Model uebernommen.
-
-### Manifest-Flags (Review-Modus)
-
-```yaml
-SC_PIPELINE_STATE:
-  modus: REVIEW                    # statt THEORETISCH/IMPLEMENT
-  review_target: post-impl         # Separater Pfad
-  review_items_total: {N}
-  review_items_resolved: {M}
-  review_items_deferred: {K}
-```
-
----
-
-## MULTI-WORKER PATTERN (v2.0: kurzlebig)
-
-```
-SEQUENTIELLE PHASE:
-  Team Lead spawnt pro Step 1 kurzlebigen Agent sc-{name}-{command}
-  (W_fetch, taskDef, modelMaintain, qualityGate, hypothese, implement, push_temp)
-
-WELLEN-PHASE (normal/hard):
-  N Worker PARALLEL pro Welle:
-  - sc-explorer-E{NN} ({floor}): Exploration PARALLEL
-  - sc-drafter-D{NN} ({middle}): Drafts PARALLEL
-  - sc-synthese ({ceiling}): Synthese (1 Agent)
-  run_in_background: true fuer Welle 1+2
-
-PROZESSBEGLEITEND:
-  Separate Sync-Worker fuer W_sync_orchestrate (siehe 3.3a)
+INLINE (mit -I): Schritt 4 = /_SC_implement (1 IC, 100 LOC)
+REVIEW: Schritt 4 = SKIP, Gate 6 statt Gate 1
+ANALYSE: Schritt 4 = SKIP, Saettigungs-basiert (delta_wn)
 ```
 
 ---

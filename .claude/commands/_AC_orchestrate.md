@@ -11,12 +11,6 @@ type: orchestration
 chain_position: post-I
 difficulty_scaling: true
 team_based: true
-changelog: |
-  v1.0: MVP. 4-Phasen-Flow (SCOPE-FAN_OUT, FAN_OUT, FAN_IN, OUTPUT).
-        Konsumiert be-*.md (5 Schichten, 20 AK-Regeln).
-        KURZLEBIG_PROMPT fuer AC-Worker + FAN_IN-Agent.
-        Manifest-Integration (ac_*-Felder).
-        Skalierung easy/normal/hard.
 ```
 
 ---
@@ -27,13 +21,25 @@ changelog: |
 +======================================================================+
 |                                                                        |
 | LIEST:                                                                 |
-|   .claude/analysis/_manifest.md             (NAME, Phase, Kontext)    |
-|   .claude/meta/architekturKonventionen/be-*.md  (5 Schicht-Dateien)  |
+|   {VAULT}/_manifest.md             (NAME, Phase, Kontext)    |
+|   {META}/architekturKonventionen/be-*.md  (5 Schicht-Dateien)  |
 |   git diff / git status                     (geaenderte Dateien)      |
-|   (optional) .claude/meta/codeKonvention/architektur.md              |
+|   (optional) {META}/codeKonvention/architektur.md              |
+|                                                                        |
+| MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                        |
+|   Pattern B: State-Write + Protokoll-Rollover (W18)                   |
+|   SCHREIBT STATE (_manifest.md):                                       |
+|     ac_run_date, ac_scope, ac_scope_files, ac_findings_count,         |
+|     ac_findings_by_layer, ac_blocker_count, ac_status                 |
+|   SCHREIBT PROTOKOLL (_manifest_protokoll.md, Rollover):              |
+|     Nach Phase 4.2 (Manifest update, nach N-2 abgeschlossenen Laeufen)|
+|     Prepend an _manifest_protokoll.md (W18):                          |
+|       last_append + append_count++ im Frontmatter                      |
+|       ## AC_orchestrate [{Datum}] {ac_status}                          |
+|       [Archivierte Felder: scope, findings, blocker, status]           |
 |                                                                        |
 | SCHREIBT:                                                              |
-|   .claude/analysis/_manifest.md             (ac_*-Felder Update)     |
+|   {VAULT}/_manifest.md             (ac_*-Felder Update)     |
 |                                                                        |
 | AUSGABEN DURCH WORKER:                                                 |
 |   .claude/analysis/findings/{NAME}-AC-{SCHICHT}-{TS}.md              |
@@ -72,7 +78,7 @@ changelog: |
 
 ---
 
-## Skalierung — 3-Wellen-9-5-1
+## Skalierung — 3-Wellen-5-3-1
 
 | Schwierigkeit | Explorer (W1) | Drafter (W2) | Synthese (W3) |
 |---|---|---|---|
@@ -82,7 +88,7 @@ changelog: |
 
 (easy=TL-only ist Budget-effizient und ausreichend fuer kleine Aenderungen)
 
-**Modell-Zuordnung (nach GLOBAL_CEILING):**
+**Modell-Zuordnung (nach ceiling aus _session_params.md):**
 - ceiling=opus:   floor=haiku, middle=sonnet, ceiling=opus
 - ceiling=sonnet: floor=haiku, middle=haiku,  ceiling=sonnet
 - ceiling=haiku:  floor=haiku, middle=haiku,  ceiling=haiku
@@ -100,24 +106,21 @@ Drafter (W2) folgt der Schicht-Aufteilung der Explorer.
 
 ## GLOBALE PARAMETER (/_param Override)
 
-Lies `.claude/analysis/_manifest.md` und suche nach GLOBAL_* Feldern.
+Lies `{VAULT}/_manifest.md` und suche nach GLOBAL_* Feldern.
 Falls gesetzt, ueberschreiben sie die lokalen Parameter-Defaults:
 
-| Manifest-Feld | Wirkung |
+| Quelle | Wirkung |
 |---|---|
-| `GLOBAL_DIFFICULTY` | Ueberschreibt lokalen `difficulty` Default |
-| `GLOBAL_CEILING` | Kappt lokales ceiling: `effektiv = min(lokal, GLOBAL_CEILING)` |
-| `GLOBAL_FLOOR` | Hebt lokalen floor an: `effektiv = max(lokal, GLOBAL_FLOOR)` |
+| `_session_params.md` | 4 Parameter: HiL, difficulty, ceiling, floor |
 
 **Berechnung:**
 Hierarchie: opus=3, sonnet=2, haiku=1
-IF GLOBAL_DIFFICULTY gesetzt UND != "(nicht gesetzt)": difficulty = GLOBAL_DIFFICULTY
-IF GLOBAL_CEILING gesetzt UND != "(nicht gesetzt)":    ceiling = min(ceiling, GLOBAL_CEILING)
-IF GLOBAL_FLOOR gesetzt UND != "(nicht gesetzt)":      floor = max(floor, GLOBAL_FLOOR)
+params = lies("_session_params.md")
+difficulty = params.difficulty
+ceiling    = min(ceiling, params.ceiling)
+floor      = max(floor, params.floor)
 Validierung: ceiling >= floor (sonst ceiling = floor + Warning ausgeben)
-middle = sonnet wenn ceiling=opus, haiku wenn ceiling=sonnet, haiku wenn ceiling=haiku
-
-**Falls KEINE GLOBAL_* Felder gesetzt:** Lokale Defaults gelten unveraendert.
+middle = sonnet wenn ceiling=opus, sonnet wenn ceiling=sonnet, haiku wenn ceiling=haiku
 
 ---
 
@@ -142,11 +145,15 @@ Fuer jede Datei die Schicht bestimmen:
 ```
 STUFE 1 (Dateipfad — Prioritaet HOCH, Confidence 95%):
   Lade be-*.md `dateipfad-pattern` aus YAML-Frontmatter:
-  BE-CORE:  **/Services/**/*Service.cs, **/Providers/**/*Provider.cs, **/Domain/**/*Extensions.cs
-  BE-DTO:   **/DTOs/**/*Dto.cs, **/DTOs/**/*ReadDto.cs, **/DTOs/**/*WriteDto.cs
-  BE-MAP:   **/Mappers/**/*Mapper.cs, **/Mappers/**/*Profile.cs, **/*MappingProfile.cs
-  BE-CONT:  **/Controllers/**/*Controller.cs
-  BE-MID:   **/Middleware/**/*.cs, **/Interceptors/**/*.cs, **/Filters/**/*.cs
+  # Layer-Mapping aus layers.yaml (ARCH-Delta-11 NEW-Y1)
+  # Helper: python3 .claude/scripts/load_layers.py liefert glob<TAB>layer_id
+  LAYER_GLOB_MAP = subprocess(.claude/scripts/load_layers.py).stdout
+                   .lines() .map(line => line.split('\t'))
+  # Vault-First: liest {vault_root}/config/layers.yaml PRIMAER, Repo-Fallback automatisch
+  # DCSRE-Beispiele (nur als Doku-Referenz, NICHT hardcoded):
+  #   BE-CORE: **/Services/**/*Service.cs, **/Providers/**/*Provider.cs
+  #   BE-DTO:  **/DTOs/**/*Dto.cs
+  #   BE-MAP:  **/Mappers/**/*Mapper.cs, **/Mappers/**/*Profile.cs
   Mehrfach-Match → primaere Schicht nach ac-layer (niedrigster Wert)
 
 STUFE 2 (Datei-Suffix — Prioritaet MITTEL, Confidence 70%):
@@ -173,6 +180,9 @@ SCOPE_BUCKET = {
 }
 
 Aktive Schichten = Schichten mit >= 1 Datei im Bucket.
+
+# NEUER_TS: Timestamp des aktuellen Runs — wird in Schritt 4.2a fuer Rotation genutzt
+NEUER_TS = aktuellem ISO-Timestamp (Format: YYYYMMDDTHHMMSS, z.B. 20260312T143022)
 
 IF difficulty == easy:   → TL-only (kein Sub-Agent-Spawn, TL fuehrt KURZLEBIG_PROMPT_AC_EASY direkt aus)
 IF difficulty == normal: → Min(3, len(aktive_schichten)) AC-Worker PARALLEL (Welle 1)
@@ -303,6 +313,154 @@ ac_blocker_items: [{item1}, ...]
 ac_status: "{CLEAN|FINDINGS|BLOCKER}"
 ```
 
+### 4.2a: Findings Rotation (Cleanup-Hook, CaseStudy MV-2b)
+
+AC-findings des vorherigen Runs werden geloescht (git hat alle Versionen):
+
+```
+# NEUER_TS wurde in Phase 1 gesetzt (Zeitstempel des aktuellen Runs)
+AC_FILES = Glob("findings/{NAME}-AC-*-*.md")  # Explorer + Summary mit Timestamp
+ALTE_FILES = AC_FILES.filter(datei => datei enthält NICHT NEUER_TS)
+
+IF COUNT(ALTE_FILES) == 0:
+  → SKIP (Erstlauf oder keine alten Findings)
+
+IF COUNT(ALTE_FILES) > 10:
+  → HiL: "{COUNT} alte AC-findings gefunden. Loeschen? (j/n)"
+
+Loesche ALTE_FILES
+Log: "AC-Rotation: {COUNT(ALTE_FILES)} superseded Findings geloescht"
+```
+
+**Hinweis:** Drafter-Reports (drafts/{NAME}-AC-Drafter-D{NN}.md) haben KEINEN Timestamp
+und werden beim naechsten Run automatisch ueberschrieben — kein Cleanup noetig (W18).
+
+**Sicherheit:** 0 Risiko — git hat alle Versionen.
+
+### 4.2b: AC→PL Feedback-Signal (RF-ACPL1, W264)
+
+Nach FAN_IN Ergebnis-Aggregation (4.2a) und VOR HiL-Meldung (4.3).
+
+**Zweck:** Wenn AC-Findings wiederholt dieselbe Architektur-Schicht betreffen, ist das
+ein Signal fuer das Pattern-Library-System. Systematische Findings deuten auf fehlende
+oder veraltete Patterns hin.
+
+```
+1. Gruppiere AC-Findings nach (layer, finding-typ):
+   Quelle: ac_findings_by_layer aus Summary-Report (Phase 4.1)
+   Gruppen = {(layer, finding_typ): count}
+
+   Beispiel:
+     (BE-CORE, AK-CORE-1): 4
+     (BE-MID, AK-MID-2): 2
+     (BE-DTO, AK-DTO-3): 1
+
+2. Pruefe Schwellenwert: findings_count >= 3 in einer (layer, finding-typ) Gruppe?
+
+   → NEIN (kein Schwellenwert erreicht):
+     ac_pl_signal:
+       triggered: false
+       pattern_ids: []
+       finding_count: 0
+       action: NONE
+     → Weiter mit Phase 4.3
+
+   → JA (mindestens 1 Gruppe >= 3):
+     Fuer jede Gruppe mit count >= 3:
+     - Pruefe Pattern-Relevanz: Betrifft Finding ein Architektur-Pattern
+       aus {VAULT_ROOT}/Libraries/PatternLibrary/_index.md  (VAULT-ONLY, INV-PL-VAULT-1)?
+       Abgleich: Finding-Layer (z.B. BE-MID) vs. Pattern-Layer in Library
+
+     - Pattern-Match vorhanden:
+       action = PT_UPDATE_CANDIDATE
+       pattern_ids += [matched_pattern_id]
+     - Kein Pattern-Match:
+       action = NORM_EVOLUTION_CANDIDATE
+       (Finding deutet auf NEUES Pattern hin, nicht auf Update)
+
+3. Signal-Format im Manifest:
+   ac_pl_signal:
+     triggered: true
+     pattern_ids: [{matched_pattern_ids}]
+     finding_count: {Summe aller Findings in Gruppen >= 3}
+     action: PT_UPDATE_CANDIDATE | NORM_EVOLUTION_CANDIDATE | NONE
+     evidence_groups:
+       - layer: {LAYER}
+         finding_typ: {REGEL}
+         count: {N}
+         action: {PT_UPDATE_CANDIDATE | NORM_EVOLUTION_CANDIDATE}
+
+4. Bei PT_UPDATE_CANDIDATE: HiL-Meldung in Phase 4.3 ergaenzen:
+   "AC→PL Signal: {N} Findings in {LAYER} deuten auf Pattern-Update hin.
+    Pattern: {pattern_ids}
+    Aktion: /_PT_update ausfuehren? (ja/defer)"
+
+   Option "DEFER" → Parking-Lot Eintrag:
+   "[AC-PL-SIGNAL] {DATUM} Pattern {ID}: {N} Findings, User deferred"
+
+5. pattern-usage.log APPEND bei NORM_EVOLUTION_CANDIDATE (AC-ACPL1-6):
+   "{DATUM} | NORM_CANDIDATE | {feature} | {layer} | NORM_EVOLUTION | ac-orchestrate"
+
+6. KEIN Auto-Aufruf von /_PT_update (ADR-PL-008 Invariante, AC-ACPL1-4)
+   Signal ist INFORMATION fuer den User, keine automatische Aenderung.
+
+7. W236 (Cross-PR Pattern-Tracking) als DEFERRED dokumentiert (AC-ACPL1-5):
+   Cross-PR-Korrelation ist out-of-scope fuer diesen Mechanismus.
+   Wenn implementiert: ac_pl_signal koennte PR-uebergreifend aggregieren.
+```
+
+### 4.2c: Norm-Evolution Wiederholungs-Erkennung (RF-MAT2, W236)
+
+Nach Phase 4.2b (AC→PL Signal) und VOR Phase 4.3 (HiL-Meldung).
+
+**Zweck:** Cross-Run-Analyse. Wenn dasselbe Finding (gleiches AK-Regel-Kuerzel) in >= 3
+aufeinanderfolgenden AC-Runs erscheint, ist das ein NORM_EVOLUTION_CANDIDATE Signal.
+Quelle: `_manifest_protokoll.md` archivierte AC-Runs (Pattern B Rollover, W264).
+
+```
+1. Lies _manifest_protokoll.md
+   Suche: Abschnitte "## AC_orchestrate [DATUM]"
+   Extrahiere: layers + findings-Status pro Eintrag
+
+2. Pruefe: >= 3 archivierte AC-Eintraege vorhanden? (AC-MAT2-3)
+   → NEIN (< 3 AC-Eintraege in _manifest_protokoll.md):
+     SKIP "Norm-Evolution Cross-Run: < 3 AC-Eintraege, SKIP"
+     → Weiter mit Phase 4.3
+   → JA: Weiter
+
+3. Nimm die letzten 3 AC-Eintraege (nach Datum sortiert, neueste zuerst) (AC-MAT2-2)
+   Fuer jeden Eintrag: Extrahiere (layer, finding-typ) Paare aus "layers:" Zeile
+
+4. Gruppiere nach (layer, finding-typ):
+   Cross-Check: Kommt GLEICHER (layer, finding-typ) in >= 3 aufeinanderfolgenden Runs vor?
+
+5. Schwellenwert erreicht? (AC-MAT2-1: >= 3 aufeinanderfolgende AC-Runs mit gleichem Finding)
+   → NEIN: Kein Cross-Run-Pattern erkannt. Weiter mit Phase 4.3.
+   → JA (mindestens 1 (layer, finding-typ) in allen 3 Runs):
+     norm_evolution_signal:
+       triggered: true
+       repeated_findings:
+         - layer: {LAYER}
+           finding_typ: {REGEL}
+           consecutive_runs: {N}
+       action: NORM_EVOLUTION_CANDIDATE
+
+6. pattern-usage.log APPEND:
+   "{DATUM} | NORM_EVOLUTION | {feature} | {layer} | CROSS_RUN_{N} | ac-orchestrate-4.2c"
+
+7. HiL-Ergaenzung in Phase 4.3:
+   "Norm-Evolution: Finding {REGEL} in {LAYER} erscheint in {N} aufeinanderfolgenden
+    AC-Runs. NORM_EVOLUTION_CANDIDATE. /_PT_update empfohlen? (ja/defer)"
+
+8. Bei "defer": Parking-Lot Eintrag:
+   "[NORM-EVOLUTION] {DATUM} {LAYER}/{REGEL}: {N} konsekutive AC-Runs, User deferred"
+```
+
+**Graceful Degradation:**
+- _manifest_protokoll.md nicht vorhanden → SKIP
+- < 3 AC-Eintraege → SKIP (AC-MAT2-3)
+- AC-Eintraege ohne "layers:" Zeile → Eintrag ignorieren, naechsten pruefen
+
 ### 4.3 HiL-Meldung
 
 ```
@@ -325,6 +483,29 @@ AskUserQuestion:
     WEITER  → Findings zur Kenntnis genommen, fortfahren
     FIXEN   → BLOCKER/WARNUNGEN jetzt beheben (neuer I-Zyklus)
     DEFER   → Findings als PL-Items parken
+```
+
+### 4.4 AC_PIPELINE_STATE Rollover Sub-Schritt (Pattern B, W18)
+
+Nach Abschluss von Phase 4.3 (nach User-Decision, bevor naechster Schritt):
+
+```
+1. Lies _manifest.md: Suche ac_*-Felder aelter als N-2 Laeufe
+   Falls >= 3 abgeschlossene AC_orchestrate-Laeufe vorhanden:
+
+2. Frontmatter _manifest_protokoll.md aktualisieren:
+   last_append: {Datum}
+   append_count: {N+1}
+
+3. Prepend nach YAML-Frontmatter in _manifest_protokoll.md:
+   ## AC_orchestrate [{Datum}] {ac_status}
+   - scope: {diff|full}, files: {ac_scope_files}
+   - findings: {ac_findings_count} (BLOCKER: {ac_blocker_count})
+   - status: {CLEAN|FINDINGS|BLOCKER}
+   - layers: {ac_findings_by_layer kurz}
+
+4. Entferne archivierten Eintrag aus _manifest.md
+   (nur der N-2 Lauf wird rotiert, aktuelle ac_*-Felder bleiben)
 ```
 
 ---
@@ -373,7 +554,7 @@ Team: ac-{name}
 Genau 1 Schicht-Scan ausfuehren, dann fertig.
 
 Schicht:           {SCHICHT}
-Konventions-Datei: .claude/meta/architekturKonventionen/be-{schicht_lower}.md
+Konventions-Datei: {META}/architekturKonventionen/be-{schicht_lower}.md
 Zu pruefende Dateien:
 {DATEI_LISTE}
 Task-ID:           {TASK_ID}

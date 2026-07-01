@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # Retrospektive: Feature-Abschluss + Wissenstransfer
 
 Du fuehrst eine strukturierte Retrospektive nach Feature-Abschluss durch.
@@ -23,7 +27,7 @@ aus dem abgeschlossenen Forschungszyklus und bereitet sie fuer das Langzeitgedae
 +===============================================================+
 |                                                                |
 |  LIEST (Input):                                                |
-|    1. .claude/analysis/_manifest.md                            |
+|    1. {VAULT}/_manifest.md                            |
 |       → NAME, Zyklus-Historie, alle Phasen                    |
 |    2. .claude/models/{NAME}_Model.md                           |
 |       → Wahrheiten (W1-Wn), Architektur-Entscheidungen        |
@@ -51,8 +55,14 @@ aus dem abgeschlossenen Forschungszyklus und bereitet sie fuer das Langzeitgedae
 |       → Atomare Wissens-Entities einspeisen                   |
 |    3. GraphRAG MCP: Globale Collection                         |
 |       → Kuratierte, projektuebergreifende Entities            |
-|    4. .claude/analysis/_manifest.md                            |
+|    4. {VAULT}/_manifest.md                            |
 |       → Retrospektive-Status aktualisieren                    |
+|                                                                |
+|  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):               |
+|    Pattern A: Reiner State-Write — kein Protokoll-Eintrag      |
+|    SCHREIBT STATE: RETROSPEKTIVE_STATUS = ABGESCHLOSSEN        |
+|    SCHREIBT NICHT: _manifest_protokoll.md                      |
+|    LIEST: _manifest_protokoll.md (historische Daten)           |
 |                                                                |
 +===============================================================+
 ```
@@ -64,7 +74,7 @@ aus dem abgeschlossenen Forschungszyklus und bereitet sie fuer das Langzeitgedae
 **Command-Max:** opus (effektiv = min(SYSTEM-MODEL, opus))
 
 ```
-1. Lies .claude/analysis/_manifest.md
+1. Lies {VAULT}/_manifest.md
    → Ermittle {NAME}, {FEATURE}
    → Lies SYSTEM-MODEL aus System-Konfiguration
    → Bestimme effektives Modell: min(SYSTEM-MODEL, opus)

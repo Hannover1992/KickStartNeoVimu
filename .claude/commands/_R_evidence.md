@@ -1,16 +1,11 @@
 ---
 status: active
-version: 1.0.0
+version: 1.1.0
 created: 2026-02-26
 op: ReviewCycle
 phase: Meta
-type: command
+type: satellite
 chain_position: standalone
-changelog: |
-  v1.0.0: Initialer Entwurf. Erstellt strukturiertes Evidence-Dokument
-          aus Freitext-Beschreibung. 1-Satz PR-Justification als Output.
-          Obsidian-Sync via _W_obsidianSync. Wird von /_R_orchestrate
-          als Kontext gelesen (LIEST: analysis/evidence/*.md).
 ---
 
 # /_R_evidence — Evidence-Dokument erstellen
@@ -22,10 +17,12 @@ changelog: |
 ║  LIEST:                                                              ║
 ║    $description          (Freitext: Problem + Entscheidung)         ║
 ║    $code_files           (optional: konkrete Dateipfade)            ║
-║    .claude/analysis/evidence/*.md  (Duplikat-Check)                 ║
+║    .claude/evidence/*.md  (Duplikat-Check)                          ║
+║    .claude/models/{FEATURE}_Model.md  (Model-Verlinkung)           ║
 ║                                                                      ║
 ║  SCHREIBT:                                                           ║
-║    .claude/analysis/evidence/EVIDENCE-{FEATURE}-{SLUG}-{DATE}.md   ║
+║    .claude/evidence/EVIDENCE-{FEATURE}-{SLUG}-{DATE}.md             ║
+║    .claude/models/{FEATURE}_Model.md  (Evidence-Link anfuegen)      ║
 ║    (optional) C:\Users\...\DCS\{SLUG}.md  (via Obsidian-Sync)      ║
 ║                                                                      ║
 ║  AUSGABEN:                                                           ║
@@ -63,6 +60,7 @@ changelog: |
 |   - PR-Kommentar: 1-Satz direkt einfuegen (präemptiv)              |
 |   - Architect-Frage: Evidence zeigen                                 |
 |   - /_R_orchestrate: liest evidence/*.md automatisch als Kontext    |
+|   - Model: Evidence wird im Model verlinkt (erreichbar/navigierbar) |
 |   - Obsidian: dauerhaftes Wissens-Atom                              |
 +======================================================================+
 ```
@@ -81,7 +79,7 @@ changelog: |
 |-----------|---------|-------|-------------|
 | `description` | (PFLICHT) | Freitext | Problem + Entscheidung + optionaler Code |
 | `feature` | aktuell aus _manifest.md | String | z.B. "DCSRE-93", "DCSRE-881" |
-| `type` | constraint | analyse, constraint, risk | Art der Evidence |
+| `type` | constraint | analyse, constraint, risk, pattern_evolution | Art der Evidence |
 
 **type-Bedeutung:**
 
@@ -90,12 +88,31 @@ changelog: |
 | `constraint` | "Darf NICHT weil..." (technische Einschraenkung) | Junction-Tabelle kein TrackableEntityBase |
 | `analyse` | "Haben untersucht und festgestellt..." (Analyse-Ergebnis) | LandesverbandBasicReadDto reicht aus |
 | `risk` | "Wenn wir X tun riskieren wir Y..." | Ohne Ignores: EF Core loescht Daten |
+| `pattern_evolution` | "Norm X hat Grenze erreicht, Vorschlag Y..." (Norm-Evolution) | cleanup.md R6 gilt nicht fuer explizite Mapping-Overrides |
+
+**pattern_evolution Kausalkette (W217, W222):**
+```
+BEOBACHTUNG: Wiederholte Abweichung von Norm X erkannt (>=3x gleiche WARN/INFO)
+     |
+ANALYSE: Norm-Grenze identifiziert — Norm X deckt Szenario Y nicht ab
+     |
+ENTSCHEIDUNG: Norm aktualisieren (neue Regel) ODER beibehalten (Ausnahme dokumentieren)
+```
+
+**pattern_evolution Pflichtfelder (zusaetzlich zu Standard-Evidence):**
+```yaml
+norm_referenz: "meta/codeKonvention/{gate}.md R{N}"   # Welche Norm betroffen
+abweichung_count: 3                                     # Wie oft beobachtet
+vorschlag: "Neue Regel R{N+1}: ..."                    # Konkreter Aenderungsvorschlag
+entscheidung_typ: "update" | "beibehalten"              # Was wurde entschieden
+```
 
 **Beispiele:**
 ```
 /_R_evidence "Junction-Tabelle kein TrackableEntityBase weil surrogate Id"
 /_R_evidence "AutoMapper 11 Ignores wegen IdentityCrudDbProvider" DCSRE-881 risk
 /_R_evidence "LandesverbandBasicReadDto statt Minimal — FE braucht nur Id+Name" DCSRE-93 analyse
+/_R_evidence "cleanup.md R6 zu streng fuer explizite Mapping-Overrides — 3x WARN in Pre-PR" OmniCommand pattern_evolution
 ```
 
 ---
@@ -115,7 +132,7 @@ Falls Dateipfade genannt → lesen mit Read-Tool.
 
 ### Schritt 2: Duplikat-Check
 
-Lies `.claude/analysis/evidence/*.md` kurz:
+Lies `.claude/evidence/*.md` kurz:
 - Gibt es bereits eine Evidence zu diesem Problem?
 - Wenn JA → ABBRUCH, zeige User: "Evidence existiert bereits: {datei}"
 - Wenn NEIN → weiter
@@ -127,7 +144,7 @@ Lies `.claude/analysis/evidence/*.md` kurz:
 - `{SLUG}`: 3-4 Worte aus dem Kern-Problem, kebab-case (z.B. "junction-kein-trackable")
 - `{DATE}`: YYYY-MM-DD
 
-**Speicherort:** `.claude/analysis/evidence/`
+**Speicherort:** `.claude/evidence/`
 
 **Format:**
 
@@ -197,12 +214,49 @@ warum: "{1-Satz mechanistische Begründung}"
 | {Entity/Klasse} | {relativer Pfad} |
 ```
 
-### Schritt 4: 1-Satz PR-Justification ausgeben
+### Schritt 4: Model-Verlinkung
+
+Evidence MUSS im zugehoerigen Model verlinkt werden, damit sie erreichbar/navigierbar bleibt.
+Evidence ohne Model-Link ist eine verwaiste Information — sie wird nie wieder gefunden.
+
+**Algorithmus:**
+
+1. **Model-Datei finden:**
+   - Primaer: `.claude/models/{FEATURE}_Model.md` (z.B. `DCSRE-882_Model.md`)
+   - Fallback: `.claude/models/*Model*.md` mit Glob suchen
+   - Falls KEIN Model existiert → SKIP mit Hinweis: "Kein Model gefunden — Evidence nicht verlinkt."
+
+2. **Evidence-Sektion suchen oder erstellen:**
+   - Lies die Model-Datei
+   - Suche nach `## Evidence` Sektion (oder `## Evidenz`)
+   - Falls NICHT vorhanden → erstelle die Sektion am Ende der Datei (vor `---` Abschluss falls vorhanden)
+
+3. **Link einfuegen:**
+   - Fuege in die `## Evidence` Sektion einen Eintrag ein:
+   ```markdown
+   - [{EVIDENCE-ID}](.claude/evidence/EVIDENCE-{FEATURE}-{SLUG}-{DATE}.md) — {entscheidung} ({type}, {DATE})
+   ```
+   - Pruefe vorher ob der Link bereits existiert (Duplikat-Schutz)
+
+4. **Bestaetigung:**
+   ```
+   📎 Model verlinkt: .claude/models/{FEATURE}_Model.md → ## Evidence
+   ```
+
+**Beispiel — Model nach Verlinkung:**
+```markdown
+## Evidence
+
+- [EVIDENCE-DCSRE93-junction-kein-trackable-2026-02-26](.claude/evidence/EVIDENCE-DCSRE93-junction-kein-trackable-2026-02-26.md) — Junction-Tabelle erbt nicht von TrackableEntityBase (constraint, 2026-02-26)
+- [EVIDENCE-DCSRE93-basicreaddto-reicht-2026-02-26](.claude/evidence/EVIDENCE-DCSRE93-basicreaddto-reicht-2026-02-26.md) — LandesverbandBasicReadDto statt MinimalDto (analyse, 2026-02-26)
+```
+
+### Schritt 5: 1-Satz PR-Justification ausgeben
 
 Nach dem Schreiben: direkt im Chat ausgeben:
 
 ```
-✅ Evidence erstellt: .claude/analysis/evidence/EVIDENCE-{...}.md
+✅ Evidence erstellt: .claude/evidence/EVIDENCE-{...}.md
 
 PR-Justification (kurz):
 "{der 1-Satz}"
@@ -214,16 +268,18 @@ Regel:
 "{die generalisierte Regel}"
 ```
 
-### Schritt 5: Obsidian-Sync
+### Schritt 6: Vault DirectWrite (BL-050, ersetzt _W_obsidianSync)
 
-Lies `.claude/analysis/_manifest.md` → VAULT-Pfad extrahieren.
+Lies `.claude/config/vault-routing.json` → Vault-Pfad bestimmen (env_var: OBSIDIAN_VAULT_PATH).
+Lies `{VAULT}/_manifest.md` → BL-Item-Slug extrahieren.
 
-Sync die Evidence-Datei via `/_W_obsidianSync` (easy-Modus):
-- Quelle: `.claude/analysis/evidence/EVIDENCE-{...}.md`
-- Ziel: `{VAULT}/EVIDENCE-{...}.md`
-- Obsidian-Frontmatter ergaenzen: `type: evidence`, `feature: {FEATURE}`, `tags: [evidence, {FEATURE}]`
+**PRIMAER:** Schreibe Evidence-Datei direkt in Vault:
+- Ziel: `{VAULT}/Backlog/{BL_SLUG}/Evidence/EVIDENCE-{...}.md`
+- Obsidian-Frontmatter ergaenzen: `type: evidence`, `feature: {FEATURE}`, `bl-item: {BL_ID}`, `created: {HEUTE}`, `updated: {HEUTE}`, `tags: [evidence, {FEATURE}, bl/{BL_ID}]`
 
-Falls VAULT nicht konfiguriert → SKIP mit Hinweis: "Obsidian-Sync nicht konfiguriert."
+**FALLBACK:** Falls VAULT nicht erreichbar (Pfad existiert nicht, env_var leer):
+- Schreibe nach: `.claude/evidence/EVIDENCE-{...}.md`
+- Logge: "WARN: Vault nicht erreichbar — Evidence nur lokal gespeichert (.claude/evidence/)."
 
 ---
 
@@ -237,7 +293,7 @@ Eingabe:
 Ausgabe:
 ```
 ✅ Evidence erstellt:
-   .claude/analysis/evidence/EVIDENCE-DCSRE93-junction-kein-trackable-2026-02-26.md
+   .claude/evidence/EVIDENCE-DCSRE93-junction-kein-trackable-2026-02-26.md
 
 PR-Justification (kurz — direkt in PR-Kommentar):
 "Junction-Tabelle → kein TrackableEntityBase (EntityBase<Guid> würde surrogate [Key] Id erzwingen);
@@ -252,6 +308,7 @@ PR-Justification (lang — für Architekt-Nachfrage):
 Regel:
 "Junction-Tabellen mit kompositärem PK erben NIE von TrackableEntityBase."
 
+📎 Model verlinkt: .claude/models/DCSRE-93_Model.md → ## Evidence
 📎 Obsidian-Sync: EVIDENCE-DCSRE93-junction-kein-trackable-2026-02-26.md → Vault
 ```
 
@@ -259,7 +316,7 @@ Regel:
 
 ## Integration mit /_R_orchestrate
 
-`/_R_orchestrate` liest ab v1.1 automatisch `.claude/analysis/evidence/*.md` als Kontext
+`/_R_orchestrate` liest ab v1.1 automatisch `.claude/evidence/*.md` als Kontext
 für Welle 1 (RAG-Scan) und Welle 3 (DickBob-Synthese).
 
 Das bedeutet: Wenn du nach `/_R_evidence` ein `/_R_orchestrate` aufrufst,
@@ -270,7 +327,7 @@ im Review zitieren statt sie neu zu entdecken.
 ```
 1. Code schreiben (technische Entscheidung getroffen)
 2. /_R_evidence "{beschreibung}"
-   → Evidence-Dokument + 1-Satz PR-Summary
+   → Evidence-Dokument + Model-Link + 1-Satz PR-Summary
 3. PR erstellen → 1-Satz preemptiv in PR-Beschreibung einfügen
 4. (optional) /_R_orchestrate → Uncle Bob kennt Evidence als Kontext
 ```
@@ -284,4 +341,5 @@ im Review zitieren statt sie neu zu entdecken.
 | Evidence bereits vorhanden | ABBRUCH + Pfad der existierenden Evidence zeigen |
 | Datei-Pfad nicht lesbar | Ohne Code-Kontext schreiben, Warnung ausgeben |
 | feature nicht ermittelbar | Fragt User nach Feature-Name |
+| Model nicht gefunden | Model-Verlinkung überspringen, Warnung ausgeben |
 | Vault nicht konfiguriert | Obsidian-Sync überspringen, Hinweis ausgeben |

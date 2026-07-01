@@ -1,8 +1,12 @@
+---
+type: building-block
+---
+
 # /_I_fanOut
 
-**Status:** v1.0
+**Status:** v2.0 (Z2: Sub-Blueprint Verteilung + TDD-Instructions + Kanarienvogel-Verbot)
 **Actor:** MOTHERSHIP-OPERATOR
-**Zweck:** .claude/ Artefakte vom Mothership in Worktrees verteilen + Manifest tracken
+**Zweck:** .claude/ Artefakte vom Mothership in Worktrees verteilen + Sub-Blueprints kopieren + Manifest tracken
 
 ---
 
@@ -20,14 +24,18 @@
 |    → FanOut macht NUR die .claude/ Verteilung                 |
 |                                                                |
 |  LIEST:                                                        |
-|    1. ARCHITECT.md → Slice-Liste + Abhaengigkeiten            |
+|    1. ARCHITECT.md (PRIMAER: {VAULT}/.../Blueprint/{NAME}-ARCHITECT.md) |
+|       FALLBACK: .claude/analysis/synthese/{NAME}-ARCHITECT.md  |
+|       → Slice-Liste + Abhaengigkeiten                         |
 |    2. _manifest.md → Aktueller Feature-Status                 |
 |    3. SLICE-BRIEFINGS.md → Welcher Slice in welchem Worktree  |
 |    4. Worktree-Pfade (User gibt an oder aus Mitose bekannt)   |
+|    5. analysis/blueprints/{FEATURE}/{SLICE}/sub-{NR}.md       |
+|       → Sub-Blueprints pro Slice (falls vorhanden)            |
 |                                                                |
 |  KOPIERT (Mothership → jeder Worktree):                        |
 |    PFLICHT:                                                    |
-|      - analysis/synthese/ARCHITECT.md                         |
+|      - ARCHITECT.md (PRIMAER: {VAULT}/.../Blueprint/, FALLBACK: analysis/synthese/) |
 |      - analysis/_manifest.md                                  |
 |      - analysis/plans/{SLICE}-PLAN.md (falls vorhanden)       |
 |      - patterns/_pattern-library.md                           |
@@ -38,6 +46,11 @@
 |      - meta/ (ganzer Ordner)                                  |
 |    PRO WORKTREE:                                               |
 |      - CURRENT_SLICE.md → mit zugewiesenem Slice-Namen        |
+|                                                                |
+|  KOPIERT (zusaetzlich, Sub-Blueprint-Verteilung):              |
+|    analysis/blueprints/{FEATURE}/{SLICE}/sub-{NR}.md          |
+|    → In jeden zugehoerigen Worktree kopiert                   |
+|    → Graceful Degradation: Falls kein Sub-Blueprint → SKIP    |
 |                                                                |
 |  SCHREIBT (in Mothership .claude/):                            |
 |    _manifest.md → FanOut-Status:                              |
@@ -110,6 +123,139 @@
 | Task.md | Kopieren | Akzeptanzkriterien |
 | SLICE-BRIEFINGS.md | Kopieren | Slice-Kontext |
 | Synthese anderer Slices | NICHT kopieren | Gehoert zum anderen Slice |
+| Sub-Blueprints | Kopieren falls vorhanden | TDD-Scope fuer Worker |
+
+---
+
+## Schritt 1b: Sub-Blueprint verteilen (Stufen-Modus)
+
+Falls `.claude/analysis/blueprints/{FEATURE}/{SLICE}/sub-{NR}.md` existiert:
+
+```
+1. Fuer JEDEN Worktree mit zugewiesenem Slice:
+   a) Erstelle Verzeichnis falls noetig:
+      {WORKTREE}/.claude/analysis/blueprints/{FEATURE}/{SLICE}/
+   b) Kopiere sub-{NR}.md:
+      Quelle:  .claude/analysis/blueprints/{FEATURE}/{SLICE}/sub-{NR}.md
+      Ziel:    {WORKTREE}/.claude/analysis/blueprints/{FEATURE}/{SLICE}/sub-{NR}.md
+   c) AUSGABE: "Sub-Blueprint sub-{NR}.md → Worktree {PFAD} kopiert"
+
+2. Graceful Degradation:
+   Falls kein Sub-Blueprint fuer einen Slice vorhanden → SKIP
+   (Worker arbeitet wie bisher ohne Sub-Blueprint)
+```
+
+---
+
+## Schritt 1b2: Modul-Register verteilen (NUR Stufe 2)
+
+Falls `.claude/analysis/blueprints/{FEATURE}/S2/module-register.md` existiert:
+
+```
+1. Kopiere in JEDEN S2-Worktree:
+   Quelle: .claude/analysis/blueprints/{FEATURE}/S2/module-register.md
+   Ziel:   {WORKTREE}/.claude/analysis/blueprints/{FEATURE}/S2/module-register.md
+2. AUSGABE: "Modul-Register → {N} Worktrees verteilt"
+3. Graceful Degradation: Falls Register fehlt → WARN und weiter (kein Abbruch)
+```
+
+---
+
+## Schritt 1c: TDD-Instructions-Template erstellen (Stufen-Modus)
+
+Pro Worktree wird ein TDD-Instructions-Template erstellt, das Workers strukturierte
+Anweisungen fuer ihre Test-Stufe gibt. Basiert auf stage_{N}.md Metadaten.
+
+```
+1. Lese .claude/meta/implementation/stage_{N}.md (N = aktuelle Stufe)
+   → Extrahiere: fokus, testbefehl, testpfad, mocks_erlaubt, fanout
+
+2. Erstelle {WORKTREE}/.claude/TDD_INSTRUCTIONS.md:
+
+   ---
+   stufe: {N}
+   slice: {SLICE_NAME}
+   fokus: {fokus aus stage_{N}.md}
+   testbefehl: {testbefehl}
+   testpfad: {testpfad}
+   mocks_erlaubt: {mocks_erlaubt}
+   max_parallel: {fanout}
+   erstellt_von: fanOut
+   erstellt_am: {YYYY-MM-DD}
+   ---
+
+   # TDD-Instructions fuer {SLICE_NAME} (Stufe {N})
+
+   ## Methodik (PFLICHT — Uncle Bob Red-Green-Refactor-Check)
+
+   **Regel 1 (Red):** Schreibe zuerst den Test, der dich zwingt den Code zu schreiben.
+   **Regel 2 (Green):** Minimaler Code. "Don't go for the gold" (Uncle Bob).
+   **Regel 3 (Refactor):** DRY + Clean Code fuer SOWOHL Code ALS AUCH Tests.
+   **Regel 4 (Check):** Pruefe ob der neue Code zum Sub-Blueprint passt.
+     Weicht er ab? → Korrigiere oder dokumentiere Abweichung als Finding.
+
+   ## Gegenlaeufer-Prinzip
+   Fange mit Edge Cases an (leere Listen, null, Grenzwerte).
+   Dann Normalfall. Dann komplexe Szenarien. NICHT umgekehrt.
+   Tests werden spezifischer → Code wird generischer.
+
+   ## 3 Einstiegsfragen (VOR jedem Test)
+   1. Was ist der EINFACHSTE Test der mich zwingt, echten Code zu schreiben?
+   2. Welchen Edge Case deckt dieser Test ab?
+   3. Braucht dieser Test ueberhaupt eigenen Production-Code? (Logiklos → SKIP)
+
+   ## Scope
+   - Fokus: {fokus}
+   - Testbefehl: {testbefehl}
+   - Testpfad: {testpfad}
+   - Mocks erlaubt: {mocks_erlaubt}
+
+   ## Kanarienvogel-Regel (VERBOTEN — read-only!)
+   Kanarienvogel-Tests (Kategorie 3 der Test-Inventar) sind READ-ONLY.
+   Du darfst sie AUSFUEHREN aber NICHT AENDERN oder LOESCHEN.
+   Bei Kanarienvogel-Bruch (Test faellt rot):
+     → block_reason="kanarienvogel_broken" im exit_report
+     → Sofortige Eskalation an Team Lead
+   Bei versehentlicher Aenderung:
+     → block_reason="kanarienvogel_modified" im exit_report
+     → Revert + Eskalation
+
+3. Graceful Degradation:
+   Falls stage_{N}.md nicht vorhanden → TDD_INSTRUCTIONS.md mit Defaults erstellen
+   (fokus="unit", testbefehl="dotnet test", mocks_erlaubt=true)
+```
+
+---
+
+## Schritt 1d: Blueprint-Kopier-Liste generieren
+
+Erstellt eine Uebersicht aller verteilten Artefakte pro Worktree fuer Traceability.
+
+```
+1. Pro Worktree: Sammle Liste aller kopierten Dateien
+2. Schreibe {WORKTREE}/.claude/FANOUT_MANIFEST.md:
+
+   ---
+   erstellt_von: fanOut
+   erstellt_am: {YYYY-MM-DD}
+   stufe: {N}
+   ---
+
+   # FanOut Manifest
+
+   | Artefakt | Quelle | Status |
+   |----------|--------|--------|
+   | commands/ | Mothership | kopiert |
+   | agents/ | Mothership | kopiert |
+   | meta/ | Mothership | kopiert |
+   | ARCHITECT.md | Mothership | kopiert |
+   | Task.md | Mothership | kopiert |
+   | sub-{NR}.md | blueprints/{FEATURE}/{SLICE}/ | kopiert |
+   | TDD_INSTRUCTIONS.md | generiert | neu |
+   | CURRENT_SLICE.md | generiert | neu |
+
+3. AUSGABE: "Blueprint-Kopier-Liste: {N} Artefakte verteilt"
+```
 
 ---
 
@@ -155,6 +301,10 @@ AUSGABE Zusammenfassung:
 - Mothership Manifest mit FanOut-Status aktualisiert
 - Keine Synthese-Dateien anderer Slices kopiert (Isolation!)
 - User weiss genau was als naechstes zu tun ist
+- TDD_INSTRUCTIONS.md in jedem Worktree erstellt (Stufen-Modus)
+- Kanarienvogel-read-only-Verbot in TDD_INSTRUCTIONS.md dokumentiert
+- Sub-Blueprints in zugehoerige Worktrees kopiert (falls vorhanden)
+- FANOUT_MANIFEST.md in jedem Worktree erstellt (Traceability)
 
 ---
 

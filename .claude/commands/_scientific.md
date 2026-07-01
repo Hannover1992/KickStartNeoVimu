@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Forschungszyklus: Scientific Method
 
 Du fuehrst einen vollstaendigen wissenschaftlichen Forschungszyklus durch.
@@ -27,7 +31,7 @@ Du fuehrst einen vollstaendigen wissenschaftlichen Forschungszyklus durch.
 ║                /_SC_implement, /_SC_ergebnis                   ║
 ║                                                               ║
 ║  LIEST:                                                       ║
-║    .claude/analysis/_manifest.md (Zustand ermitteln)          ║
+║    {VAULT}/_manifest.md (Zustand ermitteln)          ║
 ║                                                               ║
 ║  SCHREIBT:                                                    ║
 ║    Nichts direkt - delegiert an Sub-Commands.                 ║
@@ -83,10 +87,10 @@ ITERATIVER ZYKLUS:                                   ▼
 Delegiert an: `/_taskDefinition {NAME} [easy|normal|hard]`
 
 Sammelt Rohmaterial aus `.claude/pileOfMud/`, verarbeitet es zu strukturierten
-Kruemmeln und definiert die Aufgabe in `.claude/Task.md`.
+Kruemmeln und definiert die Aufgabe in `{VAULT}/Task.md`.
 
 **Ergebnis:**
-- `.claude/Task.md` (Aufgaben-Definition)
+- `{VAULT}/Task.md` (Aufgaben-Definition)
 - `.claude/crumbs/{NAME}_crumbs.md` (Strukturierte Kruemmel)
 
 ---
@@ -188,7 +192,7 @@ KEIN Model-Update — das macht /_SC_observe + /_SC_modelMaintain im naechsten Z
 
 ## Fortsetzung nach /compact
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
 2. Ermittle aktuellen Stand:
 
 ```
@@ -306,7 +310,7 @@ als Audit-Trail und Quellennachweis.
 
 ## Starte jetzt
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
 2. Falls Manifest existiert → setze dort fort
 3. Falls kein Manifest → beginne mit Phase 0 (`/_taskDefinition {NAME}`)
 

@@ -1,4 +1,4 @@
-﻿# /_WP_synthesis - Draft Synthesis & Consensus
+# /_WP_synthesis - Draft Synthesis & Consensus
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-09
 op: SYNTHESIS
 phase: Core Transformation
-type: Standard
+type: building-block
 chain_position: AFTER=/_WP_review, BEFORE=/_WP_reflect
 difficulty_scaling: true
 ```

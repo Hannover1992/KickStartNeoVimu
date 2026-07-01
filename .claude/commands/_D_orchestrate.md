@@ -6,16 +6,9 @@ version: 1.0.0
 created: 2026-02-26
 op: Debloat
 phase: orchestration
-type: standalone-orchestrator
+type: orchestration
 chain_position: entry
 team_based: false
-changelog: |
-  v1.0.0: Initialer Entwurf (S1_DOrchestrate, ModelBloat-Implementation).
-          Standalone + Pipeline-Integration (EC-F 80%: I-Pipeline).
-          KURZLEBIG_PROMPT Pattern: 1 Agent = 1 Command = 1 Response.
-          Context-Collapse-sicher: State im Manifest (D_PIPELINE_STATE).
-          AE-1: User-triggerbar jederzeit (/_D_orchestrate {FEATURE}).
-          WP-Hook: TODO (EC-F offen, externe Klaerung noetig).
 ```
 
 ---
@@ -66,14 +59,26 @@ changelog: |
 ║  COMMAND: /_D_orchestrate {FEATURE} [--hard]                             ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md (D_PIPELINE_STATE, falls vorhanden) ║
+║    1. {VAULT}/_manifest.md (D_PIPELINE_STATE, falls vorhanden)          ║
 ║    2. .claude/models/{FEATURE}_Model.md (Ziel-Model, MUSS EXISTIEREN)  ║
 ║                                                                          ║
 ║  LIEST (Input) - OPTIONAL:                                               ║
 ║    3. .claude/models/{FEATURE}_Protokoll.md (Vorhandensein pruefen)    ║
 ║                                                                          ║
+║  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                         ║
+║    Pattern B: State-Write + Protokoll-Rollover (W18)                     ║
+║    SCHREIBT STATE (_manifest.md):                                        ║
+║      D_PIPELINE_STATE: trigger_level, kollaps_mode, last_run_date,      ║
+║        separate_done, model_lines_before/after, last_run_result          ║
+║    SCHREIBT PROTOKOLL (_manifest_protokoll.md, Rollover):               ║
+║      Nach Schritt 4 (Abschluss): Rotiere D_PIPELINE_STATE[N-2]:         ║
+║      Prepend an _manifest_protokoll.md (W18):                            ║
+║        last_append + append_count++ im Frontmatter                       ║
+║        ## D_orchestrate [{Datum}] {trigger_level}                        ║
+║        [Archivierte Felder: trigger, kollaps_mode, lines_before→after]   ║
+║                                                                          ║
 ║  SCHREIBT (Output) - PFLICHT:                                            ║
-║    1. .claude/analysis/_manifest.md                                      ║
+║    1. {VAULT}/_manifest.md                                               ║
 ║       → D_PIPELINE_STATE: Phase, Trigger-Level, Timestamp aktualisieren ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - INDIREKT (via Sub-Agents):                         ║
@@ -137,11 +142,24 @@ _SC_modelMaintain (HARD) → **_D_orchestrate** → _D_separate → _D_kollaps
 ### Schritt 0: Vorbedingungen pruefen
 
 ```
+0. FEATURE-Herleitung (IF-8, name-herleitung.md):
+   IF FEATURE nicht als Argument angegeben:
+     Lies {WORKING_DIR}/_manifest.md  # per-Story (BL-155 AK-1)
+     Suche SC_PIPELINE_STATE → feature:
+     IF feature vorhanden: FEATURE = feature
+       Logge: "FEATURE auto-hergeleitet aus Manifest (SC_PIPELINE_STATE): {FEATURE}"
+     ELSE:
+       Suche I_PIPELINE_STATE → feature:
+       IF feature vorhanden: FEATURE = feature
+         Logge: "FEATURE auto-hergeleitet aus Manifest (I_PIPELINE_STATE): {FEATURE}"
+       ELSE:
+         → FEHLER: "FEATURE nicht angegeben und nicht aus Manifest herleitbar"
+
 1. Lies .claude/models/{FEATURE}_Model.md
    → Existiert? NEIN → Fehler: "Model nicht gefunden: {FEATURE}_Model.md"
    → JA → weiter
 
-2. Lies .claude/analysis/_manifest.md
+2. Lies {VAULT}/_manifest.md
    → Suche Sektion D_PIPELINE_STATE (falls vorhanden)
    → Notiere: last_collapse_date, last_collapse_lines, w_n_count_at_collapse
 
@@ -158,10 +176,21 @@ Messe {FEATURE}_Model.md:
   - W_N_NEU = Anzahl W{n}-Bloecke mit Status OFFEN/BESTAETIGT
               seit last_collapse_date (aus Manifest)
 
+# Index-Model-Erkennung (IF-10, Pfad A)
+Lies Model-Frontmatter → model_type Feld
+IF model_type == "index":
+  Logge: "Index-Model erkannt: HARD-Trigger wird auf 2000 Zeilen angehoben (statt 700)"
+  HARD_TRIGGER = 2000
+  SOFT_TRIGGER = 1200
+ELSE:
+  # Standard-Schwellen (Content-Model)
+  HARD_TRIGGER = 700
+  SOFT_TRIGGER = 500
+
 Entscheide Trigger-Level:
-  IF ZEILEN > 700 OR W_N_NEU > 15:
+  IF ZEILEN > HARD_TRIGGER OR W_N_NEU > 15:
     TRIGGER = HARD
-  ELIF ZEILEN > 500 OR W_N_NEU > 8:
+  ELIF ZEILEN > SOFT_TRIGGER OR W_N_NEU > 8:
     TRIGGER = SOFT
   ELSE:
     TRIGGER = KEIN → Schritt 4 (Kein Kollaps)
@@ -213,7 +242,7 @@ IF TRIGGER = HARD:
 ### Schritt 4: Abschluss
 
 ```
-Aktualisiere .claude/analysis/_manifest.md Sektion D_PIPELINE_STATE:
+Aktualisiere {VAULT}/_manifest.md Sektion D_PIPELINE_STATE:
 
   ## D_PIPELINE_STATE
   feature: {FEATURE}
@@ -230,6 +259,30 @@ Gib kurze Summary aus:
   - Trigger: {KEIN|SOFT|HARD}
   - Aktion: {Kein Kollaps noetig|Scan-Report erstellt|Kollaps abgeschlossen}
   - Model vorher/nachher: {N}Z → {M}Z (nur bei full kollaps)
+```
+
+### Schritt 4a: D_PIPELINE_STATE Rollover Sub-Schritt (Pattern B, W18)
+
+Nach Abschluss von Schritt 4 (Manifest aktualisiert, Summary ausgegeben):
+
+```
+1. Lies _manifest.md: Suche D_PIPELINE_STATE-Eintraege aelter als N-2 Laeufe
+   Falls >= 3 abgeschlossene D_orchestrate-Laeufe vorhanden:
+
+2. Frontmatter _manifest_protokoll.md aktualisieren:
+   last_append: {Datum}
+   append_count: {N+1}
+
+3. Prepend nach YAML-Frontmatter in _manifest_protokoll.md:
+   ## D_orchestrate [{Datum}] {trigger_level}
+   - feature: {FEATURE}
+   - trigger_level: {KEIN|SOFT|HARD}
+   - kollaps_mode: {none|scan-only|full}
+   - last_run_result: {clean|scan-report|kollaps-abgeschlossen|fehler}
+   - model_lines: {N}Z → {M}Z
+
+4. Entferne archivierten Eintrag aus _manifest.md
+   (nur der N-2 Lauf wird rotiert, aktueller D_PIPELINE_STATE bleibt)
 ```
 
 ---

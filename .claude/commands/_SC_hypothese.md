@@ -1,3 +1,14 @@
+---
+type: building-block
+depends_on:
+  - _SC_qualityGate
+  - _SC_observe
+feeds_into:
+  - _SC_implement
+related:
+  - _gap
+---
+
 # /_SC_hypothese
 
 Du stellst eine Hypothese auf und planst ein Experiment.
@@ -25,14 +36,19 @@ Default ohne Parameter: **normal**
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
-║    2. .claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md ◄── MUSS EX.  ║
+║    1. {VAULT}/_manifest.md                                      ║
+║    2. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md ◄── MUSS EX.  ║
 ║       Findings aus _SC_observe (Sektion A)                              ║
-║    3. .claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md ◄── MUSS  ║
+║    3. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md ◄── MUSS  ║
 ║       Quality Gates (BR-Status, Kohaesion, BSD-Trigger, GC)            ║
-║    4. .claude/models/{NAME}_Model.md    ◄── MUSS EXISTIEREN             ║
+║    4. {VAULT}/.../Model/{NAME}_Model.md ◄── MUSS EXISTIEREN             ║
+║       FALLBACK: .claude/models/{NAME}_Model.md                          ║
 ║       Enthaelt GC-Markierungen (WIDERLEGT/ELIMINIERT)                   ║
 ║       Kap. 6a (Offene Bereiche, Aktive TCs)                             ║
+║    5. SC_PIPELINE_STATE.next_cycle_context (aus Manifest, Z3: P2 RF-09)║
+║       Falls vorhanden: verify_status, unimplemented_slices,             ║
+║       next_focus_override, i_loc_delta, pre_filter_veto                 ║
+║       ◄── PFLICHT-Input ab Cycle 2 (wenn I-Pipeline gelaufen)          ║
 ║                                                                          ║
 ║  SCHREIBT (Output) - PFLICHT:                                            ║
 ║                                                                          ║
@@ -41,13 +57,21 @@ Default ohne Parameter: **normal**
 ║      .claude/analysis/drafts/{NAME}-hypothese-D02-{fokus}.md            ║
 ║      ... (pro Agent eine Datei)                                          ║
 ║                                                                          ║
-║    Welle 2 (Synthese = DU, Hauptagent):                                  ║
-║      .claude/analysis/synthese/{NAME}-HYPOTHESEN.md                      ║
+║    Welle 2 (Synthese = DU, Hauptagent, BL-050 Vault-First):              ║
+║      PRIMAER: {VAULT}/Backlog/{BL_SLUG}/SC/{NAME}-HYPOTHESEN.md ║
+║      FALLBACK: {WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md            ║
 ║      → Sektion 0: Garbage Collection (PFLICHT ab Cycle 2)               ║
 ║      → Sektion 1: Genau 1 falsifizierbare Hypothese                     ║
 ║                                                                          ║
 ║    Manifest (IMMER):                                                     ║
-║      .claude/analysis/_manifest.md (aktualisieren)                       ║
+║      {VAULT}/_manifest.md (aktualisieren)                       ║
+║                                                                          ║
+║  MANIFEST-SCHREIB-MUSTER (ManifestSplit, ADR-3):                        ║
+║    Pattern A: Reiner State-Write — kein Protokoll-Eintrag               ║
+║    SCHREIBT STATE: SC_HYPOTHESE_{CYCLE}: {YAML-Block}                   ║
+║    SCHREIBT NICHT: _manifest_protokoll.md                               ║
+║    (Rollover historischer SC_HYPOTHESE_Z{N-2} Bloecke                  ║
+║     → Verantwortung von _SC_orchestrate Phase 3.3.0)                   ║
 ║                                                                          ║
 ║  NEUE Pflichtfelder im HYPOTHESEN-Dokument:                              ║
 ║    ┌──────────────────────┬──────┬──────┬──────────────────────────────┐ ║
@@ -93,24 +117,42 @@ Default ohne Parameter: **normal**
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Pruefe ob Phase _SC_qualityGate abgeschlossen ist
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration
    - Bestimme effektives Modell: `min(SYSTEM-MODEL, Command-Max=opus)`
    - Leite Modell-Zuordnung pro Welle ab (siehe Manifest → Modell-Zuordnung)
    - Lies **STAGNATION** Zaehler (Kontext fuer Hypothese-Formulierung)
-2. Lies `.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md`
+2. Lies `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md`
    - Falls nicht vorhanden → FEHLER: "Keine Observation gefunden. Starte erst /_SC_observe"
    - Lies Sektion A (Findings) fuer Hypothese-Basis
-3. Lies `.claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md`
+3. Lies `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md`
    - Falls nicht vorhanden → FEHLER: "Keine Quality Gates gefunden. Starte erst /_SC_qualityGate"
    - Lies BR-Status, Kohaesion, BSD-Trigger, GC-Markierungen
-4. Lies `.claude/models/{NAME}_Model.md`
+4. Lies Model (PRIMAER Vault, FALLBACK lokal):
+   # PRIMAER: Vault (BL-065)
+   `{VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md`
+   # FALLBACK: lokal (Legacy)
+   # fallback-read: expected vault, using .claude/
+   ODER `.claude/models/{NAME}_Model.md`
    - Verifizierte Wahrheiten als Basis fuer Hypothese
    - **NEU:** Pruefe auf WIDERLEGT/ELIMINIERT markierte W{n}
    - **NEU:** Lies Kap. 6a (Offene Bereiche, Aktive TCs) fuer Scope-Orientierung
    - **NEU:** Bei Model-Split: Lies Model-Topologie fuer Fokus-Teilmodel
+
+5. **(Z3: P2, RF-09) Lies `SC_PIPELINE_STATE.next_cycle_context` aus Manifest**
+   - Falls vorhanden (I-Pipeline war gelaufen):
+     - `verify_status`: Ergebnis der letzten I-Pipeline
+     - `unimplemented_slices`: Nicht-abgeschlossene Slices → Fokus-Kandidaten
+     - `next_focus_override`: I-Empfehlung fuer naechsten Fokus (PRIORITAET)
+     - `i_loc_delta`: LOC der letzten Implementierung (Kontext)
+     - `pre_filter_veto`: Ob PRE-FILTER VETO gesetzt hat
+   - Falls `next_focus_override` nicht leer:
+     → Hypothese MUSS diesen Fokus aufnehmen (I-Empfehlung hat Prioritaet)
+   - Falls `verify_status != "done"`:
+     → Fokus auf `unimplemented_slices` richten
+   - Falls nicht vorhanden: SKIP (Zyklus 1 oder kein I-Lauf)
 
 ---
 
@@ -169,9 +211,13 @@ SYNTHESE  │  DU, Hauptagent  │  ──LIEST──▶ drafts/{NAME}-hypothese
 Du bist Drafter D{NN} fuer die Hypothesen-Recherche von "{NAME}".
 
 INPUT - LIES ZUERST DIESE DATEIEN:
-  1. .claude/models/{NAME}_Model.md
-  2. .claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md
-  3. .claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md
+  1. # PRIMAER: Vault (BL-065)
+     {VAULT}/Backlog/{BL_SLUG}/2_Model/{NAME}_Model.md
+     # FALLBACK: lokal (Legacy)
+     # fallback-read: expected vault, using .claude/
+     ODER .claude/models/{NAME}_Model.md
+  2. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md
+  3. {WORKING_DIR}/.claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md
 
 AUFTRAG: {Fokus-Beschreibung}
 
@@ -284,6 +330,24 @@ Lies ALLE Dateien in `.claude/analysis/drafts/{NAME}-hypothese-D*.md`
 
 **Cycle 1:** Sektion 0 entfaellt (noch keine widerlegten W{n} vorhanden).
 
+#### SEKTION 0b: ANALYSE-Modus-Check (Z5: RF-08, NUR wenn sc_mode == ANALYSE)
+
+```
+# (Z5: RF-08, W241) ANALYSE-Modus: Hypothese = Forschungsfragen statt Implementierungs-Plan
+
+IF sc_mode == "ANALYSE":
+  → Hypothese formuliert FORSCHUNGSFRAGEN (nicht Implementierungs-Schritte)
+  → Format: "Was passiert wenn... / Welchen Effekt hat... / Unter welchen Bedingungen..."
+  → Kein "Geplante Aenderungen" Abschnitt (kein Code-Plan)
+  → Kein "Scope-Deklaration" (kein IC/LOC)
+  → Stattdessen: "Forschungsfragen" Abschnitt + "Erwartete Erkenntnisse" Abschnitt
+  → Verifikations-Kriterium: Typ V-ANALYSE (Beobachtung statt Test)
+  → Status: "BEREIT FUER ANALYSE" statt "BEREIT FUER IMPLEMENTATION"
+  Logge: "[ANALYSE-Modus] Hypothese = Forschungsfragen (RF-08)"
+ELSE:
+  → Normaler Implementierungs-Plan (siehe Sektion 1 unten)
+```
+
 #### SEKTION 1: Hypothese formulieren
 
 7. Lies alle Draft-Reports
@@ -303,7 +367,7 @@ Lies ALLE Dateien in `.claude/analysis/drafts/{NAME}-hypothese-D*.md`
 12. Definiere **Scope-Deklaration** (HO-08)
 13. Pruefe **Atomaritaets-Check**
 14. Plane das Experiment
-15. Schreibe `.claude/analysis/synthese/{NAME}-HYPOTHESEN.md`
+15. Schreibe `{WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md`
 
 ### Hypothesen-Dokument Struktur
 
@@ -437,8 +501,8 @@ SEKTION 1 ABGESCHLOSSEN
 | Quelle | Pfad |
 |--------|------|
 | Drafter D01 | .claude/analysis/drafts/{NAME}-hypothese-D01-*.md |
-| OBSERVE | .claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md |
-| QUALITYGATE | .claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md |
+| OBSERVE | {WORKING_DIR}/.claude/analysis/synthese/{NAME}-OBSERVE{CYCLE}.md |
+| QUALITYGATE | {WORKING_DIR}/.claude/analysis/synthese/{NAME}-QUALITYGATE{CYCLE}.md |
 | MODEL | .claude/models/{NAME}_Model.md |
 ```
 
@@ -449,7 +513,7 @@ SEKTION 1 ABGESCHLOSSEN
 **NAECHSTER SCHRITT:** /_SC_implement
 
 ### Synthese (Welle 2) - {Datum}
-- [x] .claude/analysis/synthese/{NAME}-HYPOTHESEN.md
+- [x] {WORKING_DIR}/.claude/analysis/synthese/{NAME}-HYPOTHESEN.md
 - [x] GC Sektion 0: {N} WIDERLEGT, {M} ELIMINIERT (oder "Cycle 1, entfaellt")
 - [x] Verifikation: V{x} ({Beschreibung})
 - [x] Scope: {IC-Name}, {N} Dateien, {M} LOC

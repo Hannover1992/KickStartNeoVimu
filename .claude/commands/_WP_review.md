@@ -1,4 +1,4 @@
-﻿# /_WP_review - Cross-Review & Scoring
+# /_WP_review - Cross-Review & Scoring
 
 ```yaml
 status: active
@@ -6,7 +6,7 @@ version: 1.0.0
 created: 2026-02-09
 op: REVIEW
 phase: core_transformation
-type: standard
+type: building-block
 chain_position: 3_of_4
 difficulty_scaling: true
 ```

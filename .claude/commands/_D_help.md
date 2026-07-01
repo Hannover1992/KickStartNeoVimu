@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Debloat-System - Hilfe & Uebersicht
 
 Zeige die Uebersicht der Debloat (/_D_*) Commands.

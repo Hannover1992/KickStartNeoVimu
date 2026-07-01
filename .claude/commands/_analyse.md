@@ -1,3 +1,7 @@
+---
+type: satellite
+---
+
 # Forschung Phase 1: Analyse
 
 > **LEGACY (v2.2): Dieser Command wurde durch 3 SRP-Commands ersetzt:**
@@ -33,7 +37,7 @@ Default ohne Parameter: **normal**
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║                                                                          ║
 ║  LIEST (Input) - PFLICHT:                                                ║
-║    1. .claude/analysis/_manifest.md                                      ║
+║    1. {VAULT}/_manifest.md                                      ║
 ║    2. .claude/models/{NAME}_Model.md  ◄── MUSS EXISTIEREN               ║
 ║    3. .claude/analysis/synthese/{NAME}-ERGEBNIS{CYCLE}.md                ║
 ║       ◄── Falls vorhanden (Folge-Zyklen)                                ║
@@ -63,7 +67,7 @@ Default ohne Parameter: **normal**
 ║      → W{n} nach TC verteilen, FOKUS setzen, VM-1..VM-6 aktivieren     ║
 ║                                                                          ║
 ║    Manifest (IMMER):                                                     ║
-║      .claude/analysis/_manifest.md (aktualisieren)                       ║
+║      {VAULT}/_manifest.md (aktualisieren)                       ║
 ║                                                                          ║
 ║  NEUE Pflicht-Abschnitte im ANALYSE-Dokument (Sektion B):               ║
 ║    ┌─────────────────────┬──────┬──────┬─────────────────────────────┐   ║
@@ -117,7 +121,7 @@ Default ohne Parameter: **normal**
 
 **IMMER als Erstes:**
 
-1. Lies `.claude/analysis/_manifest.md`
+1. Lies `{VAULT}/_manifest.md`
    - Ermittle den aktuellen {NAME}
    - Pruefe ob Phase _model abgeschlossen ist
    - Lies **SYSTEM-MODEL** und **SCHWIERIGKEIT** aus der System-Konfiguration

@@ -6,21 +6,9 @@ version: 1.1.0
 created: 2026-02-26
 op: Debloat
 phase: kollaps
-type: single-command
+type: building-block
 chain_position: terminal
 team_based: false
-changelog: |
-  v1.1.0: OP-11 Fix (2026-02-26): P3 INTEGRATION-CHECK SCHRITT 0 (LOCATE + FORMAT-LOCK + Kap.7-Typ).
-          P5 Q4 aufgeteilt: Q4a (Format-Compliance) + Q4b (Syntax-Check).
-          Rollback-Trigger erweitert um Q4a.
-  v1.0.0: Initialer Entwurf (S1_DOrchestrate, ModelBloat-Implementation).
-          5-Phasen-Ablauf aus ModelBloat_Model.md Kap. 4 (W06-W08).
-          Dual-Track: Track 1 (manuelle Tags, Default) + Track 2 (NLP, Enhancement).
-          Human-in-Loop bei P3 wenn Confidence <0.85 (W07).
-          --dry-run: zeigt was kollabiert wuerde, schreibt nichts.
-          --scan-only: P1+P2 ohne Schreiben (SOFT-Trigger).
-          KURZLEBIG: 1 Agent = 1 Command = 1 Response.
-          AE-3: Track 1 Default (W08). AE-4: HiL bei Conf. <0.85 (W07).
 ```
 
 ---

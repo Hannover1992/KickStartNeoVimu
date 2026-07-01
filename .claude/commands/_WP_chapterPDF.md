@@ -7,7 +7,7 @@ created: 2026-02-14
 updated: 2026-02-15
 op: WritePaper
 phase: Core Transformation
-type: publish
+type: building-block
 chain_position: chapterPDF
 difficulty_scaling: true
 mcp_critical: false

@@ -1,3 +1,7 @@
+---
+type: building-block
+---
+
 # Pre-PR Cleanup Command
 
 **Zweck:** Automatische Pruefung und Behebung von Cleanup-Verstoessen vor Pull Requests
@@ -14,7 +18,7 @@
 +==============================================================================+
 |                                                                              |
 | LIEST:                                                                       |
-|   - .claude/meta/codeKonvention/cleanup.md (Konventions-Regeln)            |
+|   - {META}/codeKonvention/cleanup.md (Konventions-Regeln)            |
 |     FEHLER falls nicht gefunden → EXIT 1                                   |
 |   - git diff --name-only develop...HEAD (Geaenderte Dateien im DIRTY-Scope)|
 |   - *.cs Dateien (C# Source Code)                                           |
