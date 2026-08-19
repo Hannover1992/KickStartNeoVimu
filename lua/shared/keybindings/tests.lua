@@ -774,13 +774,14 @@ Write-Host "  Hint: <leader>riF = Failed anzeigen" -ForegroundColor DarkGray
   end)
 end, { desc = '[DEPRECATED -> rTR] [R]un [I]ntegration [R]etry | Flaky-Filter (liest it-latest.trx)' })
 
--- <leader>riC - Run Integration Clean (Docker prune + rebuild test project)
+-- <leader>riC - Run Integration Clean (Docker nuke - PURE, kein dotnet build)
+-- Loescht: alle Container, alle Volumes, alle Images, kompletter Build-Cache.
+-- KEIN dotnet build danach — der naechste Test-Lauf (rim/rid/riA) baut von selbst neu.
 vim.keymap.set('n', '<leader>riC', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('Integration Clean only for DCSRE', vim.log.levels.WARN)
     return
   end
-  local test_proj = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests\\VDEK.DCSP.IntegrationTests.csproj'
   local Terminal = require('toggleterm.terminal').Terminal
   local clean = Terminal:new({
     cmd = "powershell.exe -NoProfile -Command \""
@@ -788,19 +789,17 @@ vim.keymap.set('n', '<leader>riC', function()
       .. "docker container prune -f; "
       .. "docker volume prune -f; "
       .. "Write-Host '=== Remove ALL Docker images ===' -ForegroundColor Cyan; "
-      .. "docker images -q | ForEach-Object { docker rmi -f $_ }; "
+      .. "docker images -q | ForEach-Object { docker rmi -f `$_ }; "
       .. "Write-Host '=== Clear ALL build cache ===' -ForegroundColor Cyan; "
       .. "docker builder prune -f --all; "
-      .. "Write-Host '=== Rebuild IntegrationTests ===' -ForegroundColor Cyan; "
-      .. "dotnet build '" .. test_proj .. "'; "
-      .. "Write-Host '=== Clean complete ===' -ForegroundColor Green\"",
+      .. "Write-Host '=== Clean complete (NO rebuild — naechster Test-Lauf baut neu) ===' -ForegroundColor Green\"",
     direction = 'horizontal',
     close_on_exit = false,
     count = 43,
   })
   clean:toggle()
-  vim.notify('[DCSRE] Cleaning Docker + rebuilding IntegrationTests...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [C]lean | Docker prune + remove testdatabase images + rebuild' })
+  vim.notify('[DCSRE] Docker NUKE (container/volumes/images/cache) — kein rebuild', vim.log.levels.INFO)
+end, { desc = '[R]un [I]ntegration [C]lean | Docker nuke only (kein rebuild)' })
 
 -- <leader>riD - Run Integration Delete (nur MockServer-Image löschen — der Bottleneck)
 vim.keymap.set('n', '<leader>riD', function()
@@ -912,12 +911,76 @@ Write-Host "========================================" -ForegroundColor Cyan
   local file = io.open(script_path, 'w')
   if file then file:write(script); file:close() end
 
+  -- Start-Zeit fuer Duration-Tracking
+  local start_ts = os.time()
+
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
     cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
     direction = 'horizontal',
     close_on_exit = false,
     count = 44,
+    on_exit = function()
+      vim.schedule(function()
+        local elapsed = os.time() - start_ts
+        local mm = math.floor(elapsed / 60)
+        local ss = elapsed % 60
+        local dur = string.format('%02d:%02d', mm, ss)
+
+        -- TRX parsen — nutzt existierende parse_trx_results() Helper
+        if vim.fn.filereadable(it_trx) == 0 then
+          vim.notify(
+            string.format('[riA] Fertig nach %s — aber kein TRX gefunden (Tests sind nicht gelaufen?)', dur),
+            vim.log.levels.ERROR,
+            { title = 'Integration Tests', timeout = 15000 }
+          )
+          return
+        end
+
+        local results = parse_trx_results()
+        local passed = vim.tbl_filter(function(r) return r.outcome == 'Passed' end, results)
+        local failed = vim.tbl_filter(function(r) return r.outcome == 'Failed' end, results)
+        local skipped = vim.tbl_filter(function(r) return r.outcome == 'NotExecuted' end, results)
+
+        -- Failed-Test-Namen kuerzen (nur Klassen + Method, ohne 'VDEK.DCSP.IntegrationTests.' Prefix)
+        local failed_short = {}
+        for _, t in ipairs(failed) do
+          local short = t.name:gsub('^.*IntegrationTests%.', '')
+          table.insert(failed_short, '  ✗ ' .. short)
+        end
+
+        -- Max 10 Failures zeigen, Rest als "(+N more)"
+        local max_show = 10
+        local failed_display
+        if #failed_short <= max_show then
+          failed_display = table.concat(failed_short, '\n')
+        else
+          local first = { unpack(failed_short, 1, max_show) }
+          failed_display = table.concat(first, '\n') .. string.format('\n  ... (+%d weitere)', #failed_short - max_show)
+        end
+
+        local icon, level, title
+        if #failed == 0 then
+          icon = '✓'
+          level = vim.log.levels.INFO
+          title = 'riA ERFOLG'
+        else
+          icon = '✗'
+          level = vim.log.levels.WARN
+          title = 'riA mit Failures'
+        end
+
+        local msg = string.format(
+          '%s riA fertig | Dauer: %s\nPASSED: %d  FAILED: %d  SKIPPED: %d',
+          icon, dur, #passed, #failed, #skipped
+        )
+        if #failed > 0 then
+          msg = msg .. '\n\n--- FAILED ---\n' .. failed_display
+        end
+
+        vim.notify(msg, level, { title = title, timeout = 30000 })
+      end)
+    end,
   })
   test:toggle()
   vim.notify('[DCSRE] riA: Alle Integration Tests (Mock → DB → merge)...', vim.log.levels.INFO)

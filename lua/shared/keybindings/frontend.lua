@@ -42,8 +42,10 @@ vim.keymap.set('n', '<leader>rfb', function()
   vim.notify('[' .. vim.g.project_name .. '] Building Frontend...', vim.log.levels.INFO)
 end, { desc = '[R]un [F]ront [B]uild | npm run build / docker compose build' })
 
--- Run Frontend Test: Execute tests
-vim.keymap.set('n', '<leader>rft', function()
+-- Run Frontend Unit-Tests: Jest / NX test
+-- (Fruehere Bindung <leader>rft → renamed zu rfu; 't' ist mehrdeutig, 'u' = Unit ist klarer.
+--  E2E ist <leader>re*, Unit ist <leader>rfu.)
+vim.keymap.set('n', '<leader>rfu', function()
   local Terminal = require('toggleterm.terminal').Terminal
   local test = Terminal:new({
     cmd = 'powershell.exe -Command "Set-Location \'' .. vim.g.project_frontend .. '\'; npm test"',
@@ -51,8 +53,8 @@ vim.keymap.set('n', '<leader>rft', function()
     close_on_exit = false,
   })
   test:toggle()
-  vim.notify('[' .. vim.g.project_name .. '] Running Frontend tests...', vim.log.levels.INFO)
-end, { desc = '[R]un [F]ront [T]est | npm test' })
+  vim.notify('[' .. vim.g.project_name .. '] Running Frontend Unit-Tests (Jest)...', vim.log.levels.INFO)
+end, { desc = '[R]un [F]ront [U]nit-Tests | npm test (Jest)' })
 
 -- Run Frontend Install: npm install
 vim.keymap.set('n', '<leader>rfi', function()
