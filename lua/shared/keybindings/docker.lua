@@ -88,6 +88,18 @@ vim.keymap.set('n', '<leader>rDR', function()
   vim.notify('[' .. vim.g.project_name .. '] Full Docker RESET (deleting all data)...', vim.log.levels.WARN)
 end, { desc = '[R]un [D]ocker [R]eset | docker compose down -v --rmi all' })
 
+-- Docker TUI: lazydocker (Ersatz für Docker Desktop GUI, terminal-basiert)
+vim.keymap.set('n', '<leader>rDt', function()
+  local Terminal = require('toggleterm.terminal').Terminal
+  local lazydocker = Terminal:new({
+    cmd = 'lazydocker',
+    direction = 'float',
+    close_on_exit = true,
+    count = 24, -- Separate terminal ID für lazydocker
+  })
+  lazydocker:toggle()
+end, { desc = '[R]un [D]ocker [T]UI | lazydocker' })
+
 -- Docker Build Frontend (for projects using docker)
 vim.keymap.set('n', '<leader>rdf', function()
   local Terminal = require('toggleterm.terminal').Terminal
