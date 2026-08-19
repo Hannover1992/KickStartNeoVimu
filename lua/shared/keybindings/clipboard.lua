@@ -1,9 +1,9 @@
--- lua/shared/keybindings/clipboard.lua
+﻿-- lua/shared/keybindings/clipboard.lua
 -- Clipboard/Yank Keybindings: yp, yn, yd, yDA, yW, yWA, yC, yI, gyf, gyd
 -- Lade-Voraussetzung: require('shared.core') muss bereits geladen sein (toggleterm, gitsigns etc.)
 
 local platform = require('shared.platform')
-local is_windows = platform.is_windows  -- Kompatibilität
+local is_windows = platform.is_windows  -- KompatibilitÃ¤t
 
 -- Copy relative filepath to clipboard (Windows format)
 vim.keymap.set('n', '<leader>yp', function()
@@ -194,84 +194,228 @@ vim.keymap.set('n', '<leader>mf', function()
   vim.notify('Created temporary markdown buffer (won\'t be saved)', vim.log.levels.INFO)
 end, { desc = '[M]arkdown [F]oo scratch (temp)' })
 
--- Markdown PDF Export with Chrome Headless (<leader>mP)
+-- Markdown PDF Export with Chrome Headless (<leader>mP dark / <leader>mS light)
 -- Uses markdown-preview.nvim's HTML renderer + Chrome headless print
 -- Supports Mermaid, PlantUML, and all markdown-preview features!
-vim.keymap.set('n', '<leader>mP', function()
-  local file = vim.fn.expand('%:p')
-  if vim.bo.filetype ~= 'markdown' then
-    vim.notify('Not a markdown file!', vim.log.levels.WARN)
-    return
-  end
+-- Die Preview-URL kommt aus g:mkdp_last_url â€” gesetzt von OpenMarkdownPreview()
+-- in core.lua, das vom Plugin als browserfunc mit der echten URL gerufen wird.
+--
+-- Fehler bleiben stehen: vim.notify verschwindet nach ein paar Sekunden und die
+-- Kommandozeile scrollt weg, bevor man sie lesen kann. Darum landet jeder Fehler
+-- zusaetzlich in einem Split-Fenster, das offen bleibt bis man es schliesst.
+local function show_error(lines)
+  vim.schedule(function()
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.bo[buf].bufhidden = 'wipe'
+    vim.bo[buf].filetype = 'markdown'
+    vim.cmd('botright split')
+    vim.api.nvim_win_set_buf(0, buf)
+    vim.api.nvim_win_set_height(0, math.min(#lines + 2, 20))
+    vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = buf, desc = 'Fehlerfenster schliessen' })
+  end)
+end
 
-  -- Check if Chrome is available (works in both WSL2 and Windows)
-  local chrome_path
+-- Markdown -> PDF (<leader>mP dunkel, <leader>mS hell fuer den Drucker)
+--
+-- Bewusst OHNE markdown-preview.nvim: dessen Preview-Seite haelt per Socket.io
+-- dauerhaft eine Verbindung offen und holt ihren Inhalt erst nachtraeglich nach.
+-- Chrome-Headless wartet darum entweder ewig auf "Seite fertig" (gemessen: 31s
+-- Haenger, Exitcode -1) oder druckt vorher und liefert eine leere Seite (858 Byte).
+-- Der Weg ueber Pandoc + lokale HTML-Datei ist gemessen 0.6s und deterministisch.
+local MKDP_STATIC = vim.fn.stdpath('data') .. '/lazy/markdown-preview.nvim/app/_static'
+
+local function chrome_binary()
   if vim.fn.has('unix') == 1 then
-    -- WSL2: Use Windows Chrome via /mnt/c path
-    chrome_path = '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe'
+    return '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe'
+  end
+  return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+end
+
+local function build_html(body, theme)
+  local css, maid_theme
+  if theme == 'light' then
+    -- Druckversion: weisser Grund, dunkle Schrift — spart Toner
+    css = 'body{background:#fff;color:#111}pre,code{background:#f4f4f4;color:#111}'
+       .. 'th{background:#eaeaea}a{color:#0645ad}blockquote{color:#444;border-left:4px solid #ccc}'
+    maid_theme = 'default'
   else
-    -- Windows native
-    chrome_path = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    css = 'body{background:#1e1e1e;color:#e6e6e6}pre,code{background:#2a2a2a;color:#e6e6e6}'
+       .. 'th{background:#333}a{color:#6cb6ff}blockquote{color:#bbb;border-left:4px solid #555}'
+    maid_theme = 'dark'
   end
 
-  if vim.fn.filereadable(chrome_path) == 0 then
-    vim.notify('Chrome not found! Install Google Chrome.', vim.log.levels.ERROR)
+  local mermaid_src = (MKDP_STATIC .. '/mermaid.min.js'):gsub('\\', '/')
+
+  return table.concat({
+    '<!doctype html><html><head><meta charset="utf-8"><style>',
+    'body{font-family:Segoe UI,Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px;line-height:1.6}',
+    'pre{padding:10px;border-radius:4px;overflow-x:auto;white-space:pre-wrap}',
+    'code{padding:1px 4px;border-radius:3px}',
+    'table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}',
+    'img,svg{max-width:100%}blockquote{margin-left:0;padding-left:12px}',
+    'h1,h2,h3{line-height:1.25}',
+    css,
+    '@media print{body{margin:0;padding:0}pre,blockquote,table{break-inside:avoid}}',
+    '</style>',
+    '<script src="file:///' .. mermaid_src .. '"></script>',
+    '</head><body>',
+    body,
+    '<script>',
+    -- Pandoc macht aus ```mermaid je nach Version <pre class="mermaid"> ODER
+    -- <pre><code class="language-mermaid">. Beide Formen einsammeln.
+    'document.querySelectorAll("pre > code.language-mermaid, pre.mermaid > code").forEach(function(c){',
+    '  var d=document.createElement("div"); d.className="mermaid"; d.textContent=c.textContent;',
+    '  c.parentNode.replaceWith(d);',
+    '});',
+    'if (window.mermaid) { mermaid.initialize({startOnLoad:true, theme:"' .. maid_theme .. '"}); }',
+    '</script></body></html>',
+  }, '\n')
+end
+
+local function markdown_export_pdf(theme)
+  if vim.bo.filetype ~= 'markdown' then
+    vim.notify('Keine Markdown-Datei!', vim.log.levels.WARN)
     return
   end
 
-  -- Generate PDF path in SAME directory as markdown file
-  local dir = vim.fn.fnamemodify(file, ':h')  -- Get directory
-  local filename = vim.fn.fnamemodify(file, ':t:r')  -- Get filename without extension
-  local pdf_file = dir .. '/' .. filename .. '.pdf'  -- Combine (forward slash works in both WSL2 and Windows Neovim)
+  if vim.fn.executable('pandoc') == 0 then
+    show_error({
+      '# PDF-Export nicht moeglich',
+      '',
+      'pandoc wurde nicht gefunden (wird zum Rendern von Markdown gebraucht).',
+      '',
+      'Installieren:  winget install --id JohnMacFarlane.Pandoc',
+      '',
+      'Fenster schliessen mit  q',
+    })
+    return
+  end
 
-  -- Start markdown preview (generates HTML with Mermaid rendering)
-  vim.cmd('MarkdownPreview')
+  local chrome = chrome_binary()
+  if vim.fn.filereadable(chrome) == 0 then
+    show_error({
+      '# PDF-Export nicht moeglich',
+      '',
+      'Google Chrome nicht gefunden unter:',
+      '  ' .. chrome,
+      '',
+      'Fenster schliessen mit  q',
+    })
+    return
+  end
 
-  -- Wait a bit for preview server to start and render
-  vim.defer_fn(function()
-    -- Get the preview URL from markdown-preview
-    local url = vim.fn['mkdp#util#get_url']()
-    if not url or url == '' then
-      vim.notify('Failed to get preview URL!', vim.log.levels.ERROR)
-      vim.cmd('MarkdownPreviewStop')
-      return
-    end
+  local file = vim.fn.expand('%:p')
+  local dir = vim.fn.fnamemodify(file, ':h')
+  local stem = vim.fn.fnamemodify(file, ':t:r')
+  local pdf_file = dir .. '/' .. stem .. '.pdf'
 
-    -- Convert PDF path for Chrome (WSL2 needs Windows path, Chrome requires backslashes)
-    local pdf_path_for_chrome = pdf_file
-    if vim.fn.has('unix') == 1 then
-      pdf_path_for_chrome = pdf_file:gsub('/mnt/c', 'C:'):gsub('/', '\\')
-    else
-      pdf_path_for_chrome = pdf_file:gsub('/', '\\')
-    end
+  -- Aktuellen Buffer-Inhalt exportieren, nicht die Datei auf der Platte:
+  -- so landen auch ungespeicherte Aenderungen im PDF.
+  local tmp_md = vim.fn.tempname() .. '.md'
+  vim.fn.writefile(vim.api.nvim_buf_get_lines(0, 0, -1, false), tmp_md)
 
-    -- Use Chrome headless to print to PDF
-    local cmd = string.format(
-      '"%s" --headless --disable-gpu --print-to-pdf="%s" "%s"',
-      chrome_path,
-      pdf_path_for_chrome,
-      url
-    )
+  vim.notify('Erzeuge PDF (' .. theme .. ')...', vim.log.levels.INFO)
 
-    vim.notify('Generating PDF with Mermaid support...', vim.log.levels.INFO)
-    vim.fn.system(cmd)
+  -- Markdown -> HTML-Fragment. systemlist wuerde die Zeilenumbrueche verlieren,
+  -- was Mermaid-Bloecke zu einer einzigen Zeile macht ("Syntax error in text").
+  local body = vim.fn.system({ 'pandoc', '-f', 'gfm', '-t', 'html5', '--mathml', tmp_md })
+  if vim.v.shell_error ~= 0 then
+    vim.fn.delete(tmp_md)
+    local lines = { '# PDF-Export fehlgeschlagen', '', 'pandoc-Exitcode: ' .. vim.v.shell_error, '', '## Ausgabe', '' }
+    vim.list_extend(lines, vim.split(body or '', '\n', { trimempty = true }))
+    table.insert(lines, '')
+    table.insert(lines, 'Fenster schliessen mit  q')
+    show_error(lines)
+    return
+  end
 
-    -- Stop preview after PDF generation
-    vim.cmd('MarkdownPreviewStop')
+  local html_file = vim.fn.tempname() .. '.html'
+  vim.fn.writefile(vim.split(build_html(body, theme), '\n'), html_file)
 
-    if vim.v.shell_error == 0 and vim.fn.filereadable(pdf_file) == 1 then
-      vim.notify('PDF created: ' .. vim.fn.fnamemodify(pdf_file, ':t'), vim.log.levels.INFO)
-      -- Open PDF in default viewer
-      if vim.fn.has('unix') == 1 then
-        vim.fn.system('explorer.exe "' .. pdf_path_for_chrome .. '"')
-      else
-        vim.fn.system('start "" "' .. pdf_file .. '"')
-      end
-    else
-      vim.notify('PDF generation failed!', vim.log.levels.ERROR)
-    end
-  end, 3000) -- Wait 3 seconds for Mermaid to render
-end, { desc = '[M]arkdown [P]DF export (with Mermaid)' })
+  local file_url = 'file:///' .. html_file:gsub('\\', '/')
+  local pdf_for_chrome = pdf_file
+  if vim.fn.has('unix') == 1 then
+    pdf_for_chrome = pdf_file:gsub('/mnt/c', 'C:'):gsub('/', '\\')
+  else
+    pdf_for_chrome = pdf_file:gsub('/', '\\')
+  end
+  vim.fn.delete(pdf_file)
+
+  -- --virtual-time-budget: Chrome spult seine Timer vor, damit Mermaid fertig
+  -- rendert, bevor gedruckt wird — ohne real zu warten.
+  local cmd = string.format(
+    '"%s" --headless --disable-gpu --no-pdf-header-footer --virtual-time-budget=20000 --print-to-pdf="%s" "%s"',
+    chrome, pdf_for_chrome, file_url
+  )
+  local out = vim.fn.system(cmd)
+  local rc = vim.v.shell_error
+
+  vim.fn.delete(tmp_md)
+
+  if vim.fn.filereadable(pdf_file) == 0 then
+    local lines = {
+      '# PDF-Export fehlgeschlagen',
+      '',
+      'Chrome-Exitcode: ' .. rc,
+      'Ziel-PDF:        ' .. pdf_file,
+      'HTML-Zwischendatei (bleibt zum Nachsehen liegen):',
+      '  ' .. html_file,
+      '',
+      '## Chrome-Aufruf',
+      '',
+      cmd,
+      '',
+      '## Chrome-Ausgabe',
+      '',
+    }
+    vim.list_extend(lines, vim.split(out or '', '\n', { trimempty = true }))
+    table.insert(lines, '')
+    table.insert(lines, 'Fenster schliessen mit  q')
+    show_error(lines)
+    return
+  end
+
+  vim.fn.delete(html_file)
+
+  local kb = math.floor(vim.fn.getfsize(pdf_file) / 1024)
+  vim.notify('PDF erstellt: ' .. vim.fn.fnamemodify(pdf_file, ':t') .. ' (' .. kb .. ' KB)', vim.log.levels.INFO)
+
+  if vim.fn.has('unix') == 1 then
+    vim.fn.system('explorer.exe "' .. pdf_for_chrome .. '"')
+  else
+    vim.fn.system('start "" "' .. pdf_file .. '"')
+  end
+end
+
+vim.keymap.set('n', '<leader>mP', function()
+  markdown_export_pdf('dark')
+end, { desc = '[M]arkdown [P]DF export dark (with Mermaid)' })
+
+-- <leader>me - Fehler/Meldungen nachlesen, die in der Kommandozeile weggescrollt sind.
+-- :messages allein scrollt genauso weg; hier landet alles in einem normalen Buffer
+-- (scrollbar, durchsuchbar mit /, kopierbar mit y). Schliessen mit q.
+vim.keymap.set('n', '<leader>me', function()
+  local msgs = vim.fn.execute('messages')
+  local lines = vim.split(msgs, '\n', { trimempty = true })
+  if #lines == 0 then
+    vim.notify('Keine Meldungen vorhanden.', vim.log.levels.INFO)
+    return
+  end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.cmd('botright split')
+  vim.api.nvim_win_set_buf(0, buf)
+  vim.api.nvim_win_set_height(0, math.min(#lines + 1, 25))
+  vim.cmd('normal! G')  -- ans Ende: der neueste Fehler steht unten
+  vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = buf, desc = 'Meldungen schliessen' })
+end, { desc = '[M]essages/[E]rrors nachlesen (scrollbar, q schliesst)' })
+
+-- Druckversion: weisser Hintergrund, schwarzer Text â€” spart Toner
+vim.keymap.set('n', '<leader>mS', function()
+  markdown_export_pdf('light')
+end, { desc = '[M]arkdown [S]ave print-PDF light (Toner-schonend)' })
 
 -- Git Yank File diff vs base branch (<leader>gyf)
 -- Copies the git diff for current file against origin/develop (or origin/main) to clipboard
