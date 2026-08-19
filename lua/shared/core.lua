@@ -547,12 +547,23 @@ require('lazy').setup({
       vim.g.mkdp_auto_close = 0
       -- Theme: 'dark' oder 'light'
       vim.g.mkdp_theme = 'dark'
+      -- KEIN fester Port! Ein gepinnter Port kollidiert mit einem noch laufenden
+      -- Preview-Prozess: das Plugin ruft plugin.init() erst NACH erfolgreichem listen()
+      -- auf (app/server.js), d.h. bei belegtem Port bleibt `app` undefined und jeder
+      -- Refresh wirft "Cannot read properties of undefined (reading 'refreshPage')".
+      -- Der Zufallsport ist die robuste Variante; die URL fangen wir unten in
+      -- OpenMarkdownPreview ab (das Plugin uebergibt sie dort als Argument).
       -- Open in browser - ALWAYS open in NEW Chrome window
       vim.g.mkdp_browserfunc = 'OpenMarkdownPreview'
+      -- Die Preview-URL landet hier als Argument; wir merken sie in g:mkdp_last_url,
+      -- damit man sie zum Debuggen nachschlagen kann (:echo g:mkdp_last_url).
+      -- Der PDF-Export (<leader>mP / <leader>mS) braucht sie NICHT — der geht ueber
+      -- Pandoc und eine lokale HTML-Datei, siehe keybindings/clipboard.lua.
       if vim.fn.has('win32') == 1 then
         -- Windows: Chrome mit --new-window Flag
         vim.cmd([[
           function OpenMarkdownPreview(url)
+            let g:mkdp_last_url = a:url
             execute 'silent !start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "' . a:url . '"'
           endfunction
         ]])
@@ -560,6 +571,7 @@ require('lazy').setup({
         -- WSL: Chrome via Windows path mit --new-window
         vim.cmd([[
           function OpenMarkdownPreview(url)
+            let g:mkdp_last_url = a:url
             execute 'silent !/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe --new-window "' . a:url . '"'
           endfunction
         ]])
@@ -1123,6 +1135,26 @@ require('lazy').setup({
     keys = {
       { '<leader>e', '<cmd>Neotree reveal<cr>', desc = '[E]xplorer Reveal (show current file)' },
       { '<leader>E', '<cmd>Neotree toggle<cr>', desc = '[E]xplorer Toggle (on/off)' },
+      {
+        '<leader>et',
+        function()
+          vim.g.neotree_test_filter_active = not vim.g.neotree_test_filter_active
+          local patterns = vim.g.neotree_test_filter_active
+            and { '*Test*', '*test*', '*Tests*', '*cypress*', '*e2e*' }
+            or {}
+          require('neo-tree').setup({
+            filesystem = { filtered_items = { hide_by_pattern = patterns } },
+          })
+          require('neo-tree.sources.manager').refresh('filesystem')
+          vim.notify(
+            vim.g.neotree_test_filter_active and 'Test-Ordner ausgeblendet (nur View, nichts geloescht)'
+              or 'Test-Ordner wieder sichtbar',
+            vim.log.levels.INFO,
+            { title = 'Explorer' }
+          )
+        end,
+        desc = '[E]xplorer [T]oggle Test-Folders (Cypress/e2e/*Test* ein-/ausblenden)',
+      },
     },
     config = function()
       -- Enable relative line numbers in neo-tree window
@@ -1210,6 +1242,29 @@ require('lazy').setup({
     'folke/zen-mode.nvim',
     keys = {
       { '<leader>z', '<cmd>ZenMode<cr>', desc = '[Z]en Mode Toggle' },
+      {
+        '<leader>zc',
+        function()
+          if vim.b.center_scan_active then
+            vim.wo.scrolloff = vim.b.center_scan_saved_scrolloff or 0
+            vim.wo.cursorline = vim.b.center_scan_saved_cursorline or false
+            vim.b.center_scan_active = false
+            vim.notify('Center-Scan: AUS', vim.log.levels.INFO, { title = 'Zen' })
+          else
+            vim.b.center_scan_saved_scrolloff = vim.wo.scrolloff
+            vim.b.center_scan_saved_cursorline = vim.wo.cursorline
+            vim.wo.scrolloff = 999
+            vim.wo.cursorline = true
+            vim.b.center_scan_active = true
+            vim.notify(
+              'Center-Scan: AN — j/k bewegt den Text durch, Cursor+markierte Zeile bleiben mittig',
+              vim.log.levels.INFO,
+              { title = 'Zen' }
+            )
+          end
+        end,
+        desc = '[Z]en [C]enter-Scan (Cursor mittig fixiert, Zeile highlighted, Text scrollt beim j/k)',
+      },
     },
     opts = {
       window = {
@@ -1225,6 +1280,34 @@ require('lazy').setup({
         twilight = { enabled = true }, -- Enable twilight dimming
       },
     },
+  },
+
+  -- neoscroll.nvim - Animiertes (eased) Scrollen statt hartem "Teleport" bei
+  -- Sprung-Befehlen. Wichtig: das ist kein echtes Pixel-Smooth-Scrolling (das
+  -- kann ein Terminal-UI grundsaetzlich nicht, Text ist Zeichen-Raster) --
+  -- einzelne j/k-Presses waren schon vorher atomar/instant. Was hier smooth
+  -- wird: Mehrzeilen-Spruenge (Ctrl-D/U/F/B, zz/zt/zb, gg/G) UND Mausrad.
+  {
+    'karb94/neoscroll.nvim',
+    event = 'VeryLazy',
+    config = function()
+      local neoscroll = require('neoscroll')
+      neoscroll.setup({
+        mappings = { '<C-u>', '<C-d>', '<C-b>', '<C-f>', '<C-y>', '<C-e>', 'zt', 'zz', 'zb' },
+        hide_cursor = true,
+        stop_eof = true,
+        respect_scrolloff = false,
+        cursor_scrolls_alone = true,
+        duration_multiplier = 0.85, -- etwas straffer: gleiche Frame-Anzahl, weniger Gesamtzeit -> hoehere gefuehlte fps
+        easing = 'sine', -- natuerlicherer Ease-in/out statt quadratic (weniger "ruckartiger" Start/Stop)
+        performance_mode = false, -- RTX 2080 Ti + 144Hz -> Performance ist kein Thema
+      })
+
+      -- Mausrad ebenfalls animieren (neoscroll deckt das nicht automatisch ab)
+      local mouse_opts = { duration = 100, easing = 'sine', info = false }
+      vim.keymap.set('n', '<ScrollWheelUp>', function() neoscroll.scroll(-3, mouse_opts) end)
+      vim.keymap.set('n', '<ScrollWheelDown>', function() neoscroll.scroll(3, mouse_opts) end)
+    end,
   },
 
   -- nvim-notify - Beautiful notifications with animations
@@ -1405,6 +1488,201 @@ require('lazy').setup({
     end,
   },
 
+  -- SonarLint Connected Mode: dieselben Issues wie im SonarQube-Server-Dashboard, live in Neovim
+  -- Voraussetzung: $env:SONARQUBE_TOKEN / $env:SONARQUBE_URL im PowerShell-Profil (siehe $PROFILE)
+  -- LSP-Server via `:MasonInstall sonarlint-language-server` (auch ueber mason-tool-installer.ensure_installed)
+  {
+    'https://gitlab.com/schrieveslaach/sonarlint.nvim',
+    ft = 'cs',
+    dependencies = { 'neovim/nvim-lspconfig', 'mason-org/mason.nvim' },
+    config = function()
+      -- connectionId "itsg" ist frei gewaehlt, muss nur mit der connections-Tabelle unten uebereinstimmen
+      local connection_id = 'itsg'
+      -- Projekt-Key aus dem SonarQube-Server je Projekt (vim.g.project_name aus shared/project.lua)
+      local sonar_project_keys = {
+        DCSRE = 'DCSRE_Backend',
+      }
+
+      -- Java-Pfad NICHT ueber PATH: der Mason-Wrapper 'sonarlint-language-server' ruft blind
+      -- 'java' auf und stirbt still ("'java' is not recognized"), wenn Neovim aus einer Shell
+      -- ohne Java im PATH gestartet wurde. Darum absoluter Pfad, dynamisch gesucht.
+      local function find_java()
+        local from_path = vim.fn.exepath('java')
+        if from_path ~= '' then return from_path end
+        local candidates = vim.fn.glob('C:/Program Files/Eclipse Adoptium/*/bin/java.exe', false, true)
+        if #candidates > 0 then return candidates[1] end
+        candidates = vim.fn.glob('C:/Program Files/Microsoft/jdk*/bin/java.exe', false, true)
+        if #candidates > 0 then return candidates[1] end
+        return nil
+      end
+
+      local java_bin = find_java()
+      if not java_bin then
+        vim.notify('[SonarLint] Kein java gefunden (PATH + Eclipse Adoptium + Microsoft JDK geprueft) - SonarLint deaktiviert', vim.log.levels.WARN)
+        return
+      end
+
+      local mason_pkg = vim.fn.stdpath('data') .. '/mason/packages/sonarlint-language-server/extension'
+      local mason_analyzers = vim.fn.stdpath('data') .. '/mason/share/sonarlint-analyzers'
+
+      require('sonarlint').setup({
+        server = {
+          cmd = {
+            java_bin,
+            '-jar',
+            mason_pkg .. '/server/sonarlint-ls.jar',
+            '-stdio',
+            '-analyzers',
+            -- C#-Architektur-Eigenheit: NICHT sonarcsharp.jar direkt laden!
+            -- sonarlintomnisharp.jar ist das Bruecken-Plugin, das die gebundelte
+            -- OmniSharp-Instanz startet; sonarcsharp.jar (die Regeln) wird ihm
+            -- ueber init_options.csharpOssPath zugefuettert.
+            mason_analyzers .. '/sonarlintomnisharp.jar',
+          },
+          -- Neovim schickt sonst filetype='cs' als LSP-languageId; VSCode-basierte Server
+          -- (SonarLint eingeschlossen) erwarten 'csharp' und ignorieren 'cs' sonst stillschweigend
+          get_language_id = function(_bufnr, filetype)
+            if filetype == 'cs' then
+              return 'csharp'
+            end
+            return filetype
+          end,
+          settings = {
+            sonarlint = {
+              -- Debug-Schalter: Server-eigene Logs kommen als window/logMessage (INFO/DEBUG).
+              -- Sichtbar nur wenn vim.lsp.set_log_level('debug') gesetzt ist -> <leader>sQd
+              output = { showVerboseLogs = true },
+              -- Explizit: ohne das analysiert der Server ggf. gar nicht
+              automaticAnalysis = true,
+              connectedMode = {
+                connections = {
+                  sonarqube = {
+                    {
+                      connectionId = connection_id,
+                      serverUrl = vim.env.SONARQUBE_URL,
+                      disableNotifications = false,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          init_options = {
+            omnisharpDirectory = mason_pkg .. '/omnisharp',
+            csharpOssPath = mason_analyzers .. '/sonarcsharp.jar',
+            csharpEnterprisePath = mason_analyzers .. '/csharpenterprise.jar',
+          },
+          before_init = function(_params, config)
+            local project_key = sonar_project_keys[vim.g.project_name]
+            if not project_key then
+              vim.notify('[SonarLint] Kein Projekt-Key fuer ' .. tostring(vim.g.project_name) .. ' hinterlegt - Connected Mode inaktiv', vim.log.levels.WARN)
+              return
+            end
+            config.settings.sonarlint.connectedMode.project = {
+              connectionId = connection_id,
+              projectKey = project_key,
+            }
+          end,
+        },
+        connected = {
+          get_credentials = function(_client_id, _url)
+            return vim.env.SONARQUBE_TOKEN
+          end,
+        },
+        -- root_dir explizit setzen: sonst faellt find_root_dir() bei Buffern ohne Dateinamen
+        -- auf dirname('.git') = "." zurueck und legt einen zweiten, kaputten Client an,
+        -- der dann echte Buffer abgreift (im Status sichtbar als: root=.)
+        root_dir = vim.g.project_root_windows or vim.fn.getcwd(),
+        filetypes = { 'cs' },
+      })
+
+      -- === SonarQube Debug-Werkzeuge (schrittweise Diagnose) ===
+      -- Schritt 1: Debug-Logging an + SonarLint-Client neu starten
+      vim.keymap.set('n', '<leader>sQd', function()
+        vim.lsp.set_log_level('debug')
+        local stopped = 0
+        for _, c in ipairs(vim.lsp.get_clients({ name = 'sonarlint.nvim' })) do
+          c:stop(true)
+          stopped = stopped + 1
+        end
+        -- interne root_dir->client-Tabelle leeren, sonst startet das Plugin nicht neu
+        local sl = package.loaded['sonarlint']
+        if sl then sl._client_id_by_root_dir = {} end
+        vim.notify(string.format('[SonarQube] Debug-Log AN, %d Client(s) gestoppt.\nJetzt :e! auf die .cs-Datei -> dann <leader>sQl', stopped), vim.log.levels.INFO)
+      end, { desc = '[S]onar[Q]ube [d]ebug an (Log=debug + Client-Restart)' })
+
+      -- Schritt 2: Nur die SonarLint-Zeilen aus dem LSP-Log in einem Scratch-Buffer
+      vim.keymap.set('n', '<leader>sQl', function()
+        local log = vim.lsp.get_log_path()
+        if vim.fn.filereadable(log) == 0 then
+          vim.notify('LSP-Log nicht gefunden: ' .. log, vim.log.levels.ERROR)
+          return
+        end
+        local all = vim.fn.readfile(log)
+        local hits = {}
+        for i = math.max(1, #all - 20000), #all do
+          local line = all[i]
+          if line and (line:lower():find('sonar', 1, true)) then
+            table.insert(hits, line)
+          end
+        end
+        if #hits == 0 then
+          vim.notify('Keine SonarLint-Zeilen im Log.\nErst <leader>sQd, dann Datei neu oeffnen (:e!), 1-2 Min warten.', vim.log.levels.WARN)
+          return
+        end
+        vim.cmd('new')
+        vim.bo.bufhidden = 'wipe'
+        vim.bo.filetype = 'log'
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, hits)
+        vim.bo.modifiable = false
+        vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = 0, nowait = true })
+        vim.cmd('normal! G')
+        vim.notify(string.format('[SonarQube] %d Log-Zeilen (q = schliessen)', #hits), vim.log.levels.INFO)
+      end, { desc = '[S]onar[Q]ube [l]og anzeigen (nur Sonar-Zeilen)' })
+
+      -- Schritt 3: Status — welche Clients laufen, wer haengt am Buffer, wieviele Diagnostics je Quelle
+      vim.keymap.set('n', '<leader>sQs', function()
+        local out = {}
+        table.insert(out, '=== SonarQube / OmniSharp Status ===')
+        table.insert(out, 'Buffer: ' .. vim.api.nvim_buf_get_name(0))
+        table.insert(out, 'Filetype: ' .. vim.bo.filetype)
+        table.insert(out, '')
+        table.insert(out, '--- Alle LSP-Clients ---')
+        for _, c in ipairs(vim.lsp.get_clients()) do
+          local bufs = {}
+          for b, _ in pairs(c.attached_buffers or {}) do table.insert(bufs, b) end
+          table.insert(out, string.format('  %s (id=%d) root=%s buffers=[%s]', c.name, c.id, tostring(c.config.root_dir), table.concat(bufs, ',')))
+        end
+        table.insert(out, '')
+        table.insert(out, '--- Diagnostics dieses Buffers nach Quelle ---')
+        local by_source = {}
+        for _, d in ipairs(vim.diagnostic.get(0)) do
+          local s = tostring(d.source)
+          by_source[s] = (by_source[s] or 0) + 1
+        end
+        if vim.tbl_isempty(by_source) then
+          table.insert(out, '  (keine)')
+        else
+          for s, n in pairs(by_source) do
+            table.insert(out, string.format('  %s: %d', s, n))
+          end
+        end
+        table.insert(out, '')
+        table.insert(out, '--- Umgebung ---')
+        table.insert(out, '  SONARQUBE_URL: ' .. tostring(vim.env.SONARQUBE_URL))
+        table.insert(out, '  SONARQUBE_TOKEN gesetzt: ' .. tostring(vim.env.SONARQUBE_TOKEN ~= nil and vim.env.SONARQUBE_TOKEN ~= ''))
+        table.insert(out, '  LSP-Log-Level: siehe :checkhealth vim.lsp')
+        table.insert(out, '  Log-Pfad: ' .. vim.lsp.get_log_path())
+
+        vim.cmd('new')
+        vim.bo.bufhidden = 'wipe'
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, out)
+        vim.bo.modifiable = false
+        vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = 0, nowait = true })
+      end, { desc = '[S]onar[Q]ube [s]tatus (Clients + Diagnostics je Quelle)' })
+    end,
+  },
+
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
   -- keys can be used to configure plugin behavior/loading/etc.
@@ -1446,22 +1724,73 @@ require('lazy').setup({
           vim.keymap.set(mode, l, r, opts)
         end
 
-        -- Navigation
-        map('n', ']c', function()
+        -- Navigation: ]c/[c (Vim-Standard fuer change in diff-mode) UND ]h/[h (Alias = hunk)
+        local function next_hunk()
           if vim.wo.diff then
             vim.cmd.normal({ ']c', bang = true })
           else
             gitsigns.nav_hunk('next')
           end
-        end, { desc = 'Next git [c]hange/hunk' })
-
-        map('n', '[c', function()
+        end
+        local function prev_hunk()
           if vim.wo.diff then
             vim.cmd.normal({ '[c', bang = true })
           else
             gitsigns.nav_hunk('prev')
           end
-        end, { desc = 'Previous git [c]hange/hunk' })
+        end
+        map('n', ']c', next_hunk, { desc = 'Next git [c]hange/hunk' })
+        map('n', '[c', prev_hunk, { desc = 'Previous git [c]hange/hunk' })
+        map('n', ']h', next_hunk, { desc = 'Next git [h]unk (alias for ]c)' })
+        map('n', '[h', prev_hunk, { desc = 'Previous git [h]unk (alias for [c)' })
+
+        -- ]a / [a — springt direkt zur PURE-ADD-AREA innerhalb eines Hunks.
+        -- In einem Misch-Hunk (~ + +) landet ]a auf der ERSTEN Plus-Zeile,
+        -- nicht auf der ersten ~-Zeile. Praktisch wenn du nur die NEUEN Zeilen
+        -- ansehen willst, ohne durch die Modifies zu scrollen.
+        --
+        -- Berechnung: pure_add_start = hunk.added.start + min(hunk.removed.count, hunk.added.count)
+        --   - reiner Add-Hunk: removed=0 → pure_add_start = added.start (normaler Hunk-Anfang)
+        --   - Misch-Hunk:      pure_add_start = wo removed endet (= wo + beginnt)
+        --   - reiner Delete:   added.count=0 → kein pure-add, hunk uebersprungen
+        local function nav_add_area(direction)
+          local hunks = gitsigns.get_hunks() or {}
+          if #hunks == 0 then
+            vim.notify('Keine Hunks in dieser Datei', vim.log.levels.INFO)
+            return
+          end
+          local cur = vim.fn.line('.')
+          -- pure-add Lines berechnen
+          local targets = {}
+          for _, h in ipairs(hunks) do
+            local rc = h.removed and h.removed.count or 0
+            local ac = h.added and h.added.count or 0
+            if ac > 0 and h.added.start then
+              local offset = math.min(rc, ac)
+              table.insert(targets, h.added.start + offset)
+            end
+          end
+          if #targets == 0 then
+            vim.notify('Keine + Areas (nur Deletes?)', vim.log.levels.INFO)
+            return
+          end
+          local target
+          if direction == 'next' then
+            for _, line in ipairs(targets) do
+              if line > cur then target = line; break end
+            end
+            if not target then target = targets[1] end  -- wrap
+          else
+            for i = #targets, 1, -1 do
+              if targets[i] < cur then target = targets[i]; break end
+            end
+            if not target then target = targets[#targets] end  -- wrap
+          end
+          vim.api.nvim_win_set_cursor(0, { target, 0 })
+          vim.cmd('normal! zz')  -- centre on screen
+        end
+        map('n', ']a', function() nav_add_area('next') end, { desc = 'Next [a]dded-area (jumps to + start, skipping ~)' })
+        map('n', '[a', function() nav_add_area('prev') end, { desc = 'Previous [a]dded-area' })
 
         -- Staged hunk navigation
         map('n', ']C', function()
@@ -1535,6 +1864,36 @@ require('lazy').setup({
         map('n', '<leader>hb', function() gitsigns.blame_line { full = true } end, { desc = '[H]unk [B]lame line' })
         map('n', '<leader>hd', gitsigns.diffthis, { desc = '[H]unk [D]iff this' })
         map('n', '<leader>hD', function() gitsigns.diffthis('~') end, { desc = '[H]unk [D]iff against ~' })
+
+        -- <leader>hB — Toggle gitsigns Base zwischen HEAD und project-base branch.
+        -- ACTIVE: gitsigns zeigt ALLE Branch-Aenderungen als Hunks im Gutter, ]c/[c
+        -- (oder ]h/[h Alias) springt durch Branch-Diff-Hunks statt nur durch uncommitted.
+        -- ]d/[d (super-hunk) profitiert automatisch davon (cross-file navigation).
+        -- DEFAULT: HEAD (= klassisches uncommitted-changes Verhalten).
+        map('n', '<leader>hB', function()
+          if vim.g.gitsigns_branch_mode then
+            gitsigns.change_base(nil, true)  -- nil = HEAD, true = global
+            vim.g.gitsigns_branch_mode = false
+            -- Force re-evaluate alle Buffers (sonst zeigt nur aktiver Buffer neue Hunks)
+            pcall(gitsigns.refresh)
+            local hcount = #(gitsigns.get_hunks() or {})
+            vim.notify(
+              string.format('Gitsigns Base → HEAD\nHunks in dieser Datei: %d\n]c/]h zeigt UNCOMMITTED', hcount),
+              vim.log.levels.INFO, { title = 'Gitsigns Base', timeout = 4000 })
+          else
+            local base = vim.g.project_git_base or 'origin/develop'
+            gitsigns.change_base(base, true)
+            vim.g.gitsigns_branch_mode = true
+            pcall(gitsigns.refresh)
+            -- Liefert get_hunks() das schon den NEUEN Stand? Nach refresh ggf. async — kurz warten.
+            vim.defer_fn(function()
+              local hcount = #(gitsigns.get_hunks() or {})
+              vim.notify(
+                string.format('Gitsigns Base → %s\nHunks in dieser Datei: %d\n]c/]h zeigt BRANCH-CHANGES', base, hcount),
+                vim.log.levels.INFO, { title = 'Gitsigns Base', timeout = 4000 })
+            end, 300)
+          end
+        end, { desc = '[H]unk [B]ase toggle (HEAD <-> branch-diff)' })
 
         -- Yank current hunk as raw diff
         map('n', '<leader>gyH', function()
@@ -1810,20 +2169,377 @@ require('lazy').setup({
 
       -- See `:help telescope.builtin`
       local builtin = require 'telescope.builtin'
+
+      -- Liest Neo-trees aktuell gesetzten Root (per "." in <leader>e narrowed) --
+      -- damit <leader>sf/sg/sx im gleichen Scope suchen, den man sich im Explorer
+      -- gerade eingestellt hat, statt immer im ganzen Projekt-Root.
+      -- Fallback: normales cwd, falls Neo-tree noch nie geoeffnet/kein State.
+      local function search_root()
+        local ok, manager = pcall(require, 'neo-tree.sources.manager')
+        if not ok then return vim.fn.getcwd() end
+        local state = manager.get_state('filesystem')
+        return (state and state.path) or vim.fn.getcwd()
+      end
+
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles (respects .gitignore)' })
+      vim.keymap.set('n', '<leader>sf', function()
+        builtin.find_files({ cwd = search_root() })
+      end, { desc = '[S]earch [F]iles (respects .gitignore, Scope = Neo-tree Root)' })
       vim.keymap.set('n', '<leader>sF', function()
-        builtin.find_files({ no_ignore = true, hidden = true })
-      end, { desc = '[S]earch [F]iles (ALL, including ignored)' })
+        builtin.find_files({ no_ignore = true, hidden = true, cwd = search_root() })
+      end, { desc = '[S]earch [F]iles (ALL, including ignored, Scope = Neo-tree Root)' })
       vim.keymap.set('n', '<leader>sc', builtin.colorscheme, { desc = '[S]earch [C]olorscheme (live preview)' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
-      vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep (respects .gitignore)' })
+      vim.keymap.set('n', '<leader>sw', function()
+        builtin.grep_string({ cwd = search_root() })
+      end, { desc = '[S]earch current [W]ord (Scope = Neo-tree Root)' })
+      vim.keymap.set('n', '<leader>sg', function()
+        builtin.live_grep({ cwd = search_root() })
+      end, { desc = '[S]earch by [G]rep (respects .gitignore, Scope = Neo-tree Root)' })
       vim.keymap.set('n', '<leader>sG', function()
-        builtin.live_grep({ additional_args = { '--no-ignore', '--hidden' } })
-      end, { desc = '[S]earch by [G]rep (ALL, including ignored)' })
+        builtin.live_grep({ additional_args = { '--no-ignore', '--hidden' }, cwd = search_root() })
+      end, { desc = '[S]earch by [G]rep (ALL, including ignored, Scope = Neo-tree Root)' })
+      -- Grep ohne Cypress/E2E-Test-Rauschen (z.B. Suche nach Feld-/Domain-Begriffen
+      -- wie "Postleitzahl" im Produktionscode, ohne dass jeder .feature/.ts-Testtreffer mitkommt)
+      vim.keymap.set('n', '<leader>sx', function()
+        builtin.live_grep({
+          cwd = search_root(),
+          additional_args = function()
+            return { '--hidden', '--iglob', '!**/cypress/**', '--iglob', '!**/e2e/**' }
+          end,
+        })
+      end, { desc = '[S]earch by grep, e[X]cluding Cypress/E2E tests' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
+      -- <leader>sD — Search [D]irty/Diff: Dateien geandert in diesem Branch vs Base
+      -- Base-Branch via vim.g.project_git_base (origin/develop bei DCSRE, origin/main bei CenCoCo)
+      -- Drei-Punkt-Diff (base...HEAD) = symmetric = nur Commits seit Branch-Punkt
+      vim.keymap.set('n', '<leader>sD', function()
+        local base = vim.g.project_git_base or 'origin/develop'
+        local cwd = vim.fn.getcwd()
+        -- Branch-Diff: zeigt Dateien die durch Commits in diesem Branch geaendert wurden
+        local diff_cmd = string.format('git -C "%s" diff --name-only %s...HEAD 2>&1', cwd, base)
+        local raw = vim.fn.systemlist(diff_cmd)
+        if vim.v.shell_error ~= 0 then
+          vim.notify('git diff fehlgeschlagen:\n' .. table.concat(raw, '\n'), vim.log.levels.ERROR, { title = 'sD Branch-Diff', timeout = 10000 })
+          return
+        end
+
+        -- Filtere: nicht-leer + existing files (geloschte ueberspringen)
+        local files = {}
+        local skipped_deleted = 0
+        for _, line in ipairs(raw) do
+          local rel = (line or ''):gsub('%s+$', '')
+          if rel ~= '' then
+            local abs = cwd .. '/' .. rel
+            if vim.fn.filereadable(abs) == 1 then
+              table.insert(files, rel)
+            else
+              skipped_deleted = skipped_deleted + 1
+            end
+          end
+        end
+
+        if #files == 0 then
+          local extra = (skipped_deleted > 0) and string.format(' (%d geloeschte uebersprungen)', skipped_deleted) or ''
+          vim.notify('Keine geaenderten Dateien vs ' .. base .. extra, vim.log.levels.INFO)
+          return
+        end
+
+        table.sort(files)
+
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        local title = string.format(
+          'Branch-Diff vs %s — %d Dateien%s | Tab=multi, Enter=oeffnen',
+          base, #files,
+          (skipped_deleted > 0) and (' (+' .. skipped_deleted .. ' geloescht)') or ''
+        )
+
+        pickers.new({}, {
+          prompt_title = title,
+          finder = finders.new_table({
+            results = files,
+            entry_maker = function(entry)
+              return {
+                value = entry,
+                display = entry,
+                ordinal = entry,
+                text = entry, -- Quickfix/Export-Spalte relativ statt ~\Documents\...-Vollpfad
+                path = cwd .. '/' .. entry,
+                filename = cwd .. '/' .. entry,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          previewer = conf.file_previewer({}),
+          attach_mappings = function(prompt_bufnr, _map)
+            actions.select_default:replace(function()
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              local multi = picker:get_multi_selection()
+              actions.close(prompt_bufnr)
+              if #multi > 0 then
+                for _, sel in ipairs(multi) do
+                  vim.cmd('edit ' .. vim.fn.fnameescape(sel.path))
+                end
+              else
+                local single = action_state.get_selected_entry()
+                if single then vim.cmd('edit ' .. vim.fn.fnameescape(single.path)) end
+              end
+            end)
+            return true
+          end,
+        }):find()
+      end, { desc = '[S]earch [D]irty/Diff (Branch-changed files vs base)' })
+
+      -- === Dirty-Werkzeuge mit Profil-System (sDp / sDo / sDb / sDS) ===
+      -- Profil = ein Quell-Bereich des Repos (Sources/Backend, Sources/Frontend, Sources/Database, ...).
+      -- Auto-Discovery aus der Repo-Struktur statt Hardcode. Das aktive Profil steht in
+      -- vim.g.dirty_profile (Default 'Backend' — bisheriges Verhalten bleibt) und wird per
+      -- <leader>sDp umgeschaltet. sDo (Buffer-Lader) und sDb/sDS (Diagnostics) folgen ihm.
+
+      -- Endungen, die als Code zaehlen. Profil-uebergreifend: jedes Profil bekommt automatisch
+      -- nur was es enthaelt (Backend -> .cs, Frontend -> .ts/.html/.scss, Database -> .sql).
+      local DIRTY_CODE_EXTS = { 'cs', 'ts', 'js', 'html', 'scss', 'css', 'sql', 'ps1', 'sh', 'yaml', 'yml' }
+
+      local function is_code_file(rel)
+        for _, ext in ipairs(DIRTY_CODE_EXTS) do
+          if rel:match('%.' .. ext .. '$') then return true end
+        end
+        return false
+      end
+
+      local function dirty_profile()
+        return vim.g.dirty_profile or 'Backend'
+      end
+
+      local function in_profile(rel, profile)
+        local p = vim.pesc(profile)
+        return rel:match('/' .. p .. '/') ~= nil or rel:match('^' .. p .. '/') ~= nil
+      end
+
+      -- Rohe Liste der Branch-geaenderten Dateien (vs Base), ungefiltert.
+      local function git_dirty_raw()
+        local base = vim.g.project_git_base or 'origin/develop'
+        local cwd = vim.fn.getcwd()
+        local raw = vim.fn.systemlist(string.format('git -C "%s" diff --name-only %s...HEAD 2>&1', cwd, base))
+        if vim.v.shell_error ~= 0 then
+          vim.notify('git diff fehlgeschlagen:\n' .. table.concat(raw, '\n'), vim.log.levels.ERROR, { title = 'Dirty-Dateien', timeout = 10000 })
+          return nil, base, cwd
+        end
+        return raw, base, cwd
+      end
+
+      -- Branch-geaenderte Code-Dateien des Profils als absolute Pfade.
+      local function get_dirty_files(profile)
+        profile = profile or dirty_profile()
+        local raw, base, cwd = git_dirty_raw()
+        if not raw then return nil, base end
+        local files = {}
+        for _, line in ipairs(raw) do
+          local rel = (line or ''):gsub('%s+$', '')
+          if rel ~= '' and is_code_file(rel) and in_profile(rel, profile) then
+            local abs = vim.fn.fnamemodify(cwd .. '/' .. rel, ':p')
+            if vim.fn.filereadable(abs) == 1 then
+              table.insert(files, abs)
+            end
+          end
+        end
+        return files, base
+      end
+
+      -- <leader>sDp — [P]rofil waehlen: bestimmt den Scope fuer sDo/sDb/sDS.
+      -- Zeigt alle Quell-Bereiche des Repos mit der Anzahl ihrer geaenderten Dateien;
+      -- das aktive Profil ist mit * markiert.
+      vim.keymap.set('n', '<leader>sDp', function()
+        local raw, base, cwd = git_dirty_raw()
+        if not raw then return end
+
+        local roots = vim.fn.glob(cwd .. '/Sources/*', false, true)
+        if #roots == 0 then roots = vim.fn.glob(cwd .. '/*', false, true) end
+        local counts, order = {}, {}
+        for _, dir in ipairs(roots) do
+          if vim.fn.isdirectory(dir) == 1 then
+            local name = vim.fn.fnamemodify(dir, ':t')
+            if not counts[name] then
+              counts[name] = 0
+              table.insert(order, name)
+            end
+          end
+        end
+        if #order == 0 then
+          vim.notify('Keine Quell-Bereiche gefunden (weder Sources/* noch Top-Level)', vim.log.levels.WARN)
+          return
+        end
+
+        for _, line in ipairs(raw) do
+          local rel = (line or ''):gsub('%s+$', '')
+          if rel ~= '' and is_code_file(rel) then
+            for _, name in ipairs(order) do
+              if in_profile(rel, name) then
+                counts[name] = counts[name] + 1
+                break
+              end
+            end
+          end
+        end
+
+        table.sort(order, function(a, b)
+          if counts[a] ~= counts[b] then return counts[a] > counts[b] end
+          return a < b
+        end)
+
+        local active = dirty_profile()
+        local entries = {}
+        for _, name in ipairs(order) do
+          table.insert(entries, {
+            name = name,
+            display = string.format('%s %-14s %4d geaenderte Datei(en)',
+              (name == active) and '*' or ' ', name, counts[name]),
+          })
+        end
+
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+
+        pickers.new({}, {
+          prompt_title = string.format('Dirty-Profil waehlen (aktiv: %s | Base: %s)', active, base),
+          finder = finders.new_table({
+            results = entries,
+            entry_maker = function(e)
+              return { value = e.name, display = e.display, ordinal = e.name }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          attach_mappings = function(prompt_bufnr)
+            actions.select_default:replace(function()
+              local sel = action_state.get_selected_entry()
+              actions.close(prompt_bufnr)
+              if sel then
+                vim.g.dirty_profile = sel.value
+                vim.notify(string.format('Dirty-Profil: %s\nsDo/sDb/sDS arbeiten jetzt in diesem Bereich.', sel.value), vim.log.levels.INFO)
+              end
+            end)
+            return true
+          end,
+        }):find()
+      end, { desc = '[S]earch [D]irty: [P]rofil waehlen (Backend/Frontend/... fuer sDo/sDb/sDS)' })
+
+      -- <leader>sDo — [O]pen all dirty: laedt alle Branch-geaenderten Dateien des aktiven Profils
+      -- als echte Buffer. Noetig, weil SonarLint/eslint nur offene Buffer analysieren und
+      -- badd/bufload keine FileType-Events feuern (kein LSP-Attach).
+      vim.keymap.set('n', '<leader>sDo', function()
+        local profile = dirty_profile()
+        local files, base = get_dirty_files(profile)
+        if not files then return end
+        if #files == 0 then
+          vim.notify(string.format('Keine geaenderten %s-Dateien vs %s\n(anderes Profil? <leader>sDp)', profile, base), vim.log.levels.INFO)
+          return
+        end
+        local original = vim.api.nvim_get_current_buf()
+        local opened = 0
+        for _, abs in ipairs(files) do
+          local ok = pcall(vim.cmd, 'silent edit ' .. vim.fn.fnameescape(abs))
+          if ok then opened = opened + 1 end
+        end
+        if vim.api.nvim_buf_is_valid(original) and vim.api.nvim_buf_get_name(original) ~= '' then
+          vim.api.nvim_set_current_buf(original)
+        end
+        vim.notify(string.format(
+          '%d/%d %s-Dateien geladen (vs %s).\nLSP analysiert jetzt - je nach Menge 1-3 Min warten, dann sDb/sDS',
+          opened, #files, profile, base), vim.log.levels.INFO, { timeout = 8000 })
+      end, { desc = '[S]earch [D]irty: [O]pen all (Dateien des aktiven Profils in Buffer laden)' })
+
+      -- Gemeinsame Basis fuer sDb/sDS: Diagnostics NUR in Branch-geaenderten Dateien des aktiven Profils.
+      -- opts.source_filter: nil = alle Quellen | Funktion(source) -> bool (z.B. nur SonarQube)
+      -- opts.label: Anzeige-Name im Picker-Titel und in Notify-Meldungen
+      local function dirty_diagnostics(opts)
+        opts = opts or {}
+        local profile = dirty_profile()
+        local files, base = get_dirty_files(profile)
+        if not files then return end
+
+        if #files == 0 then
+          vim.notify(string.format('Keine geaenderten %s-Dateien vs %s\n(anderes Profil? <leader>sDp)', profile, base), vim.log.levels.INFO)
+          return
+        end
+
+        -- Windows: Pfade case-insensitiv, Lua-Vergleich aber case-sensitiv (Buffer melden mal c:\, mal C:\) -> lowercase-Schluessel
+        local function norm_path(p)
+          return vim.fn.fnamemodify(p, ':p'):lower():gsub('/', '\\')
+        end
+        local dirty_set = {}
+        for _, abs in ipairs(files) do
+          dirty_set[norm_path(abs)] = true
+        end
+
+        local severities = vim.diagnostic.severity
+        local items, seen = {}, {}
+        for _, d in ipairs(vim.diagnostic.get(nil)) do
+          local name = vim.api.nvim_buf_get_name(d.bufnr)
+          local source_ok = not opts.source_filter or opts.source_filter(tostring(d.source or ''))
+          if dirty_set[norm_path(name)] and source_ok then
+            -- Dedup: OmniSharp published manche Regeln (z.B. IDE0005) aus zwei Analyse-Paessen
+            -- doppelt. Schluessel = Datei + Zeile + Spalte + Code + Text.
+            local key = table.concat({ norm_path(name), d.lnum, d.col, tostring(d.code), d.message }, '|')
+            if not seen[key] then
+              seen[key] = true
+              table.insert(items, {
+                bufnr = d.bufnr,
+                -- Relativer Pfad (vs cwd): haelt Telescope-Suche/Anzeige frei vom C:\...\laneA-Prefix
+                filename = vim.fn.fnamemodify(name, ':.'),
+                lnum = d.lnum + 1,
+                col = d.col + 1,
+                text = vim.trim(d.message:gsub('[\n]', '')) .. (d.code and (' [' .. tostring(d.code) .. ']') or ''),
+                type = severities[d.severity] or severities[1],
+              })
+            end
+          end
+        end
+
+        if vim.tbl_isempty(items) then
+          vim.notify(string.format('Keine %s-Diagnostics in geaenderten %s-Dateien (evtl. noch nicht analysiert - <leader>sDo zum Laden)', opts.label or '', profile), vim.log.levels.INFO)
+          return
+        end
+
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local make_entry = require('telescope.make_entry')
+
+        pickers.new({}, {
+          prompt_title = string.format('%s in geaenderten %s-Dateien vs %s (%d)', opts.label or 'Diagnostics', profile, base, #items),
+          finder = finders.new_table({
+            results = items,
+            entry_maker = make_entry.gen_from_diagnostics({}),
+          }),
+          previewer = conf.qflist_previewer({}),
+          sorter = conf.generic_sorter({}),
+        }):find()
+      end
+
+      -- <leader>sDb — ALLE Diagnostics (jede Quelle, jede Severity) im aktiven Profil
+      vim.keymap.set('n', '<leader>sDb', function()
+        dirty_diagnostics({ label = 'Diagnostics (alle Quellen)' })
+      end, { desc = '[S]earch [D]iagnostics: dirty files im aktiven Profil (alle Quellen)' })
+
+      -- <leader>sDS — NUR SonarQube-Diagnostics (Error/Warning/Info/Hint) im aktiven Profil
+      vim.keymap.set('n', '<leader>sDS', function()
+        dirty_diagnostics({
+          label = 'SonarQube',
+          source_filter = function(source)
+            return source:lower():find('sonar', 1, true) ~= nil
+          end,
+        })
+      end, { desc = '[S]earch [D]iagnostics: dirty files, [S]onarQube only' })
+
       vim.keymap.set('n', '<leader>sW', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.WARN })
       end, { desc = '[S]earch [W]arnings only' })
@@ -2666,6 +3382,7 @@ require('lazy').setup({
         'stylua', -- Used to format Lua code
         'prettier', -- Used to format TypeScript, HTML, CSS, SCSS
         'netcoredbg', -- C#/.NET debugger (required for DAP)
+        'sonarlint-language-server', -- SonarQube Connected Mode diagnostics
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
