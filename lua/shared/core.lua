@@ -1710,10 +1710,10 @@ require('lazy').setup({
     opts = {
       signs = {
         add = { text = '+' },
-        change = { text = '~' },
+        change = { text = '»' },
         delete = { text = '_' },
         topdelete = { text = '‾' },
-        changedelete = { text = '~' },
+        changedelete = { text = '»' },
       },
       on_attach = function(bufnr)
         local gitsigns = require('gitsigns')
@@ -1801,56 +1801,15 @@ require('lazy').setup({
           gitsigns.nav_hunk('prev', { target = 'staged' })
         end, { desc = 'Previous staged [C]hange/hunk' })
 
-        -- Cross-file hunk navigation (Super Hunk)
-        map('n', ']d', function()
-          local ok = pcall(function()
-            gitsigns.nav_hunk('next', { wrap = false })
-          end)
-          if not ok then
-            local changed = vim.fn.systemlist('git diff --name-only')
-            local current = vim.fn.expand('%:.')
-            local found_current = false
-            for _, file in ipairs(changed) do
-              if found_current and vim.fn.filereadable(file) == 1 then
-                vim.cmd('edit ' .. file)
-                vim.defer_fn(function() gitsigns.nav_hunk('first') end, 100)
-                return
-              end
-              if file == current then found_current = true end
-            end
-            if #changed > 0 and vim.fn.filereadable(changed[1]) == 1 then
-              vim.cmd('edit ' .. changed[1])
-              vim.defer_fn(function() gitsigns.nav_hunk('first') end, 100)
-            end
-          end
-        end, { desc = 'Next [d]iff (cross-file)' })
-
-        map('n', '[d', function()
-          local ok = pcall(function()
-            gitsigns.nav_hunk('prev', { wrap = false })
-          end)
-          if not ok then
-            local changed = vim.fn.systemlist('git diff --name-only')
-            local current = vim.fn.expand('%:.')
-            for i, file in ipairs(changed) do
-              if file == current and i > 1 then
-                local prev_file = changed[i - 1]
-                if vim.fn.filereadable(prev_file) == 1 then
-                  vim.cmd('edit ' .. prev_file)
-                  vim.defer_fn(function() gitsigns.nav_hunk('last') end, 100)
-                  return
-                end
-              end
-            end
-            if #changed > 0 then
-              local last_file = changed[#changed]
-              if vim.fn.filereadable(last_file) == 1 then
-                vim.cmd('edit ' .. last_file)
-                vim.defer_fn(function() gitsigns.nav_hunk('last') end, 100)
-              end
-            end
-          end
-        end, { desc = 'Prev [d]iff (cross-file)' })
+        -- ENTFERNT 2026-08-21: ]d/[d "Super Hunk" (cross-file).
+        -- Die Implementierung war toter Code: gitsigns.nav_hunk ist async.create() und
+        -- wirft NIE synchron; bei "kein Hunk mehr" macht nav.lua nur nvim_echo('No hunks')
+        -- und return. Das umschliessende pcall() lieferte damit IMMER ok=true, der
+        -- Cross-File-Zweig lief nie. Zusaetzlich nutzte er `git diff --name-only`
+        -- (nur uncommitted, ohne Base) statt der Branch-Dateien, und ueberschrieb
+        -- Neovims Default ]d/[d = naechste/vorherige Diagnose.
+        -- Ersatz: <leader>qh baut ALLE Hunks vs Base in die Quickfix-Liste,
+        -- ]q/[q navigiert dateiuebergreifend durch (lua/shared/keybindings/git.lua).
 
         -- Actions
         map('n', '<leader>hs', gitsigns.stage_hunk, { desc = '[H]unk [S]tage' })
@@ -1868,7 +1827,7 @@ require('lazy').setup({
         -- <leader>hB — Toggle gitsigns Base zwischen HEAD und project-base branch.
         -- ACTIVE: gitsigns zeigt ALLE Branch-Aenderungen als Hunks im Gutter, ]c/[c
         -- (oder ]h/[h Alias) springt durch Branch-Diff-Hunks statt nur durch uncommitted.
-        -- ]d/[d (super-hunk) profitiert automatisch davon (cross-file navigation).
+        -- <leader>qh (Quickfix ueber alle Hunks) nutzt dieselbe Base.
         -- DEFAULT: HEAD (= klassisches uncommitted-changes Verhalten).
         map('n', '<leader>hB', function()
           if vim.g.gitsigns_branch_mode then
@@ -2459,6 +2418,7 @@ require('lazy').setup({
 
       -- Gemeinsame Basis fuer sDb/sDS: Diagnostics NUR in Branch-geaenderten Dateien des aktiven Profils.
       -- opts.source_filter: nil = alle Quellen | Funktion(source) -> bool (z.B. nur SonarQube)
+      -- opts.severity: nil = alle Stufen | vim.diagnostic.severity.X (exakte Stufe, wie sW/sE)
       -- opts.label: Anzeige-Name im Picker-Titel und in Notify-Meldungen
       local function dirty_diagnostics(opts)
         opts = opts or {}
@@ -2485,7 +2445,8 @@ require('lazy').setup({
         for _, d in ipairs(vim.diagnostic.get(nil)) do
           local name = vim.api.nvim_buf_get_name(d.bufnr)
           local source_ok = not opts.source_filter or opts.source_filter(tostring(d.source or ''))
-          if dirty_set[norm_path(name)] and source_ok then
+          local sev_ok = not opts.severity or d.severity == opts.severity
+          if dirty_set[norm_path(name)] and source_ok and sev_ok then
             -- Dedup: OmniSharp published manche Regeln (z.B. IDE0005) aus zwei Analyse-Paessen
             -- doppelt. Schluessel = Datei + Zeile + Spalte + Code + Text.
             local key = table.concat({ norm_path(name), d.lnum, d.col, tostring(d.code), d.message }, '|')
@@ -2529,6 +2490,28 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sDb', function()
         dirty_diagnostics({ label = 'Diagnostics (alle Quellen)' })
       end, { desc = '[S]earch [D]iagnostics: dirty files im aktiven Profil (alle Quellen)' })
+
+      -- <leader>sDw — nur [W]arnings im aktiven Profil (das dirty-Pendant zu <leader>sW)
+      -- Exakte Stufe, nicht "WARN und schlimmer": Errors haben mit sDe ihren eigenen Kanal,
+      -- damit man die zwei Listen getrennt abarbeiten kann statt sie zu vermischen.
+      vim.keymap.set('n', '<leader>sDw', function()
+        dirty_diagnostics({ label = 'Warnings', severity = vim.diagnostic.severity.WARN })
+      end, { desc = '[S]earch [D]iagnostics: dirty files, [W]arnings only' })
+
+      -- <leader>sDe — nur [E]rrors im aktiven Profil (das dirty-Pendant zu <leader>sE)
+      vim.keymap.set('n', '<leader>sDe', function()
+        dirty_diagnostics({ label = 'Errors', severity = vim.diagnostic.severity.ERROR })
+      end, { desc = '[S]earch [D]iagnostics: dirty files, [E]rrors only' })
+
+      -- <leader>sDi — nur [I]nfo im aktiven Profil
+      vim.keymap.set('n', '<leader>sDi', function()
+        dirty_diagnostics({ label = 'Info', severity = vim.diagnostic.severity.INFO })
+      end, { desc = '[S]earch [D]iagnostics: dirty files, [I]nfo only' })
+
+      -- <leader>sDh — nur [H]ints im aktiven Profil (IDE*/RCS*-Massenware; meist dotnet-format-Stoff)
+      vim.keymap.set('n', '<leader>sDh', function()
+        dirty_diagnostics({ label = 'Hints', severity = vim.diagnostic.severity.HINT })
+      end, { desc = '[S]earch [D]iagnostics: dirty files, [H]ints only' })
 
       -- <leader>sDS — NUR SonarQube-Diagnostics (Error/Warning/Info/Hint) im aktiven Profil
       vim.keymap.set('n', '<leader>sDS', function()
