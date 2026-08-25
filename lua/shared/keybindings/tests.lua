@@ -141,24 +141,37 @@ vim.keymap.set('n', '<leader>ret', function()
     return
   end
 
-  vim.ui.input({ prompt = 'DCSRE Ticket-Nr (z.B. 1944 oder DCSRE-1944): ' }, function(input)
+  vim.ui.input({ prompt = 'DCSRE Ticket-Nr(n), mehrere per Komma/Space (z.B. 1944, 6432 DCSRE-457): ' }, function(input)
     if not input or input == '' then return end
-    local tag
-    if input:match('^%d+$') then
-      tag = '@DCSRE-' .. input
-    elseif input:match('^@') then
-      tag = input
-    elseif input:match('^DCSRE%-') then
-      tag = '@' .. input
-    else
-      tag = '@DCSRE-' .. input
+
+    -- Mehrere Tickets -> ODER-Verknuepfung. Zwei Ausgaben aus derselben Eingabe:
+    --   tags[]    -> Cucumber-Ausdruck fuer --env tags="@A or @B" (Szenario-Filter)
+    --   pattern   -> Regex fuer Select-String, um die Feature-FILES zu finden
+    -- Beides noetig: --spec waehlt die Dateien, --env tags waehlt die Szenarien DARIN.
+    -- Ohne den Tag-Filter liefen bisher ALLE Szenarien der gefundenen Files mit.
+    local function normalise(tok)
+      if tok:match('^@') then return tok end
+      if tok:match('^DCSRE%-') then return '@' .. tok end
+      return '@DCSRE-' .. tok
     end
+
+    local tags = {}
+    for tok in input:gmatch('[^%s,]+') do
+      table.insert(tags, normalise(tok))
+    end
+    if #tags == 0 then return end
+
+    local tag_expr = table.concat(tags, ' or ')          -- Cucumber-Syntax
+    local tag = tag_expr                                  -- Anzeige-Label (Notify/Picker-Titel)
+    -- Regex-Alternation fuer Select-String; '-' ist ausserhalb einer Zeichenklasse literal,
+    -- '@' ebenfalls -- daher kein Escaping noetig.
+    local pattern = table.concat(tags, '|')
 
     local e2e_path = cypress_path .. '\\e2e'
     local ps_cmd = string.format(
       'powershell.exe -NoProfile -Command "Get-ChildItem -Path \'%s\' -Filter *.feature -Recurse | Select-String -Pattern \'%s\' -List | Select-Object -ExpandProperty Path"',
       e2e_path,
-      tag
+      pattern
     )
     local raw = vim.fn.systemlist(ps_cmd)
 
@@ -216,11 +229,15 @@ vim.keymap.set('n', '<leader>ret', function()
 
       local spec_arg = table.concat(selected, ',')
       local headed_flag = headed and ' --headed' or ''
+      -- --spec waehlt die Feature-FILES, --env tags waehlt die SZENARIEN darin.
+      -- Ohne den Tag-Filter liefen alle Szenarien der getroffenen Files mit, auch
+      -- ungetaggte. --browser chrome: Electron-Default weicht im Rendering ab.
       local cmd = string.format(
-        'powershell.exe -Command "Set-Location \'%s\'; npx cypress run%s --spec \'%s\'"',
+        'powershell.exe -Command "Set-Location \'%s\'; npx cypress run%s --spec \'%s\' --env tags=\'%s\' --browser chrome"',
         cypress_path,
         headed_flag,
-        spec_arg
+        spec_arg,
+        tag_expr
       )
 
       local mode_label = headed and 'HEADED' or 'HEADLESS'

@@ -257,6 +257,14 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 vim.keymap.set('n', '<leader>q', '<cmd>q<cr>', { desc = '[Q]uit/Close window' })
 vim.keymap.set('n', '<leader>bd', '<cmd>bd<cr>', { desc = '[B]uffer [D]elete' })
 
+-- Buffer-Navigation: Alt+h/Alt+l -- vorheriger/naechster Buffer.
+-- NICHT Ctrl+h/Ctrl+l: die sind Window-Fokus-Wechsel (Zeile 251-252), Kickstart-
+-- Standard, nicht anfassen. NICHT Ctrl+Shift+[/]: das Terminal schluckt die Shift-
+-- Modifier-Info bei dieser Kombination, es kam nur <C-]> an (Vims Tag-Jump, daher
+-- "E433: No tags file").
+vim.keymap.set('n', '<A-l>', '<cmd>bnext<cr>', { desc = 'Next buffer' })
+vim.keymap.set('n', '<A-h>', '<cmd>bprevious<cr>', { desc = 'Previous buffer' })
+
 -- Center cursor after half-page jumps
 vim.keymap.set('n', '<C-d>', '<C-d>zz', { desc = 'Half page down + center' })
 vim.keymap.set('n', '<C-u>', '<C-u>zz', { desc = 'Half page up + center' })
@@ -1707,6 +1715,30 @@ require('lazy').setup({
   -- See `:help gitsigns` to understand what the configuration keys do
   { -- Adds git related signs to the gutter, as well as utilities for managing changes
     'lewis6991/gitsigns.nvim',
+    -- WORKAROUND (2026-08-25) fuer gitsigns-Bug bei change_base auf CRLF-Repos:
+    -- Repo:file_info() liefert fuer eine fremde Revision (ls-tree-Pfad) KEINE
+    -- eol-Info -- i_crlf/w_crlf bleiben nil. get_show_text() haengt dem Basistext
+    -- dann kein \r an, buf_lines() dem Buffertext (fileformat=dos) aber schon:
+    -- jede Zeile unterscheidet sich um ein CR, gitsigns markiert die GANZE Datei
+    -- als geaendert (gemessen an DCSRE: -1,245 +1,348 statt 24 Hunks). Betrifft
+    -- jedes Repo mit autocrlf / `* text=auto`, also <leader>hB und <leader>qh.
+    -- Upstream (5be654f, 2026-08-11) hat den Bug ebenfalls -- Update hilft nicht.
+    -- Fix an der Wurzel statt am Symptom: eol-Info fuer Tree-Revisionen aus
+    -- ls-files nachziehen. Ueberlebt so auch refresh(), das file_info() jedes Mal
+    -- neu ruft und die Felder sonst wieder auf nil setzt.
+    config = function(_, opts)
+      local Repo = require('gitsigns.git.repo')
+      local orig_file_info = Repo.file_info
+      Repo.file_info = function(self, file, revision)
+        local info, err = orig_file_info(self, file, revision)
+        if info and revision and info.i_crlf == nil then
+          local wt = self:ls_files(file)
+          if wt then info.i_crlf, info.w_crlf = wt.i_crlf, wt.w_crlf end
+        end
+        return info, err
+      end
+      require('gitsigns').setup(opts)
+    end,
     opts = {
       signs = {
         add = { text = '+' },
@@ -2522,6 +2554,115 @@ require('lazy').setup({
           end,
         })
       end, { desc = '[S]earch [D]iagnostics: dirty files, [S]onarQube only' })
+
+      -- <leader>sDr — [R]un Harvest: sonar_harvest.ps1 headless im HINTERGRUND.
+      --
+      -- WARUM zusaetzlich zu sDo/sDb: sDo laedt die Dirty-Files als Buffer in DIESE
+      -- Session und du wartest 1-3 Min zu, bis OmniSharp+SonarLint durch sind. Das
+      -- Harvest-Skript startet ein EIGENES headless-Neovim, das denselben Weg geht,
+      -- aber in einem anderen Prozess -- deine Session bleibt benutzbar.
+      -- Ergebnis landet in der Quickfix-Liste, also mit ]q/[q dateiuebergreifend
+      -- navigierbar (gleiche Mechanik wie <leader>qh).
+      --
+      -- Das Skript ist selbstversorgend (laedt $PROFILE fuer SONARQUBE_TOKEN/_URL
+      -- selbst nach) und faellt LAUT aus: Exit 2 = sonarlint nie attached,
+      -- Exit 3 = Env fehlt. Beides wird hier als Fehler gemeldet, nie als "0 Findings".
+      vim.keymap.set('n', '<leader>sDr', function()
+        local root = vim.g.project_root_windows
+        if not root then
+          vim.notify('Kein Projekt erkannt (vim.g.project_root_windows fehlt)', vim.log.levels.ERROR)
+          return
+        end
+
+        local script = root .. '\\.claude\\scripts\\sonar_harvest.ps1'
+        if vim.fn.filereadable(script) == 0 then
+          vim.notify('Harvest-Skript nicht gefunden:\n' .. script ..
+            '\n(Redeploy aus OmniCommand noetig?)', vim.log.levels.ERROR,
+            { title = 'Sonar-Harvest', timeout = 10000 })
+          return
+        end
+
+        local profile = vim.g.dirty_profile or 'Backend'
+        local base = vim.g.project_git_base or 'origin/develop'
+        local out = vim.fn.stdpath('cache') .. '/sonar_harvest_findings.txt'
+        local out_win = out:gsub('/', '\\')
+
+        local started = vim.uv.now()
+        vim.notify(string.format(
+          'Harvest gestartet (Profil %s vs %s).\nLaeuft im Hintergrund -- du kannst normal weiterarbeiten.\nDauer typisch 3-4 Min (Solution-Kaltstart).',
+          profile, base), vim.log.levels.INFO, { title = 'Sonar-Harvest', timeout = 6000 })
+
+        local stdout_lines = {}
+        vim.fn.jobstart({
+          'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+          '-File', script,
+          '-RepoRoot', root,
+          '-OutFile', out_win,
+          '-Base', base,
+          '-ScopeFilter', profile,
+        }, {
+          on_stdout = function(_, data)
+            for _, l in ipairs(data or {}) do
+              if l ~= '' then table.insert(stdout_lines, (l:gsub('\r', ''))) end
+            end
+          end,
+          on_exit = vim.schedule_wrap(function(_, code)
+            local elapsed = math.floor((vim.uv.now() - started) / 1000)
+            local tail = table.concat(stdout_lines, '\n')
+
+            if code ~= 0 then
+              vim.notify(string.format('Harvest FEHLGESCHLAGEN (exit %d, nach %ds):\n%s',
+                code, elapsed, tail), vim.log.levels.ERROR,
+                { title = 'Sonar-Harvest', timeout = 15000 })
+              return
+            end
+
+            if vim.fn.filereadable(out) == 0 then
+              vim.notify('Harvest meldete Erfolg, aber keine Ergebnis-Datei:\n' .. out,
+                vim.log.levels.ERROR, { title = 'Sonar-Harvest', timeout = 10000 })
+              return
+            end
+
+            -- Format: {relpfad}|{zeile}|{spalte}|{severity}|{source}|{code}|{message}
+            -- Erste Zeile ist der '# HARVEST ...'-Header.
+            local qf, sonar_count = {}, 0
+            for _, line in ipairs(vim.fn.readfile(out)) do
+              if line ~= '' and not line:match('^#') then
+                local f, l, c, sev, src, dcode, msg =
+                  line:match('^(.-)|(%d+)|(%d+)|(.-)|(.-)|(.-)|(.*)$')
+                if f then
+                  if src:lower():find('sonar', 1, true) then sonar_count = sonar_count + 1 end
+                  -- bufadd() VOR setqflist(): sonst bleibt bufnr=0 und :cc springt
+                  -- den Eintrag nicht an (derselbe Grund wie in git.lua build_branch_hunk_qflist).
+                  local abs = root .. '\\' .. f:gsub('/', '\\')
+                  table.insert(qf, {
+                    bufnr = vim.fn.bufadd(abs),
+                    lnum = tonumber(l),
+                    col = tonumber(c),
+                    type = sev:upper():sub(1, 1),
+                    text = string.format('[%s:%s] %s', src, dcode, msg),
+                  })
+                end
+              end
+            end
+
+            if #qf == 0 then
+              vim.notify(string.format('Harvest sauber: 0 Findings im Profil %s (nach %ds)',
+                profile, elapsed), vim.log.levels.INFO, { title = 'Sonar-Harvest' })
+              return
+            end
+
+            vim.fn.setqflist({}, ' ', {
+              title = string.format('Sonar-Harvest %s vs %s', profile, base),
+              items = qf,
+            })
+            vim.notify(string.format(
+              '%d Findings (%d davon SonarQube) nach %ds.\n]q / [q = durchnavigieren (dateiuebergreifend)\n:copen = Liste anzeigen',
+              #qf, sonar_count, elapsed), vim.log.levels.INFO,
+              { title = 'Sonar-Harvest fertig', timeout = 12000 })
+          end),
+        })
+      end, { desc = '[S]earch [D]irty: Harvest headless im Hintergrund ([R]un) -> Quickfix' })
 
       vim.keymap.set('n', '<leader>sW', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.WARN })
