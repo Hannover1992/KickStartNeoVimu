@@ -2664,6 +2664,32 @@ require('lazy').setup({
         })
       end, { desc = '[S]earch [D]irty: Harvest headless im Hintergrund ([R]un) -> Quickfix' })
 
+      -- <leader>sDkt — [K]ill [T]est-Buffer: alle offenen Buffer schliessen, deren Pfad
+      -- "Test" enthaelt. ECHTER Substring-Check (case-insensitive), kein Fuzzy-Matching:
+      -- Telescopes Default-Sorter matcht "Test" gegen die BUCHSTABEN t-e-s-t irgendwo
+      -- verstreut im Pfad -- bei langen Pfaden (~\Documents\Work\...\VersorgungsvertragService.cs)
+      -- greift das quasi immer, ein Filter im Buffer-Picker war deshalb wirkungslos
+      -- (gemessen 2026-08-25: 24/24 Dateien blieben trotz Tippen von "Test" sichtbar).
+      -- Gedacht als Nachschlag zu sDo: erst alle Dirty-Files laden, dann die Test-
+      -- Gegenstuecke wieder raus, wenn nur der Produktionscode interessiert.
+      vim.keymap.set('n', '<leader>sDkt', function()
+        local closed, kept = 0, 0
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(buf) then
+            local name = vim.api.nvim_buf_get_name(buf)
+            if name ~= '' then
+              if name:lower():find('test', 1, true) then
+                vim.api.nvim_buf_delete(buf, { force = false })
+                closed = closed + 1
+              else
+                kept = kept + 1
+              end
+            end
+          end
+        end
+        vim.notify(string.format('%d Test-Buffer geschlossen, %d Nicht-Test-Buffer bleiben offen', closed, kept), vim.log.levels.INFO)
+      end, { desc = '[S]earch [D]irty: [K]ill [T]est-Buffer (alle mit "Test" im Pfad schliessen)' })
+
       vim.keymap.set('n', '<leader>sW', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.WARN })
       end, { desc = '[S]earch [W]arnings only' })
@@ -2686,17 +2712,32 @@ require('lazy').setup({
       -- Loeschen:  <M-d> (Alt+d, Telescope-Default, Insert-Mode) ODER dd (Normal-Mode).
       -- Tab = multi-select, dann Alt+d / dd loescht alle markierten. Picker bleibt offen.
       -- <C-d> bleibt absichtlich preview_scrolling_down (nicht ueberschrieben).
+      -- <C-a> = alle AKTUELL GEFILTERTEN Eintraege markieren (nicht alle Buffer ueberhaupt).
+      -- Workflow fuer "nur Test-Buffer aus sDo rauswerfen": Prompt "Test" tippen (filtert
+      -- auf Test-Dateien), <C-a> (alle markieren), dd (alle markierten schliessen) -- brig
+      -- bleiben nur die Nicht-Test-Buffer. Kein fzf-native installiert (kein '!Test'-Negations-
+      -- syntax verfuegbar), daher der Weg ueber Positiv-Filter + Select-All + Delete statt
+      -- direktem Ausschluss.
       vim.keymap.set('n', '<leader><leader>', function()
         builtin.buffers({
           sort_mru = true,
           ignore_current_buffer = false,
           attach_mappings = function(_, map)
             local actions = require('telescope.actions')
+            local action_state = require('telescope.actions.state')
             map('n', 'dd', actions.delete_buffer)
+            local function select_all_filtered(prompt_bufnr)
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              for entry in picker.manager:iter() do
+                picker:add_selection(picker:get_row(entry.index))
+              end
+            end
+            map('i', '<C-a>', select_all_filtered)
+            map('n', '<C-a>', select_all_filtered)
             return true
           end,
         })
-      end, { desc = '[ ] Find existing buffers (Alt+d/dd = delete)' })
+      end, { desc = '[ ] Find existing buffers (Alt+d/dd = delete, C-a = alle gefilterten markieren)' })
 
       -- Slightly advanced example of overriding default behavior and theme
       vim.keymap.set('n', '<leader>/', function()
