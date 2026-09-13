@@ -187,9 +187,22 @@ vim.keymap.set('n', '<leader>rbP', function()
   end)
 end, { desc = '[R]un [B]ackend [P]rofile clean | dotnet clean + build --verbosity detailed' })
 
+-- Terminal-Slot pro Projekt (60-89), damit mehrere Projekte parallel laufen koennen.
+-- Vorher war rbR fest auf Slot 20 = derselbe wie rbw → zweiter Start hat nur das
+-- bestehende Terminal ein-/ausgeblendet statt ein neues zu oeffnen.
+-- Polynomial-Hash (nicht Byte-Summe): Byte-Summe kollidierte bei DIC.MockServer vs Setup (beide 77).
+-- Geprueft fuer die 6 DCSRE-Projekte: ServiceHost 86, WebHost 89, MockServer 77,
+-- ManualTestRunner 72, SwaggerHost 83, Setup 62 — kollisionsfrei.
+local function slot_for_project(name)
+  local h = 0
+  for i = 1, #name do h = (h * 31 + name:byte(i)) % 1000003 end
+  return 60 + (h % 30)
+end
+
 -- rbR: Run Backend — 2-stufiger Picker: Projekt → LaunchProfile (aus launchSettings.json)
 vim.keymap.set('n', '<leader>rbR', function()
   pick_backend_project('Backend Projekt starten:', function(name, rel_path, backend_win)
+    local slot = slot_for_project(name)
     -- Properties/launchSettings.json im Projektverzeichnis suchen
     local proj_subdir = rel_path:match('^(.+)\\[^\\]+%.csproj$') or ''
     local settings_path = backend_win .. '\\' .. proj_subdir .. '\\Properties\\launchSettings.json'
@@ -201,8 +214,8 @@ vim.keymap.set('n', '<leader>rbR', function()
       -- Kein launchSettings.json → einfach dotnet run ohne Profil, CWD = Projektverzeichnis
       local Terminal = require('toggleterm.terminal').Terminal
       local cmd = 'powershell.exe -Command "Set-Location \'' .. proj_dir .. '\'; dotnet run"'
-      Terminal:new({ cmd = cmd, direction = 'horizontal', close_on_exit = false, count = 20 }):toggle()
-      vim.notify('[' .. vim.g.project_name .. '] Running: ' .. name .. ' (kein launchSettings)', vim.log.levels.INFO)
+      Terminal:new({ cmd = cmd, direction = 'horizontal', close_on_exit = false, count = slot, display_name = name }):toggle()
+      vim.notify('[' .. vim.g.project_name .. '] Running: ' .. name .. ' (kein launchSettings, Slot ' .. slot .. ')', vim.log.levels.INFO)
       return
     end
 
@@ -247,8 +260,8 @@ vim.keymap.set('n', '<leader>rbR', function()
       -- CWD = Projektverzeichnis → appsettings.json wird korrekt gefunden
       local cmd = 'powershell.exe -Command "Set-Location \'' .. proj_dir .. '\'; '
         .. 'dotnet run --launch-profile \'' .. choice.name .. '\'"'
-      Terminal:new({ cmd = cmd, direction = 'horizontal', close_on_exit = false, count = 20 }):toggle()
-      vim.notify('[' .. vim.g.project_name .. '] Running: ' .. name .. ' @ ' .. choice.url, vim.log.levels.INFO)
+      Terminal:new({ cmd = cmd, direction = 'horizontal', close_on_exit = false, count = slot, display_name = name }):toggle()
+      vim.notify('[' .. vim.g.project_name .. '] Running: ' .. name .. ' @ ' .. choice.url .. ' (Slot ' .. slot .. ')', vim.log.levels.INFO)
     end)
   end)
 end, { desc = '[R]un [B]ackend [R]un | 2-Stufen: Projekt → LaunchProfile (launchSettings.json)' })

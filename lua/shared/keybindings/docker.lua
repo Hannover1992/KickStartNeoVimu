@@ -199,6 +199,71 @@ vim.keymap.set('n', '<leader>rDp', function()
   end)
 end, { desc = '[R]un [D]ocker [P]rofile | Picker (dynamisch aus docker-compose.yml)' })
 
+-- Docker Service Picker: einzelnen Compose-Service starten (DCSRE only)
+-- Use-Case: Profil (z.B. dev-backend) laeuft schon, ein Service fehlt darin
+-- (z.B. "service" ist nur in all/service) → nachstarten ohne das Profil zu wechseln.
+-- --no-deps: Abhaengigkeiten werden NICHT mitgestartet, sonst wuerde z.B. "setup"
+-- (Migrations) jedes Mal neu laufen. Deps muessen also schon oben sein.
+vim.keymap.set('n', '<leader>rDs', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Docker Service picker nur für DCSRE', vim.log.levels.WARN)
+    return
+  end
+
+  local compose_path = vim.g.project_docker_root_windows .. '\\docker-compose.yml'
+  local file = io.open(compose_path, 'r')
+  if not file then
+    vim.notify('docker-compose.yml nicht gefunden: ' .. compose_path, vim.log.levels.ERROR)
+    return
+  end
+
+  local services = {}
+  local in_services = false
+  for line in file:lines() do
+    if line:match('^services%s*:') then
+      in_services = true
+    elseif in_services and line:match('^%S') then
+      in_services = false
+    elseif in_services then
+      local name = line:match('^  ([%w_%-]+)%s*:%s*$')
+      if name then table.insert(services, name) end
+    end
+  end
+  file:close()
+  table.sort(services)
+
+  if #services == 0 then
+    vim.notify('Keine Services in docker-compose.yml gefunden', vim.log.levels.ERROR)
+    return
+  end
+
+  local env_file = '.env.noproxy'
+  if vim.fn.filereadable(vim.g.project_docker_root_windows .. '\\.env.noproxy') == 0 then
+    env_file = '.env'
+  end
+
+  vim.ui.select(services, {
+    prompt = 'Docker Service starten (--no-deps):',
+    format_item = function(item) return item end,
+  }, function(choice)
+    if not choice then return end
+    local Terminal = require('toggleterm.terminal').Terminal
+    local cmd = 'powershell.exe -Command "'
+      .. 'Set-Location \'' .. vim.g.project_docker_root_windows .. '\'; '
+      .. 'docker compose -p dcsp --profile all --env-file ' .. env_file
+      .. ' up -d --no-deps ' .. choice .. '; '
+      .. 'if ($?) { notify \'Docker ' .. choice .. ' gestartet\' } else { notify \'Docker ' .. choice .. ' fehlgeschlagen\' }"'
+    local docker = Terminal:new({
+      cmd = cmd,
+      direction = 'horizontal',
+      close_on_exit = false,
+      count = 22,
+    })
+    docker:toggle()
+    vim.notify('[DCSRE] Docker Service: ' .. choice .. ' (' .. env_file .. ')', vim.log.levels.INFO)
+  end)
+end, { desc = '[R]un [D]ocker [S]ervice | Picker: einzelnen Compose-Service starten (--no-deps)' })
+
 -- Docker Up Backend (for projects using docker)
 vim.keymap.set('n', '<leader>rdB', function()
   local Terminal = require('toggleterm.terminal').Terminal
