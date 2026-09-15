@@ -1,5 +1,6 @@
 -- lua/shared/keybindings/tests.lua
--- E2E + Integration Test Keybindings: reb, reg, rim, rid, riC, riF, rif, ris + TRX Infrastructure
+-- E2E + Integration Test Keybindings: reb, reg, rim, rid, riC, riE, riF, rif, ris + TRX Infrastructure
+-- Dirty Tests (nur geaenderte Test-Dateien vs develop): sDti, sDtI, sDtu, sDtU
 -- Lade-Voraussetzung: require('shared.core') muss bereits geladen sein (toggleterm, gitsigns etc.)
 
 local platform = require('shared.platform')
@@ -453,7 +454,7 @@ if (Test-Path $trx) {
     }
     Write-Host "===============================" -ForegroundColor Cyan
     Write-Host ("  TRX: " + $trx) -ForegroundColor Gray
-    Write-Host ("  Hint: <leader>riF = Failed Tests | <leader>rif = Find Tests | <leader>ris = All Tests (Telescope)") -ForegroundColor DarkGray
+    Write-Host ("  Hint: <leader>riE = Failed (Error) | <leader>riF = Files | <leader>rif = from Clipboard | <leader>ris = All Tests (Telescope)") -ForegroundColor DarkGray
 } else {
     Write-Host "TRX file not found - tests may not have run!" -ForegroundColor Red
 }]], trx_path, test_dir, flags, filter)
@@ -550,7 +551,7 @@ local function get_test_file_kb(test_name, test_dir)
   return kb
 end
 
--- Telescope picker for test results (shared by rif and ris)
+-- Telescope picker for test results (shared by riE and ris)
 local function telescope_test_picker(title, test_list)
   local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
   local pickers = require('telescope.pickers')
@@ -640,7 +641,7 @@ if ((Test-Path $rerunTrx) -and (Test-Path $mainTrx)) {
     $stillRed = @($mainXml.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' }).Count
     Write-Host ""
     Write-Host ("  Merge: {0} aktualisiert, {1} jetzt GRUEN, {2} noch FAILED" -f $merged, $nowGreen, $stillRed) -ForegroundColor Magenta
-    Write-Host "  Hint: riF = verbleibende Failed anzeigen" -ForegroundColor DarkGray
+    Write-Host "  Hint: riE = verbleibende Failed anzeigen" -ForegroundColor DarkGray
 } elseif (Test-Path $rerunTrx) {
     Write-Host ""
     [xml]$r = Get-Content $rerunTrx
@@ -773,7 +774,7 @@ if (Test-Path $trx) {
     }
 }
 Write-Host "=======================================" -ForegroundColor Cyan
-Write-Host "  Hint: <leader>riF = Failed anzeigen" -ForegroundColor DarkGray
+Write-Host "  Hint: <leader>riE = Failed anzeigen" -ForegroundColor DarkGray
 ]], trx_path, test_dir, max_rounds)
 
       local file = io.open(script_path, 'w')
@@ -919,7 +920,7 @@ if (Test-Path $trx) {
     $c = if ($f -gt 0) { 'Red' } else { 'Green' }
     Write-Host ("  TOTAL: PASSED={0}  FAILED={1}  SKIPPED={2}" -f $p, $f, $s) -ForegroundColor $c
     if ($f -gt 0) {
-        Write-Host "  Hint: <leader>riF = Failed re-run" -ForegroundColor DarkGray
+        Write-Host "  Hint: <leader>riE = Failed re-run" -ForegroundColor DarkGray
     }
 }
 Write-Host "========================================" -ForegroundColor Cyan
@@ -1001,10 +1002,10 @@ Write-Host "========================================" -ForegroundColor Cyan
   })
   test:toggle()
   vim.notify('[DCSRE] riA: Alle Integration Tests (Mock → DB → merge)...', vim.log.levels.INFO)
-end, { desc = '[R]un [I]ntegration [A]ll | DCSRE: Mock(38T) + DB(8T) sequentiell → it-latest.trx → riF' })
+end, { desc = '[R]un [I]ntegration [A]ll | DCSRE: Mock(38T) + DB(8T) sequentiell → it-latest.trx → riE' })
 
--- <leader>riF - Run Integration Failed (Telescope picker, Tab=multi-select, Enter=re-run)
-vim.keymap.set('n', '<leader>riF', function()
+-- <leader>riE - Run Integration Error (failed tests) (Telescope picker, Tab=multi-select, Enter=re-run)
+vim.keymap.set('n', '<leader>riE', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
     return
@@ -1025,10 +1026,10 @@ vim.keymap.set('n', '<leader>riF', function()
   end
 
   telescope_test_picker('Failed Integration Tests (' .. #failed .. ') | Tab=select, Enter=re-run', failed)
-end, { desc = '[DEPRECATED -> rTF] [R]un [I]ntegration [F]ailed | Telescope picker (liest it-latest.trx)' })
+end, { desc = '[DEPRECATED -> rTF] [R]un [I]ntegration [E]rror (failed) | Telescope picker (liest it-latest.trx)' })
 
--- <leader>rif - Run Integration Find (Telescope picker for test files, Tab=multi-select, Enter=run)
-vim.keymap.set('n', '<leader>rif', function()
+-- <leader>riF - Run Integration Files (Telescope picker for test files, Tab=multi-select, Enter=run)
+vim.keymap.set('n', '<leader>riF', function()
   if vim.g.project_name ~= 'DCSRE' then
     vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
     return
@@ -1149,7 +1150,317 @@ vim.keymap.set('n', '<leader>rif', function()
       return true
     end,
   }):find()
-end, { desc = '[R]un [I]ntegration [F]ind | Telescope picker for test files' })
+end, { desc = '[R]un [I]ntegration [F]iles | Telescope picker for test files' })
+
+-- ============================================================================
+-- Test-Scanner + Picker + Runner — geteilt von rif und den Dirty-Test-Keys sDti/sDtI/sDtu/sDtU
+-- ============================================================================
+
+-- Scannt .cs-Dateien statisch nach [Fact]/[Theory]-Methoden (kein Build, keine TRX, < 1s).
+-- files: Liste aus Strings (abs. Pfad) ODER Tabellen { abs = <pfad>, root_fwd = <Forward-Slash-Root mit '/'> }.
+-- prefix_fwd: Default-Root fuer String-Eintraege (bestimmt `rel`), darf nil sein.
+-- Eigene `seen`-Tabelle pro Aufruf (Klassennamen koennen in Unit- und Integration-Welt kollidieren).
+-- -> entries { key = 'Klasse.Methode', class, method, rel, file }, sortiert nach key
+local function scan_test_methods(files, prefix_fwd)
+  local entries, seen = {}, {}
+  for _, item in ipairs(files) do
+    local file = type(item) == 'table' and item.abs or item
+    local root = type(item) == 'table' and item.root_fwd or prefix_fwd
+    local ff = file:gsub('\\', '/')
+    if not ff:match('/obj/') and not ff:match('/bin/') then
+      local fh = io.open(file, 'r')
+      if fh then
+        local content = fh:read('*a')
+        fh:close()
+        local rel = (root and vim.startswith(ff, root)) and ff:sub(#root + 1) or ff
+        local current_class, pending = nil, false
+        for line in content:gmatch('[^\r\n]+') do
+          local cls = line:match('^%s*public%s+[%w%s]-class%s+([%w_]+)')
+          if cls then current_class = cls end
+          if line:match('^%s*%[%s*Fact') or line:match('^%s*%[%s*Theory') then pending = true end
+          if pending then
+            local m = line:match('^%s*public%s+.-%s([%w_]+)%s*%(')
+            if m and current_class then
+              local key = current_class .. '.' .. m
+              if not seen[key] then
+                seen[key] = true
+                table.insert(entries, { key = key, class = current_class, method = m, rel = rel, file = file })
+              end
+              pending = false
+            end
+          end
+        end
+      end
+    end
+  end
+  table.sort(entries, function(a, b) return a.key < b.key end)
+  return entries
+end
+
+-- Telescope-Picker ueber Test-Eintraege: tippen = filtern (Klasse, Methode, Pfad),
+-- Tab = mehrere markieren, Enter -> run_fn(selected_entries) (ohne Tab: nur der markierte).
+local function pick_and_run_tests(title, entries, run_fn)
+  local pickers = require('telescope.pickers')
+  local finders = require('telescope.finders')
+  local conf = require('telescope.config').values
+  local actions = require('telescope.actions')
+  local action_state = require('telescope.actions.state')
+
+  pickers.new({}, {
+    prompt_title = title,
+    finder = finders.new_table({
+      results = entries,
+      entry_maker = function(e)
+        return {
+          value = e,
+          display = e.class .. '.' .. e.method .. '    (' .. e.rel .. ')',
+          ordinal = e.key .. ' ' .. e.rel,
+        }
+      end,
+    }),
+    sorter = conf.generic_sorter({}),
+    attach_mappings = function(prompt_bufnr, _)
+      actions.select_default:replace(function()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local multi = picker:get_multi_selection()
+        local selected = {}
+        if #multi > 0 then
+          for _, sel in ipairs(multi) do table.insert(selected, sel.value) end
+        else
+          local single = action_state.get_selected_entry()
+          if single then table.insert(selected, single.value) end
+        end
+        actions.close(prompt_bufnr)
+        if #selected == 0 then
+          vim.notify('No tests selected', vim.log.levels.WARN)
+          return
+        end
+        run_fn(selected)
+      end)
+      return true
+    end,
+  }):find()
+end
+
+-- dotnet-test-Filter aus Eintraegen. per_class = true: FullyQualifiedName~Klasse (dedupliziert) — fuer
+-- "alle Tests der Datei", haelt die Kommandozeile kurz (PowerShell-Limit ~8k). Sonst ~Klasse.Methode.
+-- -> filter_str, names
+local function build_fqn_filter(entries, per_class)
+  local parts, seen, names = {}, {}, {}
+  for _, e in ipairs(entries) do
+    local k = per_class and e.class or e.key
+    if not seen[k] then
+      seen[k] = true
+      table.insert(parts, 'FullyQualifiedName~' .. k)
+      table.insert(names, k)
+    end
+  end
+  return table.concat(parts, '|'), names
+end
+
+-- Integration-Runner: Thread-Prompt (Default 8) -> xunit maxParallelThreads -> run-it.ps1 (Build inklusive,
+-- TRX it-latest.trx) im Terminal 42 -> on_exit Threads zurueck auf 1.
+local function run_integration_entries(entries, opts)
+  opts = opts or {}
+  local filter_str, names = build_fqn_filter(entries, opts.per_class)
+  vim.ui.input({ prompt = #entries .. ' Tests — Parallel threads (default 8): ' }, function(input)
+    if input == nil then return end
+    local threads = tonumber(input) or 8
+    if not set_xunit_threads(threads) then return end
+
+    local label = #entries .. ' tests, ' .. threads .. ' threads'
+    local script_path = write_it_script(filter_str, label, '')
+    vim.notify('[DCSRE] ' .. label .. ':\n' .. table.concat(names, '\n'), vim.log.levels.INFO)
+
+    local Terminal = require('toggleterm.terminal').Terminal
+    Terminal:new({
+      cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+      direction = 'horizontal',
+      close_on_exit = false,
+      count = 42,
+      on_exit = function()
+        set_xunit_threads(1)
+        vim.notify('[DCSRE] Reset maxParallelThreads=1', vim.log.levels.INFO)
+      end,
+    }):toggle()
+  end)
+end
+
+-- Projektordner eines *.UnitTests-Files als Backslash-Pfad (z.B. <backend>\VDEK.DCSP.Domain.UnitTests), sonst nil.
+local function unit_project_dir(abs)
+  local ff = abs:gsub('\\', '/')
+  local pos = 1
+  while true do
+    local s, e = ff:find('[^/]+', pos)
+    if not s then return nil end
+    if ff:sub(s, e):match('%.UnitTests$') then
+      return (ff:sub(1, e):gsub('/', '\\'))
+    end
+    pos = e + 1
+  end
+end
+
+-- Schreibt %TEMP%\run-ut.ps1: pro Projekt sequentiell `dotnet test <projdir> --filter ...` (Build inklusive,
+-- geaenderter Code muss gebaut werden), Exit-Codes sammeln, Summary PASS/FAIL pro Projekt.
+-- groups: { { dir, name, filter, count }, ... }
+local function write_ut_script(groups)
+  local lines = {
+    '$ErrorActionPreference = "Continue"',
+    '$results = @()',
+  }
+  for _, g in ipairs(groups) do
+    table.insert(lines, '')
+    table.insert(lines, string.format('Write-Host "=== %s (%d Tests) ===" -ForegroundColor Cyan', g.name, g.count))
+    table.insert(lines, string.format('dotnet test "%s" --filter "%s" --logger "console;verbosity=normal"', g.dir, g.filter))
+    table.insert(lines, string.format('$results += [pscustomobject]@{ Project = "%s"; Exit = $LASTEXITCODE }', g.name))
+  end
+  vim.list_extend(lines, {
+    '',
+    'Write-Host ""',
+    'Write-Host "===============================" -ForegroundColor Cyan',
+    'foreach ($r in $results) {',
+    '  if ($r.Exit -eq 0) { Write-Host ("  PASS  " + $r.Project) -ForegroundColor Green }',
+    '  else               { Write-Host ("  FAIL  " + $r.Project + " (exit " + $r.Exit + ")") -ForegroundColor Red }',
+    '}',
+    '$failed = @($results | Where-Object { $_.Exit -ne 0 }).Count',
+    '$color = if ($failed -gt 0) { "Red" } else { "Green" }',
+    'Write-Host ("  Projekte: {0}  FAILED: {1}" -f $results.Count, $failed) -ForegroundColor $color',
+    'Write-Host "===============================" -ForegroundColor Cyan',
+  })
+  local script_path = tests_temp() .. '\\run-ut.ps1'
+  local f = io.open(script_path, 'w')
+  if not f then
+    vim.notify('Kann Skript nicht schreiben: ' .. script_path, vim.log.levels.ERROR)
+    return nil
+  end
+  f:write(table.concat(lines, '\r\n'))
+  f:close()
+  return script_path
+end
+
+-- Unit-Runner: gruppiert nach *.UnitTests-Projektordner, ein dotnet test pro Projekt (Terminal 46).
+-- Kein xunit-Thread-Handling (das ist IntegrationTests-spezifisch).
+local function run_unit_entries(entries, opts)
+  opts = opts or {}
+  local by_dir = {}
+  for _, e in ipairs(entries) do
+    local dir = unit_project_dir(e.file)
+    if dir then
+      by_dir[dir] = by_dir[dir] or {}
+      table.insert(by_dir[dir], e)
+    end
+  end
+  local groups = {}
+  for dir, list in pairs(by_dir) do
+    local filter = build_fqn_filter(list, opts.per_class)
+    table.insert(groups, { dir = dir, name = dir:match('([^\\]+)$') or dir, filter = filter, count = #list })
+  end
+  table.sort(groups, function(a, b) return a.name < b.name end)
+  if #groups == 0 then
+    vim.notify('Keine *.UnitTests-Projekte aus den Pfaden ermittelbar', vim.log.levels.WARN)
+    return
+  end
+
+  local script_path = write_ut_script(groups)
+  if not script_path then return end
+  local names = {}
+  for _, e in ipairs(entries) do table.insert(names, e.key) end
+  vim.notify(string.format('[DCSRE] %d Unit-Tests in %d Projekt(en), Build inklusive (erster Lauf langsam):\n%s',
+    #entries, #groups, table.concat(names, '\n')), vim.log.levels.INFO)
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  Terminal:new({
+    cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 46,
+  }):toggle()
+end
+
+-- <leader>rif - Run Integration: ALLE Tests des IntegrationTests-Projekts als Picker
+--   tippen = filtern (Klasse, Methode oder Dateipfad) · Tab = mehrere markieren · Enter = NUR die markierten starten
+-- Filter pro Test: FullyQualifiedName~Klasse.Methode (Substring → robust gegen Namespace-
+-- Abweichungen; Theory-Datenzeilen werden mit erfasst).
+vim.keymap.set('n', '<leader>rif', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Integration Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local test_root = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local prefix_fwd = (test_root:gsub('\\', '/')) .. '/'
+  local files = vim.fn.globpath(test_root, '**/*.cs', false, true)
+  local entries = scan_test_methods(files, prefix_fwd)
+  if #entries == 0 then
+    vim.notify('Keine [Fact]/[Theory]-Tests gefunden unter ' .. test_root, vim.log.levels.ERROR)
+    return
+  end
+  pick_and_run_tests('Integration Tests (' .. #entries .. ') — tippen = filtern, Tab = mehrere, Enter = starten',
+    entries, function(sel) run_integration_entries(sel) end)
+end, { desc = '[R]un [I]ntegration [f]ind test | Picker ueber ALLE [Fact]/[Theory]-Tests (Tab=mehrere, Enter=nur die starten)' })
+
+-- ============================================================================
+-- Dirty Tests: sDti / sDtI / sDtu / sDtU — nur Tests aus Dateien, die gegen die Base geaendert sind
+-- (dieselbe Liste wie <leader>sDo: shared.dirty, Profil fest 'Backend', nur committete Aenderungen).
+-- Zwei Welten: Integration (VDEK.DCSP.IntegrationTests) und Unit (*.UnitTests-Projekte).
+-- ============================================================================
+
+-- Dirty-Test-Dateien einer Welt. kind = 'integration' | 'unit'
+-- -> items { abs, root_fwd } | nil, base, total_dirty_backend_files
+local function dirty_test_files(kind)
+  local files, base = require('shared.dirty').get_dirty_files('Backend')
+  if not files then return nil, base, 0 end
+  local out = {}
+  for _, abs in ipairs(files) do
+    local ff = abs:gsub('\\', '/')
+    if ff:match('%.cs$') then
+      if kind == 'integration' then
+        local _, e = ff:find('/VDEK.DCSP.IntegrationTests/', 1, true)
+        if e then table.insert(out, { abs = abs, root_fwd = ff:sub(1, e) }) end
+      else
+        -- Root = Ordner UEBER dem Projekt, damit `rel` mit dem Projektnamen beginnt (VDEK.DCSP.Domain.UnitTests/...)
+        local s = ff:find('/[^/]+%.UnitTests/')
+        if s then table.insert(out, { abs = abs, root_fwd = ff:sub(1, s) }) end
+      end
+    end
+  end
+  return out, base, #files
+end
+
+local function dirty_tests(kind, run_all)
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Dirty Tests only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local files, base, total = dirty_test_files(kind)
+  if not files then return end
+  local label = kind == 'integration' and 'Integration' or 'Unit'
+  if #files == 0 then
+    vim.notify(string.format('0 geaenderte %s-Test-Dateien gegen %s (%d dirty Backend-Dateien insgesamt; nur committete Aenderungen zaehlen)',
+      label, base, total), vim.log.levels.INFO)
+    return
+  end
+  local entries = scan_test_methods(files)
+  if #entries == 0 then
+    vim.notify(string.format('%d %s-Test-Dateien dirty, aber keine [Fact]/[Theory]-Methoden erkannt', #files, label), vim.log.levels.WARN)
+    return
+  end
+  local runner = kind == 'integration' and run_integration_entries or run_unit_entries
+  if run_all then
+    runner(entries, { per_class = true })
+  else
+    pick_and_run_tests(string.format('Dirty %s Tests (%d in %d Dateien vs %s) — Tab = mehrere, Enter = starten',
+      label, #entries, #files, base), entries, function(sel) runner(sel) end)
+  end
+end
+
+vim.keymap.set('n', '<leader>sDti', function() dirty_tests('integration', false) end,
+  { desc = '[S]earch [D]irty [T]ests [i]ntegration | Picker: nur Tests aus geaenderten IntegrationTests-Dateien (Tab=mehrere)' })
+vim.keymap.set('n', '<leader>sDtI', function() dirty_tests('integration', true) end,
+  { desc = '[S]earch [D]irty [T]ests [I]ntegration ALL | alle Tests der geaenderten IntegrationTests-Dateien starten' })
+vim.keymap.set('n', '<leader>sDtu', function() dirty_tests('unit', false) end,
+  { desc = '[S]earch [D]irty [T]ests [u]nit | Picker: nur Tests aus geaenderten *.UnitTests-Dateien (Tab=mehrere)' })
+vim.keymap.set('n', '<leader>sDtU', function() dirty_tests('unit', true) end,
+  { desc = '[S]earch [D]irty [T]ests [U]nit ALL | alle Tests der geaenderten *.UnitTests-Dateien (ein dotnet test pro csproj)' })
 
 -- <leader>ris - Run Integration Search (all tests from last TRX, Telescope picker)
 vim.keymap.set('n', '<leader>ris', function()
