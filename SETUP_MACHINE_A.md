@@ -81,6 +81,9 @@ nicht die ganze Datei als einen Block markieren.
 | `<leader>rbR` | **Fix:** eigener Terminal-Slot pro Projekt (60–89, aus Projektname abgeleitet). Vorher teilte sich `rbR` den Slot mit `rbw` — ein zweiter Start hat nur das bestehende Terminal ein-/ausgeblendet statt ein neues zu oeffnen. Terminal-Anzeigename = Projektname (sichtbar in `<leader>st`). |
 | `<leader>rif` | Integration-Test-Picker: statischer Scan aller `[Fact]`/`[Theory]`-Methoden im IntegrationTests-Projekt (kein Build, < 1s) — tippen filtert, `Tab` markiert mehrere, `Enter` startet NUR die markierten |
 | `<leader>sDti` / `sDtI` | **Dirty Integration Tests**: Picker bzw. "alle" NUR ueber Tests aus Integrationstest-Dateien, die gegen `origin/develop` geaendert sind |
+| `<leader>sDc` | **Commit-Picker**: Telescope ueber die Commits des Branches (Hash / `vor Nh` / Message). `Tab` markiert mehrere, rechts waechst dabei die Liste der angefassten Dateien, `Enter` laedt GENAU diese als Buffer. Der Schnitt entlang der Commit-Achse — `sDo` laedt alles, hier nimmt man z.B. nur die letzten 5 Commits. Kein Profil-/Code-Filter: zeigt auch `.md`/`.csproj`. |
+| `<leader>bD` | alle Datei-Buffer schliessen, **ohne** dass Neovim zugeht. Terminals (toggleterm) und ungespeicherte Buffer bleiben unangetastet, das Fensterlayout bleibt stehen. Vorstufe zu `sDc`: erst aufraeumen, dann gezielt laden. |
+| `<leader>sDkp` | Umkehrung von `sDkt`: schliesst alle Buffer **ohne** "Test" im Pfad, nur die Test-Dateien bleiben offen (Terminals bleiben) |
 | `<leader>sDtu` / `sDtU` | **Dirty Unit Tests**: dasselbe fuer `*.UnitTests`-Projekte (Domain.UnitTests, Data.UnitTests, …) — `sDtU` startet pro Projekt ein eigenes `dotnet test` (Terminal 46) |
 
 ### Empfohlener Workflow: Branch-Review in Neovim

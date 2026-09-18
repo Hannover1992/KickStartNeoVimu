@@ -257,6 +257,43 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 vim.keymap.set('n', '<leader>q', '<cmd>q<cr>', { desc = '[Q]uit/Close window' })
 vim.keymap.set('n', '<leader>bd', '<cmd>bd<cr>', { desc = '[B]uffer [D]elete' })
 
+-- <leader>bD - alle Datei-Buffer schliessen, OHNE dass Neovim zugeht.
+-- Bewusst kein :%bd / :bufdo bd: das laeuft bei Terminal-Buffern und Sonderfenstern
+-- (neo-tree, Telescope-Reste) in Fehler und kann den letzten Split killen.
+-- Gedacht als Vorstufe zu sDo/sDc: erst alles weg, dann gezielt neu laden.
+vim.keymap.set('n', '<leader>bD', function()
+  -- Zuerst ein leeres Scratch-Buffer ins aktuelle Fenster haengen: damit ist IMMER ein
+  -- gueltiger Buffer sichtbar. Neovim legt zwar auch selbst ein [No Name] an, aber erst
+  -- NACHDEM der letzte sichtbare Buffer weg ist -- bei mehreren Splits kann dabei ein
+  -- Fenster wegklappen. So bleibt das Layout garantiert stehen.
+  local scratch = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_set_current_buf(scratch)
+
+  local closed, kept, modified = 0, 0, 0
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if buf ~= scratch and vim.api.nvim_buf_is_loaded(buf) then
+      if vim.bo[buf].buftype ~= '' then
+        -- Terminals (toggleterm: rbw, Docker, Testrunner) bleiben unangetastet --
+        -- gleiche Regel wie sDkp. Ein laufender Backend-Start soll durch Aufraeumen
+        -- nicht sterben.
+        kept = kept + 1
+      elseif vim.bo[buf].modified then
+        -- Ungespeichertes wird NICHT weggeworfen: bD ist ein Aufraeum-Key, kein
+        -- Datenverlust-Key. Wer wirklich verwerfen will, hat :bd! pro Buffer.
+        modified = modified + 1
+      else
+        pcall(vim.api.nvim_buf_delete, buf, { force = false })
+        closed = closed + 1
+      end
+    end
+  end
+
+  local msg = string.format('%d Buffer geschlossen', closed)
+  if modified > 0 then msg = msg .. string.format(', %d ungespeichert (bleiben offen)', modified) end
+  if kept > 0 then msg = msg .. string.format(', %d Terminal(s) unangetastet', kept) end
+  vim.notify(msg, vim.log.levels.INFO)
+end, { desc = '[B]uffer [D]elete ALL (Terminals + ungespeicherte bleiben, Neovim bleibt offen)' })
+
 -- Buffer-Navigation: Alt+h/Alt+l -- vorheriger/naechster Buffer.
 -- NICHT Ctrl+h/Ctrl+l: die sind Window-Fokus-Wechsel (Zeile 251-252), Kickstart-
 -- Standard, nicht anfassen. NICHT Ctrl+Shift+[/]: das Terminal schluckt die Shift-
@@ -1143,8 +1180,12 @@ require('lazy').setup({
     keys = {
       { '<leader>e', '<cmd>Neotree reveal<cr>', desc = '[E]xplorer Reveal (show current file)' },
       { '<leader>E', '<cmd>Neotree toggle<cr>', desc = '[E]xplorer Toggle (on/off)' },
+      -- NICHT <leader>et: das waere ein Prefix von <leader>e (Explorer Reveal) und haette
+      -- den Explorer bei jedem Aufruf um timeoutlen (300ms) verzoegert. Darum <leader>set
+      -- ([S]etting [E]xplorer [T]oggle) -- <leader>se ist sonst unbelegt, also entsteht
+      -- dort keine neue Wartezeit.
       {
-        '<leader>et',
+        '<leader>set',
         function()
           vim.g.neotree_test_filter_active = not vim.g.neotree_test_filter_active
           local patterns = vim.g.neotree_test_filter_active
@@ -1161,7 +1202,7 @@ require('lazy').setup({
             { title = 'Explorer' }
           )
         end,
-        desc = '[E]xplorer [T]oggle Test-Folders (Cypress/e2e/*Test* ein-/ausblenden)',
+        desc = '[S]etting [E]xplorer [T]oggle Test-Folders (Cypress/e2e/*Test* ein-/ausblenden)',
       },
     },
     config = function()
@@ -2407,6 +2448,217 @@ require('lazy').setup({
           opened, #files, profile, base), vim.log.levels.INFO, { timeout = 8000 })
       end, { desc = '[S]earch [D]irty: [O]pen all (Dateien des aktiven Profils in Buffer laden)' })
 
+      -- <leader>sDc — [C]ommits: Picker ueber die Commits des Branches (vs Base). Tab markiert
+      -- mehrere, Enter laedt GENAU die dort angefassten Dateien als Buffer. Der Schnitt entlang
+      -- der Commit-Achse -- sDo laedt alles, hier waehlt man einen Abschnitt (z.B. die letzten
+      -- 5 Commits). Rechts waechst die Dateiliste mit jeder Markierung, man sieht vorher was kommt.
+      -- Bewusst KEIN Profil-/Code-Filter (anders als sDo): ein Commit-Schnitt soll zeigen was der
+      -- Commit wirklich angefasst hat, auch .md/.csproj/.json.
+      vim.keymap.set('n', '<leader>sDc', function()
+        local base = vim.g.project_git_base or 'origin/develop'
+        local cwd = vim.fn.getcwd()
+
+        -- Tab (%x09) als Trenner: Commit-Subjects enthalten ':', '|', '-' -- Tab ist das
+        -- einzige sichere Trennzeichen. Zwei Punkte (base..HEAD), nicht drei: gewollt sind
+        -- genau die Commits die auf HEAD liegen und nicht auf der Base.
+        local raw = vim.fn.systemlist(string.format(
+          'git -C "%s" log --no-merges --format=%%h%%x09%%at%%x09%%s %s..HEAD 2>&1', cwd, base))
+        if vim.v.shell_error ~= 0 then
+          vim.notify('git log fehlgeschlagen:\n' .. table.concat(raw, '\n'), vim.log.levels.ERROR,
+            { title = 'Commit-Picker', timeout = 10000 })
+          return
+        end
+
+        local now = os.time()
+        local function rel_age(ts)
+          local d = now - ts
+          if d < 60 then return 'gerade' end
+          if d < 3600 then return string.format('vor %dm', math.floor(d / 60)) end
+          if d < 86400 then return string.format('vor %dh', math.floor(d / 3600)) end
+          if d < 2592000 then return string.format('vor %dd', math.floor(d / 86400)) end
+          return string.format('vor %dw', math.floor(d / 604800))
+        end
+
+        local commits = {}
+        local by_hash = {}
+        for _, line in ipairs(raw) do
+          local hash, ts, subject = line:match('^(%S+)\t(%d+)\t(.*)$')
+          if hash then
+            local c = { hash = hash, age = rel_age(tonumber(ts)), subject = subject }
+            table.insert(commits, c)
+            by_hash[hash] = c
+          end
+        end
+        if #commits == 0 then
+          vim.notify(string.format('Keine Commits gegen %s (Branch identisch mit Base?)', base),
+            vim.log.levels.INFO)
+          return
+        end
+
+        -- Cache: der Previewer ruft das bei JEDER Cursor-Bewegung auf -- ohne Cache liefe
+        -- pro Tastendruck ein git show.
+        local files_cache = {}
+        local function commit_files(hash)
+          if files_cache[hash] then return files_cache[hash] end
+          local out = vim.fn.systemlist(string.format(
+            'git -C "%s" show --name-only --pretty=format: %s', cwd, hash))
+          local list = {}
+          for _, l in ipairs(out or {}) do
+            local rel = (l or ''):gsub('%s+$', '')
+            if rel ~= '' then table.insert(list, rel) end
+          end
+          files_cache[hash] = list
+          return list
+        end
+
+        -- Union der Dateien ueber mehrere Commits, dedupliziert, Reihenfolge stabil.
+        local function union_files(hashes)
+          local seen, out = {}, {}
+          for _, h in ipairs(hashes) do
+            for _, rel in ipairs(commit_files(h)) do
+              if not seen[rel] then
+                seen[rel] = true
+                table.insert(out, rel)
+              end
+            end
+          end
+          return out
+        end
+
+        local pickers = require('telescope.pickers')
+        local finders = require('telescope.finders')
+        local conf = require('telescope.config').values
+        local actions = require('telescope.actions')
+        local action_state = require('telescope.actions.state')
+        local entry_display = require('telescope.pickers.entry_display')
+        local previewers = require('telescope.previewers')
+
+        -- Hash-Spalte 10 breit: %h ist repo-abhaengig lang (DCSRE liefert 9 Zeichen),
+        -- 8 wuerde den Hash abschneiden.
+        local displayer = entry_display.create({
+          separator = ' ',
+          items = { { width = 10 }, { width = 8 }, { remaining = true } },
+        })
+
+        -- prompt_bufnr wird von attach_mappings gesetzt; der Previewer braucht ihn, um an
+        -- die Mehrfachauswahl zu kommen (die Telescope-Previewer-API reicht sie nicht durch).
+        local prompt_ref = nil
+
+        -- Aktuell markierte Hashes, sonst der Commit unter dem Cursor.
+        local function selected_hashes(fallback_entry)
+          if prompt_ref then
+            local ok, picker = pcall(action_state.get_current_picker, prompt_ref)
+            if ok and picker then
+              local multi = picker:get_multi_selection()
+              if multi and #multi > 0 then
+                local hs = {}
+                for _, m in ipairs(multi) do table.insert(hs, m.value.hash) end
+                return hs, #multi
+              end
+            end
+          end
+          if fallback_entry then return { fallback_entry.value.hash }, 1 end
+          return {}, 0
+        end
+
+        pickers.new({}, {
+          prompt_title = string.format(
+            'Commits vs %s (%d) — Tab=mehrere, Enter=Dateien als Buffer laden', base, #commits),
+          finder = finders.new_table({
+            results = commits,
+            entry_maker = function(c)
+              return {
+                value = c,
+                ordinal = c.hash .. ' ' .. c.subject,
+                display = function()
+                  return displayer({ c.hash, c.age, c.subject })
+                end,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          previewer = previewers.new_buffer_previewer({
+            title = 'Angefasste Dateien',
+            define_preview = function(self, entry)
+              local hashes, n_commits = selected_hashes(entry)
+              local files = union_files(hashes)
+              -- Kopf: die Commit-Message(s) UNGEKUERZT. In der Ergebnis-Spalte links ist
+              -- dafuer kein Platz (die DCSRE-Subjects sind 60-90 Zeichen lang und werden
+              -- dort abgeschnitten) -- hier steht sie vollstaendig, mit Zeilenumbruch.
+              local lines = {}
+              for _, h in ipairs(hashes) do
+                local c = by_hash[h]
+                if c then
+                  table.insert(lines, string.format('%s  %s  %s', c.hash, c.age, c.subject))
+                end
+              end
+              table.insert(lines, '')
+              table.insert(lines, string.format('%d Dateien aus %d Commit(s)', #files, n_commits))
+              table.insert(lines, '')
+              for _, rel in ipairs(files) do table.insert(lines, rel) end
+              pcall(vim.api.nvim_buf_set_lines, self.state.bufnr, 0, -1, false, lines)
+              -- Umbruch an: sonst laeuft die lange Message rechts aus dem Fenster.
+              if self.state.winid then
+                pcall(function()
+                  vim.wo[self.state.winid].wrap = true
+                  vim.wo[self.state.winid].linebreak = true
+                end)
+              end
+            end,
+          }),
+          attach_mappings = function(prompt_bufnr, map)
+            prompt_ref = prompt_bufnr
+
+            -- Telescopes Default-<Tab> ist toggle_selection + move_selection_worse; die
+            -- Cursor-Bewegung loest den Preview-Redraw von selbst aus. Auf dem LETZTEN
+            -- Eintrag bewegt sich aber nichts mehr -- darum hier explizit nachschieben.
+            -- refresh_previewer gibt es nicht in jeder Telescope-Version -> pcall, Tab
+            -- bleibt auch ohne voll funktionsfaehig.
+            local function tab_toggle(pb)
+              actions.toggle_selection(pb)
+              actions.move_selection_worse(pb)
+              pcall(function()
+                local p = action_state.get_current_picker(pb)
+                if p and p.refresh_previewer then p:refresh_previewer() end
+              end)
+            end
+            map('i', '<Tab>', tab_toggle)
+            map('n', '<Tab>', tab_toggle)
+
+            actions.select_default:replace(function()
+              local hashes, n_commits = selected_hashes(action_state.get_selected_entry())
+              local files = union_files(hashes)
+              actions.close(prompt_bufnr)
+              if #files == 0 then
+                vim.notify('Keine Dateien in der Auswahl', vim.log.levels.WARN)
+                return
+              end
+              local original = vim.api.nvim_get_current_buf()
+              local opened, missing = 0, 0
+              for _, rel in ipairs(files) do
+                local abs = vim.fn.fnamemodify(cwd .. '/' .. rel, ':p')
+                -- In aelteren Commits geloeschte Dateien existieren heute nicht mehr:
+                -- zaehlen und ueberspringen, kein Fehler.
+                if vim.fn.filereadable(abs) == 1 then
+                  local ok = pcall(vim.cmd, 'silent edit ' .. vim.fn.fnameescape(abs))
+                  if ok then opened = opened + 1 end
+                else
+                  missing = missing + 1
+                end
+              end
+              if vim.api.nvim_buf_is_valid(original) and vim.api.nvim_buf_get_name(original) ~= '' then
+                vim.api.nvim_set_current_buf(original)
+              end
+              local msg = string.format('%d/%d Dateien aus %d Commit(s) geladen',
+                opened, #files, n_commits)
+              if missing > 0 then msg = msg .. string.format(' (%d nicht mehr vorhanden)', missing) end
+              vim.notify(msg, vim.log.levels.INFO, { timeout = 8000 })
+            end)
+            return true
+          end,
+        }):find()
+      end, { desc = '[S]earch [D]irty: [C]ommits (Picker -> nur die Dateien der gewaehlten Commits laden)' })
+
       -- Gemeinsame Basis fuer sDb/sDS: Diagnostics NUR in Branch-geaenderten Dateien des aktiven Profils.
       -- opts.source_filter: nil = alle Quellen | Funktion(source) -> bool (z.B. nur SonarQube)
       -- opts.severity: nil = alle Stufen | vim.diagnostic.severity.X (exakte Stufe, wie sW/sE)
@@ -2648,6 +2900,33 @@ require('lazy').setup({
         end
         vim.notify(string.format('%d Test-Buffer geschlossen, %d Nicht-Test-Buffer bleiben offen', closed, kept), vim.log.levels.INFO)
       end, { desc = '[S]earch [D]irty: [K]ill [T]est-Buffer (alle mit "Test" im Pfad schliessen)' })
+
+      -- <leader>sDkp — [K]ill [P]roduktions-Buffer: Umkehrung von sDkt. Schliesst alle
+      -- Buffer OHNE "Test" im Pfad, laesst nur die Test-Dateien offen. Gleicher echter
+      -- Substring-Check (case-insensitive), kein Fuzzy-Matching.
+      -- Gedacht als Nachschlag zu sDo: erst alle Dirty-Files laden, dann den Produktions-
+      -- code raus, wenn nur die geaenderten Tests interessieren.
+      -- WICHTIG: nur echte Datei-Buffer (buftype == '') werden angefasst -- sonst wuerden
+      -- Terminal-Buffer (toggleterm: rbw, Docker, Testrunner) als "kein Test" mit
+      -- weggeraeumt. sDkt hat dieses Problem nicht, weil es nur aktiv schliesst was
+      -- "test" im Pfad hat; hier ist die Auswahl invertiert und trifft sonst alles.
+      vim.keymap.set('n', '<leader>sDkp', function()
+        local closed, kept = 0, 0
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' then
+            local name = vim.api.nvim_buf_get_name(buf)
+            if name ~= '' then
+              if name:lower():find('test', 1, true) then
+                kept = kept + 1
+              else
+                vim.api.nvim_buf_delete(buf, { force = false })
+                closed = closed + 1
+              end
+            end
+          end
+        end
+        vim.notify(string.format('%d Nicht-Test-Buffer geschlossen, %d Test-Buffer bleiben offen', closed, kept), vim.log.levels.INFO)
+      end, { desc = '[S]earch [D]irty: [K]ill [P]roduktions-Buffer (nur Test-Dateien bleiben offen)' })
 
       vim.keymap.set('n', '<leader>sW', function()
         builtin.diagnostics({ severity = vim.diagnostic.severity.WARN })
