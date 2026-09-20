@@ -2469,14 +2469,10 @@ require('lazy').setup({
           return
         end
 
-        local now = os.time()
-        local function rel_age(ts)
-          local d = now - ts
-          if d < 60 then return 'gerade' end
-          if d < 3600 then return string.format('vor %dm', math.floor(d / 60)) end
-          if d < 86400 then return string.format('vor %dh', math.floor(d / 3600)) end
-          if d < 2592000 then return string.format('vor %dd', math.floor(d / 86400)) end
-          return string.format('vor %dw', math.floor(d / 604800))
+        -- Absoluter Zeitstempel, nicht relativ: bei einem Branch mit >100 Commits stand bei
+        -- fast allen "vor 1d" -- das unterscheidet nichts. dd.mm HH:MM ordnet sie eindeutig.
+        local function stamp(ts)
+          return os.date('%d.%m %H:%M', ts)
         end
 
         local commits = {}
@@ -2484,7 +2480,7 @@ require('lazy').setup({
         for _, line in ipairs(raw) do
           local hash, ts, subject = line:match('^(%S+)\t(%d+)\t(.*)$')
           if hash then
-            local c = { hash = hash, age = rel_age(tonumber(ts)), subject = subject }
+            local c = { hash = hash, age = stamp(tonumber(ts)), subject = subject }
             table.insert(commits, c)
             by_hash[hash] = c
           end
@@ -2534,10 +2530,10 @@ require('lazy').setup({
         local previewers = require('telescope.previewers')
 
         -- Hash-Spalte 10 breit: %h ist repo-abhaengig lang (DCSRE liefert 9 Zeichen),
-        -- 8 wuerde den Hash abschneiden.
+        -- 8 wuerde den Hash abschneiden. Zeitstempel-Spalte 11 = "dd.mm HH:MM".
         local displayer = entry_display.create({
           separator = ' ',
-          items = { { width = 10 }, { width = 8 }, { remaining = true } },
+          items = { { width = 10 }, { width = 11 }, { remaining = true } },
         })
 
         -- prompt_bufnr wird von attach_mappings gesetzt; der Previewer braucht ihn, um an
@@ -2561,7 +2557,15 @@ require('lazy').setup({
           return {}, 0
         end
 
-        pickers.new({}, {
+        -- Vertikal + preview_cutoff=0: Telescope blendet die Preview unterhalb von
+        -- preview_cutoff (Default 120 Spalten) KOMPLETT aus -- auf schmalen Terminals war
+        -- also genau das weg, was die volle Commit-Message zeigen soll. Vertikal gestapelt
+        -- (Preview oben, Liste darunter) hat die Preview die ganze Fensterbreite, statt sie
+        -- sich seitlich mit der Liste zu teilen.
+        pickers.new({
+          layout_strategy = 'vertical',
+          layout_config = { preview_cutoff = 0, preview_height = 0.45, width = 0.9, height = 0.9 },
+        }, {
           prompt_title = string.format(
             'Commits vs %s (%d) — Tab=mehrere, Enter=Dateien als Buffer laden', base, #commits),
           finder = finders.new_table({
@@ -2582,15 +2586,14 @@ require('lazy').setup({
             define_preview = function(self, entry)
               local hashes, n_commits = selected_hashes(entry)
               local files = union_files(hashes)
-              -- Kopf: die Commit-Message(s) UNGEKUERZT. In der Ergebnis-Spalte links ist
-              -- dafuer kein Platz (die DCSRE-Subjects sind 60-90 Zeichen lang und werden
-              -- dort abgeschnitten) -- hier steht sie vollstaendig, mit Zeilenumbruch.
+              -- Kopf: NUR die Message des Commits unter dem Cursor, ungekuerzt. In der Liste
+              -- ist dafuer kein Platz (die DCSRE-Subjects sind 60-90 Zeichen lang und werden
+              -- dort abgeschnitten). Bewusst nicht alle markierten Commits: der Kopf sagt
+              -- "wo stehe ich", die Dateiliste darunter sagt "was kommt bei Enter".
               local lines = {}
-              for _, h in ipairs(hashes) do
-                local c = by_hash[h]
-                if c then
-                  table.insert(lines, string.format('%s  %s  %s', c.hash, c.age, c.subject))
-                end
+              local cur = entry and entry.value and by_hash[entry.value.hash]
+              if cur then
+                table.insert(lines, string.format('%s  %s  %s', cur.hash, cur.age, cur.subject))
               end
               table.insert(lines, '')
               table.insert(lines, string.format('%d Dateien aus %d Commit(s)', #files, n_commits))
