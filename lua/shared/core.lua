@@ -257,6 +257,83 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 vim.keymap.set('n', '<leader>q', '<cmd>q<cr>', { desc = '[Q]uit/Close window' })
 vim.keymap.set('n', '<leader>bd', '<cmd>bd<cr>', { desc = '[B]uffer [D]elete' })
 
+-- <leader>bc - [B]uffer [C]opy: Quelltext ALLER offenen Datei-Buffer ins Clipboard,
+-- jede Datei mit Kopfzeile (relativer Pfad + Commit, der sie zuletzt angefasst hat).
+-- Gedacht als Abschluss der sDo/sDc/sDC-Kette: erst den gewuenschten Ausschnitt in die
+-- Buffer holen, ggf. mit bD/sDkt/sDkp aufraeumen -- und dann genau diesen Stand als einen
+-- Block rausgeben. Wie <leader>nN landet alles im Clipboard UND in einem Split, damit man
+-- vor dem Weitergeben sieht, was man hat.
+vim.keymap.set('n', '<leader>bc', function()
+  local cwd = vim.fn.getcwd()
+  local cwd_fwd = cwd:gsub('\\', '/'):gsub('/$', '')
+
+  -- Nur echte Datei-Buffer: buftype ~= '' waeren Terminals, Quickfix, Hilfe -- die haben
+  -- keinen Quelltext, den man weitergeben will. Gleiche Regel wie bD/sDkp.
+  local files = {}
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and vim.fn.buflisted(buf) == 1 then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name ~= '' and vim.fn.filereadable(name) == 1 then
+        table.insert(files, name)
+      end
+    end
+  end
+  if #files == 0 then
+    vim.notify('Keine offenen Datei-Buffer zum Kopieren', vim.log.levels.WARN)
+    return
+  end
+  table.sort(files)
+
+  local parts, skipped = {}, 0
+  for _, abs in ipairs(files) do
+    -- Pfad relativ zum Repo-Root anzeigen, nicht der ~\Documents\...-Vollpfad.
+    local fwd = abs:gsub('\\', '/')
+    local rel = fwd
+    if fwd:sub(1, #cwd_fwd + 1):lower() == (cwd_fwd .. '/'):lower() then
+      rel = fwd:sub(#cwd_fwd + 2)
+    end
+
+    -- Letzter Commit, der DIESE Datei angefasst hat. -1 = nur der neueste.
+    -- Kein ^{}/~-Ausdruck im Kommando: Neovim geht ueber cmd.exe, wo '^' das
+    -- Escape-Zeichen ist und still verschluckt wuerde.
+    -- --date MUSS gequotet sein: das Leerzeichen im Format ("%d.%m %H:%M") macht git sonst
+    -- ein zweites Argument daraus -> "fatal: bad revision '%H:%M'". Und darauf ist kein
+    -- Verlass ueber den Exit-Code: git liefert in dem Fall trotzdem 0, deshalb wird unten
+    -- am Muster geprueft, nicht an shell_error.
+    local info = vim.fn.systemlist(string.format(
+      'git -C "%s" log -1 --format=%%h%%x09%%ad%%x09%%s "--date=format:%%d.%%m %%H:%%M" -- "%s" 2>&1',
+      cwd, rel))
+    local head = '=== ' .. rel
+    if info and info[1] then
+      local h, d, s = info[1]:match('^(%x+)\t(.-)\t(.*)$')
+      if h then head = head .. '\n=== ' .. h .. '  ' .. d .. '  ' .. s end
+    end
+
+    local ok, lines = pcall(vim.fn.readfile, abs)
+    if ok and lines then
+      table.insert(parts, head .. '\n\n' .. table.concat(lines, '\n'))
+    else
+      skipped = skipped + 1
+    end
+  end
+
+  local content = table.concat(parts, '\n\n')
+  vim.fn.setreg('+', content)
+
+  -- Zusaetzlich sichtbar machen (wie <leader>nN): Scratch-Split, nicht auf Platte.
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(content, '\n', { plain = true }))
+  vim.bo[buf].bufhidden = 'hide'
+  vim.bo[buf].modifiable = false
+  vim.cmd('vsplit')
+  vim.api.nvim_win_set_buf(0, buf)
+
+  local n_lines = select(2, content:gsub('\n', '\n')) + 1
+  local msg = string.format('%d Dateien (%d Zeilen) ins Clipboard kopiert', #parts, n_lines)
+  if skipped > 0 then msg = msg .. string.format(' (%d nicht lesbar)', skipped) end
+  vim.notify(msg, vim.log.levels.INFO, { title = 'Buffer Copy', timeout = 8000 })
+end, { desc = '[B]uffer [C]opy (alle offenen Datei-Buffer + Pfad/Commit-Header ins Clipboard)' })
+
 -- <leader>bD - alle Datei-Buffer schliessen, OHNE dass Neovim zugeht.
 -- Bewusst kein :%bd / :bufdo bd: das laeuft bei Terminal-Buffern und Sonderfenstern
 -- (neo-tree, Telescope-Reste) in Fehler und kann den letzten Split killen.
@@ -943,6 +1020,71 @@ require('lazy').setup({
     keys = {
       -- <leader>oi - Image aus Clipboard einfügen
       { '<leader>oi', '<cmd>PasteImage<cr>', desc = '[O]bsidian [I]mage paste' },
+
+      -- <leader>oI - Bild-PFAD aus der Zwischenablage als STANDARD-Markdown einbinden.
+      -- Unterschied zu oi: oi schreibt ![[datei.png]] (Obsidian-Wikilink) -- diese Syntax
+      -- kennt nur Obsidian, markdown-preview.nvim (<leader>mp) rendert sie NICHT. Hier
+      -- entsteht ![](Screenshots/datei.png), also echtes Markdown, das mp sofort anzeigt.
+      --
+      -- Die Datei wird kopiert statt nur verlinkt, aus zwei Gruenden:
+      --   1. Windows-ScreenClip-Namen sind {GUID}.png -- geschweifte Klammern brechen die
+      --      Markdown-Link-Syntax.
+      --   2. ...\TempState\ScreenClip wird von Windows aufgeraeumt, ein Link dorthin waere
+      --      bald tot. Neben der .md ueberlebt das Bild auch das Verschieben des Ordners.
+      {
+        '<leader>oI',
+        function()
+          local IMAGE_EXTS = { png = true, jpg = true, jpeg = true, gif = true, webp = true, bmp = true }
+          local SUBDIR = 'Screenshots'
+
+          local raw = (vim.fn.getreg('+') or ''):gsub('^%s+', ''):gsub('%s+$', '')
+          raw = raw:gsub('^"(.*)"$', '%1') -- Windows "Als Pfad kopieren" liefert Anfuehrungszeichen
+          raw = raw:gsub('^file:///', '')
+          if raw == '' then
+            vim.notify('Zwischenablage ist leer (erwartet: Pfad zu einer Bilddatei)', vim.log.levels.WARN)
+            return
+          end
+
+          local src = raw:gsub('/', '\\')
+          if vim.fn.filereadable(src) ~= 1 then
+            vim.notify('Keine lesbare Datei unter dem Pfad aus der Zwischenablage:\n' .. raw, vim.log.levels.ERROR)
+            return
+          end
+
+          local ext = (src:match('%.([%w]+)$') or ''):lower()
+          if not IMAGE_EXTS[ext] then
+            vim.notify('Das ist keine Bilddatei (.' .. ext .. '):\n' .. raw, vim.log.levels.WARN)
+            return
+          end
+
+          local md = vim.fn.expand('%:p')
+          if md == '' then
+            vim.notify('Kein Datei-Buffer aktiv -- der relative Bildpfad braucht eine gespeicherte .md', vim.log.levels.WARN)
+            return
+          end
+
+          local dst_dir = vim.fn.expand('%:p:h') .. '\\' .. SUBDIR
+          vim.fn.mkdir(dst_dir, 'p')
+          local name = os.date('Screenshot-%Y%m%d-%H%M%S') .. '.' .. ext
+          local dst = dst_dir .. '\\' .. name
+
+          -- Binaer kopieren (readfile/writefile mit 'b' -- sonst zerlegt Neovim die Zeilen
+          -- und die PNG-Datei kommt kaputt an).
+          local ok, err = pcall(function()
+            vim.fn.writefile(vim.fn.readfile(src, 'b'), dst, 'b')
+          end)
+          if not ok or vim.fn.filereadable(dst) ~= 1 then
+            vim.notify('Kopieren fehlgeschlagen:\n' .. tostring(err), vim.log.levels.ERROR)
+            return
+          end
+
+          -- Forward-Slash im Link: Backslashes sind in Markdown-Pfaden unzuverlaessig.
+          local link = string.format('![](%s/%s)', SUBDIR, name)
+          vim.api.nvim_put({ link }, 'c', true, true)
+          vim.notify(string.format('%s/%s eingefuegt (in <leader>mp sichtbar)', SUBDIR, name), vim.log.levels.INFO)
+        end,
+        desc = '[O]bsidian [I]mage aus Pfad in Clipboard -> Standard-Markdown (mp-tauglich)',
+      },
     },
   },
 
@@ -1178,7 +1320,50 @@ require('lazy').setup({
     },
     cmd = 'Neotree',
     keys = {
-      { '<leader>e', '<cmd>Neotree reveal<cr>', desc = '[E]xplorer Reveal (show current file)' },
+      -- <leader>e springt in die Ansicht, die GERADE offen ist -- nicht stur in den
+      -- Dateibaum. Vorher war das ein hartes ':Neotree reveal', das immer auf
+      -- filesystem zurueckgeschaltet hat; wer in der Buffer-Ansicht arbeitete, wurde
+      -- bei jedem Aufruf rausgeworfen.
+      {
+        '<leader>e',
+        function()
+          -- Welche Quelle liegt im Baum-Fenster? Alle Quellen teilen sich DASSELBE
+          -- Fenster und ihre States behalten eine veraltete winid -- der einzige
+          -- eindeutige Vergleich ist state.bufnr gegen den Buffer, der aktuell im
+          -- neo-tree-Fenster liegt.
+          local SOURCES = { 'filesystem', 'buffers', 'git_status', 'document_symbols' }
+          local tree_buf
+          for _, w in ipairs(vim.api.nvim_list_wins()) do
+            local b = vim.api.nvim_win_get_buf(w)
+            if vim.bo[b].filetype == 'neo-tree' then
+              tree_buf = b
+              break
+            end
+          end
+
+          local src = 'filesystem' -- Baum zu -> wie bisher der Dateibaum
+          if tree_buf then
+            local ok, mgr = pcall(require, 'neo-tree.sources.manager')
+            if ok then
+              for _, s in ipairs(SOURCES) do
+                local ok2, st = pcall(mgr.get_state, s)
+                if ok2 and st and st.bufnr == tree_buf then
+                  src = s
+                  break
+                end
+              end
+            end
+          end
+
+          -- Terminal, Quickfix, Hilfe: kein Dateipfad, den man "revealen" koennte --
+          -- dann nur in den Baum springen statt einen Fehler zu produzieren.
+          local action = (vim.bo.buftype == '') and 'reveal' or 'focus'
+          if not pcall(vim.cmd, 'Neotree ' .. action .. ' ' .. src) then
+            pcall(vim.cmd, 'Neotree focus ' .. src)
+          end
+        end,
+        desc = '[E]xplorer Reveal (in der gerade offenen Ansicht: filesystem/buffers/git_status)',
+      },
       { '<leader>E', '<cmd>Neotree toggle<cr>', desc = '[E]xplorer Toggle (on/off)' },
       -- NICHT <leader>et: das waere ein Prefix von <leader>e (Explorer Reveal) und haette
       -- den Explorer bei jedem Aufruf um timeoutlen (300ms) verzoegert. Darum <leader>set
@@ -2662,6 +2847,116 @@ require('lazy').setup({
         }):find()
       end, { desc = '[S]earch [D]irty: [C]ommits (Picker -> nur die Dateien der gewaehlten Commits laden)' })
 
+      -- <leader>sDC — dasselbe Ziel wie sDc, nur ohne Picker: eine HASH-LISTE eintippen
+      -- bzw. einfuegen ("b253d604e c1bd4042a 8d256807f"), Enter, fertig.
+      -- Warum ueberhaupt getrennt: der Telescope-Prompt in sDc ist ein Fuzzy-FILTER, kein
+      -- Eingabefeld -- er vergleicht den Text gegen jede Zeile EINZELN. Zwei Hashes
+      -- hintereinander matchen deshalb nie eine Zeile, die Liste bliebe leer. Wer die
+      -- Hashes schon woanders stehen hat, kommt hier ohne Tab-Markieren ans Ziel.
+      vim.keymap.set('n', '<leader>sDC', function()
+        local base = vim.g.project_git_base or 'origin/develop'
+        local cwd = vim.fn.getcwd()
+
+        local input = vim.fn.input({ prompt = 'Commit-Hashes (Leerzeichen/Komma): ' })
+        if not input or input:gsub('%s', '') == '' then
+          vim.notify('Abgebrochen', vim.log.levels.INFO)
+          return
+        end
+
+        -- Trenner grosszuegig: Leerzeichen, Komma, Semikolon, Zeilenumbruch. So laesst sich
+        -- auch eine aus git log kopierte Spalte direkt einfuegen.
+        local wanted = {}
+        for tok in input:gmatch('[^%s,;]+') do
+          table.insert(wanted, tok)
+        end
+
+        -- Jeden Token von git aufloesen: so sind auch Kurzformen erlaubt, und ein Tippfehler
+        -- faellt hier auf statt spaeter eine leere Dateiliste zu erzeugen.
+        -- KEIN "^{commit}"-Suffix: Neovim schickt das Kommando ueber cmd.exe, und dort ist
+        -- '^' das Escape-Zeichen -- es wird geschluckt, git bekommt Muell und lehnte JEDEN
+        -- Hash ab (gemessen: auch 'origin/develop' galt als unbekannt).
+        local resolved, unknown, outside = {}, {}, {}
+        local seen_hash = {}
+        for _, tok in ipairs(wanted) do
+          local out = vim.fn.systemlist(string.format(
+            'git -C "%s" rev-parse --verify --quiet %s 2>&1', cwd, tok))
+          local full = (out and out[1] or ''):gsub('%s+$', '')
+          -- Typ separat pruefen (ersetzt das nicht nutzbare ^{commit}): ein Tag oder Tree
+          -- wuerde sonst durchrutschen und 'git show --name-only' etwas anderes liefern.
+          local is_commit = false
+          if vim.v.shell_error == 0 and full:match('^%x%x%x%x%x%x%x+$') then
+            local t = vim.fn.systemlist(string.format('git -C "%s" cat-file -t %s 2>&1', cwd, full))
+            is_commit = (vim.v.shell_error == 0) and ((t and t[1] or ''):gsub('%s+$', '') == 'commit')
+          end
+          if not is_commit then
+            table.insert(unknown, tok)
+          elseif seen_hash[full] then
+            -- doppelt angegeben, still ignorieren
+          else
+            seen_hash[full] = true
+            -- Gehoert der Commit ueberhaupt zum Branch? Ein Hash aus develop wuerde sonst
+            -- kommentarlos Dateien laden, die gar nicht zur eigenen Arbeit gehoeren.
+            vim.fn.systemlist(string.format(
+              'git -C "%s" merge-base --is-ancestor %s %s', cwd, full, base))
+            local in_base = (vim.v.shell_error == 0)
+            if in_base then table.insert(outside, tok) end
+            table.insert(resolved, full)
+          end
+        end
+
+        if #unknown > 0 then
+          vim.notify('Unbekannte Commit-Angabe(n):\n' .. table.concat(unknown, ', '),
+            vim.log.levels.ERROR, { title = 'sDC', timeout = 8000 })
+          return
+        end
+        if #resolved == 0 then
+          vim.notify('Keine gueltigen Commits angegeben', vim.log.levels.WARN)
+          return
+        end
+
+        -- Dateien aller angegebenen Commits, dedupliziert, Reihenfolge stabil.
+        local seen, rels = {}, {}
+        for _, h in ipairs(resolved) do
+          local out = vim.fn.systemlist(string.format(
+            'git -C "%s" show --name-only --pretty=format: %s', cwd, h))
+          for _, l in ipairs(out or {}) do
+            local rel = (l or ''):gsub('%s+$', '')
+            if rel ~= '' and not seen[rel] then
+              seen[rel] = true
+              table.insert(rels, rel)
+            end
+          end
+        end
+        if #rels == 0 then
+          vim.notify('Diese Commits haben keine Dateien geaendert', vim.log.levels.WARN)
+          return
+        end
+
+        -- Laden exakt wie sDo/sDc: 'silent edit', nicht badd/bufload -- letztere feuern
+        -- keine FileType-Events, also wuerde kein LSP attachen.
+        local original = vim.api.nvim_get_current_buf()
+        local opened, missing = 0, 0
+        for _, rel in ipairs(rels) do
+          local abs = vim.fn.fnamemodify(cwd .. '/' .. rel, ':p')
+          if vim.fn.filereadable(abs) == 1 then
+            if pcall(vim.cmd, 'silent edit ' .. vim.fn.fnameescape(abs)) then opened = opened + 1 end
+          else
+            missing = missing + 1
+          end
+        end
+        if vim.api.nvim_buf_is_valid(original) and vim.api.nvim_buf_get_name(original) ~= '' then
+          vim.api.nvim_set_current_buf(original)
+        end
+
+        local msg = string.format('%d/%d Dateien aus %d Commit(s) geladen', opened, #rels, #resolved)
+        if missing > 0 then msg = msg .. string.format(' (%d nicht mehr vorhanden)', missing) end
+        if #outside > 0 then
+          msg = msg .. string.format('\nHinweis: %s liegt/liegen bereits in %s, gehoert also nicht zum Branch',
+            table.concat(outside, ', '), base)
+        end
+        vim.notify(msg, vim.log.levels.INFO, { timeout = 8000 })
+      end, { desc = '[S]earch [D]irty: [C]ommit-Hashes eingeben -> deren Dateien laden (ohne Picker)' })
+
       -- Gemeinsame Basis fuer sDb/sDS: Diagnostics NUR in Branch-geaenderten Dateien des aktiven Profils.
       -- opts.source_filter: nil = alle Quellen | Funktion(source) -> bool (z.B. nur SonarQube)
       -- opts.severity: nil = alle Stufen | vim.diagnostic.severity.X (exakte Stufe, wie sW/sE)
@@ -3487,6 +3782,67 @@ require('lazy').setup({
 
           -- Find references for the word under your cursor.
           map('grr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
+
+          -- grR - wie grr, aber OHNE Tests: nur Produktionscode-Referenzen.
+          -- Grund: bei einer Methode mit vielen Testfaellen ersaeuft der eine echte
+          -- Aufrufer in 20+ Treffern aus *Tests.cs (gemessen: 27 Referenzen, davon 4
+          -- Produktionscode). grr bleibt unveraendert daneben stehen.
+          --
+          -- Bewusst NICHT ueber telescope.builtin.lsp_references mit Nachfilter: dessen
+          -- Ergebnis ist nicht abfangbar. Stattdessen der LSP-Request direkt, filtern,
+          -- und erst dann die Liste bauen.
+          map('grR', function()
+            local params = vim.lsp.util.make_position_params(0, 'utf-16')
+            params.context = { includeDeclaration = true }
+            vim.lsp.buf_request_all(0, 'textDocument/references', params, function(results)
+              local all = {}
+              for _, res in pairs(results or {}) do
+                for _, loc in ipairs(res.result or {}) do
+                  table.insert(all, loc)
+                end
+              end
+              if #all == 0 then
+                vim.notify('Keine Referenzen gefunden', vim.log.levels.INFO)
+                return
+              end
+
+              -- Substring-Pruefung auf dem Pfad, case-insensitive -- deckt *Tests.cs,
+              -- *.UnitTests/, IntegrationTests/ und Testdaten-Ordner gleichermassen ab.
+              -- Gleiches Kriterium wie <leader>sDkt, damit sich beides gleich verhaelt.
+              local kept, dropped = {}, 0
+              for _, loc in ipairs(all) do
+                local uri = loc.uri or loc.targetUri or ''
+                local path = vim.uri_to_fname(uri):lower()
+                if path:find('test', 1, true) then
+                  dropped = dropped + 1
+                else
+                  table.insert(kept, loc)
+                end
+              end
+
+              if #kept == 0 then
+                vim.notify(string.format(
+                  'Nur Test-Referenzen (%d) -- kein Produktionscode. Mit grr siehst du alle.', dropped),
+                  vim.log.levels.WARN, { timeout = 6000 })
+                return
+              end
+
+              local enc = (vim.lsp.get_clients({ bufnr = 0 })[1] or {}).offset_encoding or 'utf-16'
+              local items = vim.lsp.util.locations_to_items(kept, enc)
+              vim.fn.setqflist({}, ' ', {
+                title = string.format('Referenzen ohne Tests (%d von %d)', #kept, #all),
+                items = items,
+              })
+              vim.notify(string.format('%d Referenzen (%d Test-Treffer ausgeblendet)', #kept, dropped),
+                vim.log.levels.INFO)
+              -- Ein einzelner Treffer: direkt hin, statt eine Ein-Zeilen-Liste zu oeffnen.
+              if #items == 1 then
+                vim.cmd('cfirst')
+              else
+                vim.cmd('copen')
+              end
+            end)
+          end, '[G]oto [R]eferences OHNE Tests (nur Produktionscode)')
 
           -- Jump to the implementation of the word under your cursor.
           --  Useful when your language has ways of declaring types without an actual implementation.
