@@ -160,6 +160,22 @@ vim.o.smartcase = true
 -- Keep signcolumn on by default
 vim.o.signcolumn = 'yes'
 
+-- editorconfig: end_of_line NICHT in 'fileformat' uebernehmen (gemessen 2026-10-09, DCSRE LaneB).
+-- Das Repo-.editorconfig sagt `[*] end_of_line = crlf`, die Dateien im Arbeitsbaum sind aber LF
+-- (git ls-files --eol: i/lf w/lf, autocrlf + `* text=auto`). Neovims eingebauter
+-- editorconfig-Support setzte jeden Buffer deshalb auf ff=dos. gitsigns haengt dem Buffertext
+-- bei dos ein \r an, der Git-Text hat keins -> JEDE Zeile weicht ab, die ganze Datei war EIN
+-- Hunk (-1,218 +1,218) -- schon bei Base HEAD, damit auch bei hB/qh/hC und ]c. Ohne den Handler
+-- erkennt Neovim das Zeilenende wie ueblich am Dateiinhalt (echte CRLF-Dateien bleiben dos).
+-- Die uebrigen editorconfig-Eigenschaften (indent, charset, trim ...) bleiben aktiv; OmniSharp
+-- liest die .editorconfig selbst und ist davon nicht betroffen.
+do
+  local ok, ec = pcall(require, 'editorconfig')
+  if ok and type(ec.properties) == 'table' then
+    ec.properties.end_of_line = function() end
+  end
+end
+
 -- Decrease update time
 vim.o.updatetime = 250
 
@@ -1719,6 +1735,66 @@ require('lazy').setup({
       vim.fn.sign_define('DapBreakpoint', { text = '🔴', texthl = 'DiagnosticError', linehl = '', numhl = '' })
       vim.fn.sign_define('DapBreakpointCondition', { text = '🟡', texthl = 'DiagnosticWarn', linehl = '', numhl = '' })
       vim.fn.sign_define('DapStopped', { text = '▶️', texthl = 'DiagnosticInfo', linehl = 'CursorLine', numhl = '' })
+      -- Ohne eigenes Zeichen zeigt nvim-dap ein unscheinbares "R" -- das sah wie ein Buchstabe aus
+      -- und nicht wie "Debugger hat den Breakpoint abgelehnt".
+      vim.fn.sign_define('DapBreakpointRejected', { text = '❌', texthl = 'DiagnosticError', linehl = '', numhl = '' })
+
+      -- Breakpoint-Pfade fuer netcoredbg normalisieren (Windows).
+      -- Gemessen 13.10.2026 mit einer Probe-App: Buffer-Name mit gemischten Schraegstrichen
+      -- (C:\...\laneA/Sources/...) -> Breakpoint bleibt "pending" und haelt NIE an;
+      -- derselbe Breakpoint mit reinen Backslashes -> verified, Stopp. netcoredbg vergleicht den
+      -- Pfad woertlich mit dem Pfad in der .pdb. Gemischte Namen entstehen, wenn Picker
+      -- cwd .. '/' .. relativ oeffnen. nvim-dap schickt nvim_buf_get_name() ungefiltert, darum
+      -- wird hier die setBreakpoints-Anfrage selbst korrigiert -- egal wie der Buffer heisst.
+      if vim.fn.has('win32') == 1 then
+        local Session = require('dap.session')
+        if not Session._bp_path_patched then
+          Session._bp_path_patched = true
+          local orig_request = Session.request
+          function Session:request(command, arguments, on_result)
+            local src = command == 'setBreakpoints' and arguments and arguments.source
+            if src and type(src.path) == 'string' then
+              local p = src.path:gsub('/', '\\')
+              src.path = (p:gsub('^%l:', string.upper))
+            end
+            return orig_request(self, command, arguments, on_result)
+          end
+        end
+      end
+
+      -- Breakpoint-Monitor: meldet, wenn ein Breakpoint wirklich gebunden ist, und am Ende
+      -- der Sitzung, welche NIE gegriffen haben -- statt stillem Durchlaufen.
+      local bp_state = {}
+      local function bp_key(src, line) return ((src and (src.path or src.name)) or '?') .. ':' .. tostring(line) end
+      dap.listeners.after.setBreakpoints['bp_monitor'] = function(_, err, resp, req)
+        if err or not resp or not req then return end
+        for i, b in ipairs(resp.breakpoints or {}) do
+          local line = b.line or (req.breakpoints[i] and req.breakpoints[i].line)
+          bp_state[b.id or bp_key(req.source, line)] = { file = vim.fn.fnamemodify(req.source.path or '', ':t'), line = line, verified = b.verified }
+        end
+      end
+      dap.listeners.after.event_breakpoint['bp_monitor'] = function(_, body)
+        local b = body and body.breakpoint
+        if not (b and b.id and bp_state[b.id]) then return end
+        local s = bp_state[b.id]
+        if b.verified and not s.verified then
+          vim.notify(string.format('[DAP] Breakpoint gebunden: %s:%s', s.file, b.line or s.line), vim.log.levels.INFO)
+        end
+        s.verified = b.verified
+      end
+      local function report_unbound()
+        local missing = {}
+        for _, s in pairs(bp_state) do
+          if not s.verified then missing[#missing + 1] = s.file .. ':' .. tostring(s.line) end
+        end
+        if #missing > 0 then
+          vim.notify('[DAP] Diese Breakpoints haben NIE gegriffen:\n  ' .. table.concat(missing, '\n  ')
+            .. '\n(Code nicht durchlaufen, oder Symbole/Pfad passen nicht -- :DapShowLog)', vim.log.levels.WARN, { timeout = 15000 })
+        end
+        bp_state = {}
+      end
+      dap.listeners.before.event_terminated['bp_monitor'] = report_unbound
+      dap.listeners.before.disconnect['bp_monitor'] = report_unbound
     end,
   },
 
@@ -2001,6 +2077,10 @@ require('lazy').setup({
         map('n', '[c', prev_hunk, { desc = 'Previous git [c]hange/hunk' })
         map('n', ']h', next_hunk, { desc = 'Next git [h]unk (alias for ]c)' })
         map('n', '[h', prev_hunk, { desc = 'Previous git [h]unk (alias for [c)' })
+        -- Ctrl+Alt+l / Ctrl+Alt+h = ]c / [c mit EINEM Tastendruck. Passt zu Alt+l / Alt+h
+        -- (Buffer weiter/zurueck, weiter oben): gleiche Richtung, Ctrl dazu = Aenderung statt Buffer.
+        map('n', '<C-A-l>', next_hunk, { desc = 'Next git hunk (Ctrl+Alt+l)' })
+        map('n', '<C-A-h>', prev_hunk, { desc = 'Previous git hunk (Ctrl+Alt+h)' })
 
         -- ]a / [a — springt direkt zur PURE-ADD-AREA innerhalb eines Hunks.
         -- In einem Misch-Hunk (~ + +) landet ]a auf der ERSTEN Plus-Zeile,
@@ -3791,50 +3871,91 @@ require('lazy').setup({
           -- Bewusst NICHT ueber telescope.builtin.lsp_references mit Nachfilter: dessen
           -- Ergebnis ist nicht abfangbar. Stattdessen der LSP-Request direkt, filtern,
           -- und erst dann die Liste bauen.
-          map('grR', function()
+          -- Gemeinsamer Kern von grR (Referenzen) und grI (Implementierungen): LSP-Request,
+          -- Tests raus, Dubletten raus, bei genau EINEM Treffer direkt hinspringen.
+          --   method    LSP-Methode ('textDocument/references' | 'textDocument/implementation')
+          --   noun      Mehrzahl fuer Titel/Meldungen ('Referenzen' | 'Implementierungen')
+          --   all_hint  Taste, die ALLES zeigt (grr | gri)
+          --   extra     zusaetzliche Request-Parameter (nur references braucht context)
+          local function goto_without_tests(method, noun, all_hint, extra)
             local params = vim.lsp.util.make_position_params(0, 'utf-16')
-            params.context = { includeDeclaration = true }
-            vim.lsp.buf_request_all(0, 'textDocument/references', params, function(results)
+            if extra then params = vim.tbl_extend('force', params, extra) end
+            -- Zusaetzlich die Fundstelle unter dem Cursor merken: bei einem AUFRUF (statt
+            -- der Definition) steht dort keine Deklaration, includeDeclaration greift also
+            -- nicht -- der Treffer, auf dem man gerade steht, kaeme trotzdem mit zurueck.
+            -- Kleinschreiben und Separatoren vereinheitlichen: der LSP liefert den
+            -- Windows-Laufwerksbuchstaben KLEIN ("c:\...") waehrend nvim_buf_get_name ihn
+            -- GROSS liefert ("C:\..."). Ein direkter Vergleich schlaegt deshalb fehl,
+            -- obwohl es dieselbe Datei ist.
+            local function norm(p)
+              return (p or ''):gsub('\\', '/'):lower()
+            end
+            local here_file = norm(vim.api.nvim_buf_get_name(0))
+            local here_line = vim.api.nvim_win_get_cursor(0)[1] - 1
+            vim.lsp.buf_request_all(0, method, params, function(results)
               local all = {}
               for _, res in pairs(results or {}) do
-                for _, loc in ipairs(res.result or {}) do
+                -- references liefert eine Liste, implementation kann auch EINE Location
+                -- (Tabelle mit uri) liefern -- beides auf eine Liste vereinheitlichen.
+                local r = res.result or {}
+                if r.uri or r.targetUri then r = { r } end
+                for _, loc in ipairs(r) do
                   table.insert(all, loc)
                 end
               end
               if #all == 0 then
-                vim.notify('Keine Referenzen gefunden', vim.log.levels.INFO)
+                vim.notify('Keine ' .. noun .. ' gefunden', vim.log.levels.INFO)
                 return
               end
 
               -- Substring-Pruefung auf dem Pfad, case-insensitive -- deckt *Tests.cs,
               -- *.UnitTests/, IntegrationTests/ und Testdaten-Ordner gleichermassen ab.
               -- Gleiches Kriterium wie <leader>sDkt, damit sich beides gleich verhaelt.
-              local kept, dropped = {}, 0
+              local kept, dropped, self_hit = {}, 0, 0
+              local seen_loc = {}
               for _, loc in ipairs(all) do
                 local uri = loc.uri or loc.targetUri or ''
-                local path = vim.uri_to_fname(uri):lower()
-                if path:find('test', 1, true) then
+                local fname = norm(vim.uri_to_fname(uri))
+                local rng = loc.range or loc.targetSelectionRange or {}
+                local lnum = (rng.start or {}).line
+
+                -- Mehrere LSP-Clients am selben Buffer (z.B. omnisharp + ein zweiter)
+                -- liefern dieselbe Stelle doppelt -- sonst stuende jeder Treffer zweimal
+                -- in der Liste.
+                local key = fname .. ':' .. tostring(lnum)
+                if seen_loc[key] then
+                  -- Dublette, still ueberspringen
+                elseif fname:find('test', 1, true) then
+                  seen_loc[key] = true
                   dropped = dropped + 1
+                elseif fname == here_file and lnum == here_line then
+                  -- die Stelle, auf der der Cursor steht
+                  seen_loc[key] = true
+                  self_hit = self_hit + 1
                 else
+                  seen_loc[key] = true
                   table.insert(kept, loc)
                 end
               end
 
               if #kept == 0 then
-                vim.notify(string.format(
-                  'Nur Test-Referenzen (%d) -- kein Produktionscode. Mit grr siehst du alle.', dropped),
-                  vim.log.levels.WARN, { timeout = 6000 })
+                local why = (dropped > 0)
+                  and string.format('Nur Test-%s (%d) -- kein Produktionscode.', noun, dropped)
+                  or string.format('Keine weiteren %s ausserhalb dieser Stelle.', noun)
+                vim.notify(why .. ' Mit ' .. all_hint .. ' siehst du alle.', vim.log.levels.WARN, { timeout = 6000 })
                 return
               end
 
               local enc = (vim.lsp.get_clients({ bufnr = 0 })[1] or {}).offset_encoding or 'utf-16'
               local items = vim.lsp.util.locations_to_items(kept, enc)
               vim.fn.setqflist({}, ' ', {
-                title = string.format('Referenzen ohne Tests (%d von %d)', #kept, #all),
+                title = string.format('%s ohne Tests (%d von %d)', noun, #kept, #kept + dropped + self_hit),
                 items = items,
               })
-              vim.notify(string.format('%d Referenzen (%d Test-Treffer ausgeblendet)', #kept, dropped),
-                vim.log.levels.INFO)
+              local msg = string.format('%d %s', #kept, noun)
+              if dropped > 0 then msg = msg .. string.format(', %d Test-Treffer ausgeblendet', dropped) end
+              if self_hit > 0 then msg = msg .. ', eigene Stelle ausgeblendet' end
+              vim.notify(msg, vim.log.levels.INFO)
               -- Ein einzelner Treffer: direkt hin, statt eine Ein-Zeilen-Liste zu oeffnen.
               if #items == 1 then
                 vim.cmd('cfirst')
@@ -3842,7 +3963,21 @@ require('lazy').setup({
                 vim.cmd('copen')
               end
             end)
+          end
+
+          -- includeDeclaration=false: die Definition selbst ist keine "Referenz" --
+          -- wer auf der Methode steht, sucht die AUFRUFER, nicht sich selbst.
+          map('grR', function()
+            goto_without_tests('textDocument/references', 'Referenzen', 'grr',
+              { context = { includeDeclaration = false } })
           end, '[G]oto [R]eferences OHNE Tests (nur Produktionscode)')
+
+          -- grI - wie gri, aber OHNE Tests: bei einem Interface die echte Implementierung statt
+          -- der Test-Fakes daneben (gemessen: Interface-Methode hatte 2 Treffer, einer davon ein
+          -- Fake in *IntegrationTests.cs). Bleibt EINE Implementierung uebrig, springt grI direkt hin.
+          map('grI', function()
+            goto_without_tests('textDocument/implementation', 'Implementierungen', 'gri')
+          end, '[G]oto [I]mplementation OHNE Tests (nur Produktionscode)')
 
           -- Jump to the implementation of the word under your cursor.
           --  Useful when your language has ways of declaring types without an actual implementation.
@@ -4390,6 +4525,29 @@ require('lazy').setup({
       statusline.section_location = function()
         return '%2l:%-2v'
       end
+
+      -- Minimap: kleine Uebersicht der ganzen Datei mit Fensterposition.
+      -- Schwebendes Fenster, nicht fokussierbar. Zeigt Git-Hunks (gitsigns -> folgt also auch
+      -- der Base von hB/hC), Diagnosen und Suchtreffer.
+      -- Rechts als Standard: links laege das Fenster ueber dem Neo-tree-Baum (mini.map zeichnet
+      -- bei side='left' in Spalte 0 des Editors). <leader>nM schaltet die Seite um.
+      -- Startet NICHT automatisch -- <leader>nm schaltet ein/aus.
+      local minimap = require 'mini.map'
+      minimap.setup {
+        integrations = {
+          minimap.gen_integration.builtin_search(),
+          minimap.gen_integration.gitsigns(),
+          minimap.gen_integration.diagnostic(),
+        },
+        symbols = {
+          encode = minimap.gen_encode_symbols.dot '4x2',
+          scroll_line = '▶',
+          scroll_view = '┃',
+        },
+        window = { side = 'right', width = 12, show_integration_count = false },
+      }
+      vim.keymap.set('n', '<leader>nm', minimap.toggle, { desc = '[N]avigation [M]inimap an/aus' })
+      vim.keymap.set('n', '<leader>nM', minimap.toggle_side, { desc = '[N]avigation [M]inimap Seite links/rechts' })
 
       -- ... and there is more!
       --  Check out: https://github.com/echasnovski/mini.nvim

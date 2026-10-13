@@ -232,6 +232,149 @@ vim.keymap.set('n', '<leader>qh', function()
     vim.log.levels.INFO, { title = 'Branch-Review', timeout = 12000 })
 end, { desc = '[Q]uickfix: alle [H]unks vs Base-Branch (Branch-Review)' })
 
+-- <leader>hC -- [H]unks fuer [C]ommits: wie qh, aber nur ab einer Commit-Auswahl.
+-- Hashes eintippen (wie <leader>sDC); der AELTESTE davon bestimmt die Base = sein
+-- Elternteil. Gitsigns-Gutter UND Quickfix messen dann gegen diese Base, also passen
+-- ]c/[c und ]q/[q zu genau diesen Commits.
+--
+-- WARUM NICHT einfach sDC + hB: sDC laedt nur die Dateien, hB misst gegen origin/develop
+-- (Branch-Achse). Spaetere Commits ueberschreiben, was ein frueher Commit getan hat --
+-- der Hunk des gewaehlten Commits ist dann gegen develop gar nicht mehr sichtbar.
+--
+-- GRENZE: git diff/gitsigns vergleichen immer gegen den ARBEITSBAUM. Liegen zwischen dem
+-- aeltesten Commit und HEAD weitere, nicht angegebene Commits, sind deren Aenderungen mit
+-- drin (und uncommittete auch). Das wird als Warnung gemeldet, nicht verschwiegen.
+-- Neue Dateien bleiben EIN Hunk -- daran aendert keine Base etwas.
+--
+-- build_branch_hunk_qflist bleibt unveraendert: sie liest vim.g.project_git_base und
+-- bildet daraus die Merge-Base. Ist die Base ein Vorfahre von HEAD, ist die Merge-Base
+-- die Base selbst -- also wird die Variable nur fuer den Aufruf umgebogen und danach
+-- zurueckgesetzt.
+vim.keymap.set('n', '<leader>hC', function()
+  local base = vim.g.project_git_base or 'origin/develop'
+  local cwd = vim.fn.getcwd()
+
+  local function git(args)
+    local cmd = { 'git', '-C', cwd }
+    vim.list_extend(cmd, args)
+    local r = vim.system(cmd, { text = true }):wait()
+    return vim.split(r.stdout or '', '\r?\n', { regex = true, trimempty = true }), r.code, r.stderr or ''
+  end
+
+  local input = vim.fn.input({ prompt = 'Commit-Hashes (Leerzeichen/Komma): ' })
+  if not input or input:gsub('%s', '') == '' then
+    vim.notify('Abgebrochen', vim.log.levels.INFO)
+    return
+  end
+
+  -- Branch-Commits, aelteste zuerst. Daran wird jeder Hash gemessen: so faellt ein Hash
+  -- aus develop sofort auf. MERGE-Commits gehoeren dazu (gemessen 2026-10-12: ein
+  -- Merge-Commit des eigenen Branches wurde mit --no-merges faelschlich als "nicht im Branch"
+  -- abgelehnt) -- --parents liefert "sha parent1 [parent2]", daran erkennt man sie.
+  local rl, berr, bstderr = git({ 'rev-list', '--reverse', '--topo-order', '--parents', base .. '..HEAD' })
+  if berr ~= 0 then
+    vim.notify(string.format('rev-list %s..HEAD fehlgeschlagen:\n%s', base, bstderr),
+      vim.log.levels.ERROR, { title = 'hC', timeout = 10000 })
+    return
+  end
+  local branch, pos, is_merge = {}, {}, {}
+  for i, line in ipairs(rl) do
+    local fields = vim.split(line, '%s+', { trimempty = true })
+    branch[i] = fields[1]
+    pos[fields[1]] = i
+    is_merge[fields[1]] = #fields > 2
+  end
+
+  local wanted, unknown, outside = {}, {}, {}
+  local seen = {}
+  for tok in input:gmatch('[^%s,;]+') do
+    local out, code = git({ 'rev-parse', '--verify', '--quiet', tok })
+    local full = out[1]
+    if code ~= 0 or not full then
+      table.insert(unknown, tok)
+    elseif not pos[full] then
+      table.insert(outside, tok)
+    elseif not seen[full] then
+      seen[full] = true
+      table.insert(wanted, full)
+    end
+  end
+
+  if #unknown > 0 or #outside > 0 then
+    local msg = {}
+    if #unknown > 0 then table.insert(msg, 'Unbekannt: ' .. table.concat(unknown, ', ')) end
+    if #outside > 0 then
+      table.insert(msg, string.format('Nicht im Branch (%s..HEAD): %s', base, table.concat(outside, ', ')))
+    end
+    vim.notify(table.concat(msg, '\n'), vim.log.levels.ERROR, { title = 'hC', timeout = 8000 })
+    return
+  end
+
+  local oldest_i = #branch
+  for _, sha in ipairs(wanted) do
+    if pos[sha] < oldest_i then oldest_i = pos[sha] end
+  end
+  local oldest = branch[oldest_i]
+
+  -- '~1' statt '^': git laeuft hier ohne Shell, aber '~' ist auch ueber cmd.exe unkritisch.
+  local par, perr, pstderr = git({ 'rev-parse', '--verify', oldest .. '~1' })
+  if perr ~= 0 or not par[1] then
+    vim.notify(string.format('Elternteil von %s nicht ermittelbar (Root-Commit?):\n%s', oldest:sub(1, 9), pstderr),
+      vim.log.levels.ERROR, { title = 'hC', timeout = 8000 })
+    return
+  end
+  local parent = par[1]
+
+  local saved = vim.g.project_git_base
+  vim.g.project_git_base = parent
+  local ok, r = pcall(build_branch_hunk_qflist)
+  vim.g.project_git_base = saved
+  if not ok then
+    vim.notify('hC: ' .. tostring(r), vim.log.levels.ERROR, { title = 'hC', timeout = 10000 })
+    return
+  end
+  if not r then return end
+
+  if #r.items == 0 then
+    vim.notify(string.format('Keine Hunks ab %s~1.', oldest:sub(1, 9)), vim.log.levels.WARN, { title = 'hC' })
+    return
+  end
+
+  vim.fn.setqflist({}, ' ', {
+    items = r.items,
+    title = string.format('Hunks ab %s~1 (%d Commit(s) gewaehlt)', oldest:sub(1, 9), #wanted),
+  })
+
+  pcall(function()
+    require('gitsigns').change_base(parent, true)
+    vim.g.gitsigns_branch_mode = true   -- hB schaltet damit zurueck auf HEAD
+  end)
+
+  vim.cmd('copen')
+  vim.cmd('cfirst')
+
+  -- Luecken: alles zwischen dem aeltesten gewaehlten Commit und HEAD, das nicht angegeben wurde.
+  -- Merge-Commits zaehlen nicht als Luecke: man gibt sie nicht "als Arbeit" an, ihre
+  -- eigene Aenderung ist leer; der Inhalt steckt in den Commits, die sie zusammenfuehren.
+  local gap = 0
+  for i = oldest_i, #branch do
+    if not seen[branch[i]] and not is_merge[branch[i]] then gap = gap + 1 end
+  end
+  local extra = ''
+  if gap > 0 then
+    extra = string.format('\nWARNUNG: %d Commit(s) im Bereich nicht angegeben -- deren Aenderungen sind mit drin', gap)
+  end
+  if r.n_deleted > 0 then
+    extra = extra .. string.format('\n%d geloeschte Datei(en) NICHT in der Liste', r.n_deleted)
+  end
+  if r.n_binary > 0 then
+    extra = extra .. string.format('\n%d Binaerdatei(en) als Eintrag in Zeile 1', r.n_binary)
+  end
+  vim.notify(string.format('%d Hunks in %d Dateien ab %s~1\n]c/[c = in der Datei, ]q/[q = ueber Dateigrenzen\n<leader>hB = Gutter zurueck auf uncommitted%s',
+    #r.items, r.nfiles, oldest:sub(1, 9), extra),
+    gap > 0 and vim.log.levels.WARN or vim.log.levels.INFO, { title = 'hC', timeout = 12000 })
+end, { desc = '[H]unks fuer [C]ommits: Gutter + Quickfix ab Elternteil des aeltesten gewaehlten Commits' })
+
 -- ]q / [q -- dateiuebergreifende Quickfix-Navigation mit Wrap.
 -- Das ist die eigentliche Review-Bewegung: ein Tastendruck = naechste Aenderung,
 -- egal ob sie in dieser Datei oder in der naechsten liegt. Gilt fuer JEDE
@@ -362,15 +505,57 @@ vim.keymap.set('n', '<leader>rS', function()
     vim.notify('Could not determine project root', vim.log.levels.ERROR)
     return
   end
+  -- Eigenes Skript statt generate-swagger-and-client.ps1 (gemessen 2026-10-12, Lane D): dessen
+  -- `docker run` haengt, sobald Docker Desktops Standard-Bridge-Netz haengt -- der Container
+  -- bleibt auf "Created" stehen und startet nie. Der Generator braucht kein Netzwerk;
+  -- mit `--network none` laeuft derselbe Aufruf in ~7 s durch. Die Schritte und Parameter sind
+  -- 1:1 die der Repo-Skripte (generate-swagger.ps1 wird UNVERAENDERT aufgerufen, der Client-Teil
+  -- ist generate-api-client.ps1 mit dem einen Zusatz). Das Repo-Skript bleibt unangetastet.
+  local script = [=[
+$ErrorActionPreference = 'Stop'
+$root        = '@@ROOT@@'
+$tools       = Join-Path $root 'Sources\Tools'
+$base        = Join-Path $root 'Sources'
+$clientRel   = 'Frontend/libs/shared/client/src/lib/api-client'
+$clientDir   = Join-Path $base $clientRel
+$swaggerJson = Join-Path $base 'Api\swagger.json'
+
+Write-Host 'Generiere Swagger JSON...'
+& (Join-Path $tools 'generate-swagger.ps1')
+
+if (-not (Test-Path $swaggerJson)) { throw "Swagger-Datei nicht gefunden: $swaggerJson" }
+
+Write-Host ''
+Write-Host 'Generiere API Client (docker run --network none)...'
+if (Test-Path $clientDir) { Remove-Item -Recurse -Force $clientDir }
+New-Item -ItemType Directory -Path $clientDir | Out-Null
+
+docker run --rm --network none -v "${base}:/local" openapitools/openapi-generator-cli:latest generate -g typescript-angular -i /local/Api/swagger.json -o "/local/$clientRel" --additional-properties=supportsES6=true,ngVersion=16.0.0
+if ($LASTEXITCODE -ne 0) { throw 'Fehler beim Generieren des Angular Clients.' }
+
+Write-Host ''
+Write-Host 'Alles erfolgreich erzeugt!'
+]=]
+  script = script:gsub('@@ROOT@@', function() return root end)
+
+  local script_path = (os.getenv('TEMP') or vim.fn.stdpath('cache')):gsub('\\', '/') .. '/rS-generate.ps1'
+  local fh, err = io.open(script_path, 'w')
+  if not fh then
+    vim.notify('rS: Skript nicht schreibbar: ' .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  fh:write(script)
+  fh:close()
+
   local Terminal = require('toggleterm.terminal').Terminal
   local swagger = Terminal:new({
-    cmd = "powershell.exe -ExecutionPolicy Bypass -File \"" .. root .. "\\Sources\\Tools\\generate-swagger-and-client.ps1\"",
+    cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
     direction = 'horizontal',
     close_on_exit = false,
   })
   swagger:toggle()
-  vim.notify('[DCSRE] Generating Swagger & Client...', vim.log.levels.INFO)
-end, { desc = '[R]un [S]wagger (capital S) | generate-swagger-and-client.ps1' })
+  vim.notify('[DCSRE] Generating Swagger & Client (docker --network none)...', vim.log.levels.INFO)
+end, { desc = '[R]un [S]wagger (capital S) | Swagger + API-Client, docker mit --network none' })
 
 vim.keymap.set('n', '<leader>rsc', function()
   local git_root = vim.fn.system('git rev-parse --show-toplevel'):gsub('%s+$', '')

@@ -1199,7 +1199,7 @@ end
 
 -- Telescope-Picker ueber Test-Eintraege: tippen = filtern (Klasse, Methode, Pfad),
 -- Tab = mehrere markieren, Enter -> run_fn(selected_entries) (ohne Tab: nur der markierte).
-local function pick_and_run_tests(title, entries, run_fn)
+local function pick_and_run_tests(title, entries, run_fn, make_entry)
   local pickers = require('telescope.pickers')
   local finders = require('telescope.finders')
   local conf = require('telescope.config').values
@@ -1211,6 +1211,9 @@ local function pick_and_run_tests(title, entries, run_fn)
     finder = finders.new_table({
       results = entries,
       entry_maker = function(e)
+        -- make_entry optional: E2E-Szenarien haben test_id/name statt class/method.
+        -- Ohne diese Weiche waere e.class nil und der Picker wuerde beim Oeffnen werfen.
+        if make_entry then return make_entry(e) end
         return {
           value = e,
           display = e.class .. '.' .. e.method .. '    (' .. e.rel .. ')',
@@ -1461,6 +1464,377 @@ vim.keymap.set('n', '<leader>sDtu', function() dirty_tests('unit', false) end,
   { desc = '[S]earch [D]irty [T]ests [u]nit | Picker: nur Tests aus geaenderten *.UnitTests-Dateien (Tab=mehrere)' })
 vim.keymap.set('n', '<leader>sDtU', function() dirty_tests('unit', true) end,
   { desc = '[S]earch [D]irty [T]ests [U]nit ALL | alle Tests der geaenderten *.UnitTests-Dateien (ein dotnet test pro csproj)' })
+
+-- ---------------------------------------------------------------------------
+-- Dirty E2E: sDte / sDtE
+--
+-- Anderer Mechanismus als sDti/sDtu, gleiche Bedienung. Bei Integration/Unit sind die
+-- geaenderten DATEIEN schon die Tests. Bei E2E gibt es diese Verbindung nicht -- eine
+-- geaenderte Backend-Datei weiss nichts ueber Cypress. Die Bruecke ist die TICKET-Nummer:
+--
+--   Branch/Commits  ->  DCSRE-nnn  ->  @DCSRE-nnn auf Feature-Ebene  ->  Szenarien darin
+--
+-- Das Tag-Schema ist Xray-Konvention (siehe support/xray-upload/): der Tag ueber
+-- "Funktionalität:" ist die Story, der ERSTE Tag ueber einem "Szenario:" ist das
+-- Xray-Test-Ticket. Genau darum wird die Story-Ebene fuer die Auswahl genutzt und der
+-- erste Szenario-Tag als Test-ID angezeigt.
+--
+-- Bekannte Grenzen, bewusst in die Meldungen gezogen statt versteckt:
+--   * Feature-Tag-Listen sind Sammelcontainer (eine Datei traegt bis zu 11 Story-Tags)
+--     -> die Treffermenge ist grobkoernig, nicht exakt "nur diese Story".
+--   * Die Tag-Pflege hinkt hinterher: DCSRE-258 (LaneC) steht in KEINER .feature-Datei.
+--     Darum wird "Story nicht getaggt" getrennt von "keine Szenarien" gemeldet.
+
+-- Ticket-Nummern dieses Branches: Branchname zuerst (feature/DCSRE-30_...), dann die
+-- Commit-Betreffs (DCSRE-30: ...). Mehrere moeglich -- LaneC nennt DCSRE-258 UND DCSRE-1803.
+local function branch_tickets()
+  local cwd = vim.fn.getcwd()
+  local seen, out = {}, {}
+  local function add(t)
+    if t and not seen[t] then seen[t] = true; table.insert(out, t) end
+  end
+
+  local br = vim.fn.systemlist(string.format('git -C "%s" rev-parse --abbrev-ref HEAD 2>&1', cwd))
+  if vim.v.shell_error == 0 and br and br[1] then
+    add(br[1]:match('(DCSRE%-%d+)'))
+  end
+
+  local base = vim.g.project_git_base or 'origin/develop'
+  local subj = vim.fn.systemlist(string.format(
+    'git -C "%s" log --no-merges --format=%%s %s..HEAD 2>&1', cwd, base))
+  if vim.v.shell_error == 0 then
+    for _, line in ipairs(subj or {}) do
+      add((line or ''):match('(DCSRE%-%d+)'))
+    end
+  end
+  return out
+end
+
+-- Alle Szenarien aus .feature-Dateien, deren FEATURE-Ebene eines der Tickets traegt.
+-- -> entries { test_id, story, name, rel, file, line }, n_files, n_untagged_tickets
+local function e2e_scenarios_for(tickets)
+  local cypress = get_cypress_path_windows()
+  if not cypress then return nil end
+  local e2e_root = cypress .. '\\e2e'
+  if vim.fn.isdirectory(e2e_root) == 0 then
+    vim.notify('Kein e2e-Verzeichnis unter ' .. e2e_root, vim.log.levels.ERROR)
+    return nil
+  end
+
+  local want = {}
+  for _, t in ipairs(tickets) do want[t] = true end
+
+  local files = vim.fn.globpath(e2e_root, '**/*.feature', false, true)
+  local root_fwd = (e2e_root:gsub('\\', '/')) .. '/'
+  local entries, hit_files, matched_tickets = {}, 0, {}
+
+  for _, abs in ipairs(files) do
+    local fwd = abs:gsub('\\', '/')
+    -- Artefakt-Kopien unter cypress/screenshots/ sind Duplikate echter Specs.
+    if not fwd:lower():find('/cypress/screenshots/', 1, true) then
+      local ok, lines = pcall(vim.fn.readfile, abs)
+      if ok and lines then
+        local pending, feature_tags, story_hit = nil, nil, false
+        local rel = fwd:sub(#root_fwd + 1)
+        local file_entries = {}
+
+        for i, raw in ipairs(lines) do
+          -- fuehrende Leerzeichen UND Tabs: beide Einrueckungen kommen im Repo vor
+          local line = raw:gsub('^[ \t]+', ''):gsub('[\r ]+$', '')
+          if line:match('^@') then
+            pending = line
+          elseif line:match('^Funktionalit') or line:match('^Feature:') then
+            feature_tags = pending
+            if feature_tags then
+              for tag in feature_tags:gmatch('@(DCSRE?%-%d+)') do
+                if want[tag] then
+                  story_hit = true
+                  matched_tickets[tag] = true
+                end
+              end
+            end
+            pending = nil
+          elseif line:match('^Szenario') or line:match('^Scenario') then
+            local name = line:gsub('^[%a%s]+:%s*', '')
+            -- erster Tag der Szenario-Zeile = Xray-Test-Ticket
+            local test_id = pending and pending:match('@(DCSRE?%-%d+)') or '?'
+            table.insert(file_entries, {
+              test_id = test_id,
+              name = name,
+              rel = rel,
+              file = abs,
+              line = i,
+            })
+            pending = nil
+          end
+        end
+
+        if story_hit and #file_entries > 0 then
+          hit_files = hit_files + 1
+          for _, e in ipairs(file_entries) do table.insert(entries, e) end
+        end
+      end
+    end
+  end
+
+  local untagged = {}
+  for _, t in ipairs(tickets) do
+    if not matched_tickets[t] then table.insert(untagged, t) end
+  end
+
+  table.sort(entries, function(a, b)
+    if a.rel ~= b.rel then return a.rel < b.rel end
+    return a.line < b.line
+  end)
+  return entries, hit_files, untagged
+end
+
+-- Cypress-Lauf ueber die Test-Ticket-Tags der gewaehlten Szenarien.
+-- --spec waehlt die Dateien, --env tags waehlt die Szenarien DARIN -- beides noetig,
+-- sonst liefen alle Szenarien der getroffenen Dateien mit (gleiche Logik wie ret).
+local function run_e2e_entries(entries, label)
+  local cypress = get_cypress_path_windows()
+  if not cypress then return end
+
+  local seen_spec, specs, seen_tag, tags = {}, {}, {}, {}
+  for _, e in ipairs(entries) do
+    local spec = 'e2e/' .. e.rel
+    if not seen_spec[spec] then seen_spec[spec] = true; table.insert(specs, spec) end
+    if e.test_id ~= '?' and not seen_tag[e.test_id] then
+      seen_tag[e.test_id] = true
+      table.insert(tags, '@' .. e.test_id)
+    end
+  end
+  if #tags == 0 then
+    vim.notify('Kein Szenario mit Test-Ticket-Tag -- nichts zu starten', vim.log.levels.WARN)
+    return
+  end
+
+  local tag_expr = table.concat(tags, ' or ')
+  local cmd = string.format(
+    'powershell.exe -Command "Set-Location \'%s\'; npx cypress run --spec \'%s\' --env tags=\'%s\' --browser chrome"',
+    cypress, table.concat(specs, ','), tag_expr)
+
+  vim.notify(string.format('[DCSRE] E2E %s: %d Szenario(en) in %d Spec(s)', label, #tags, #specs),
+    vim.log.levels.INFO, { timeout = 6000 })
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  Terminal:new({
+    cmd = cmd,
+    id = 33,
+    direction = 'horizontal',
+    close_on_exit = false,
+  }):toggle()
+end
+
+local function dirty_e2e(run_all)
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Dirty E2E only for DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local tickets = branch_tickets()
+  if #tickets == 0 then
+    vim.notify('Keine DCSRE-Nummer in Branchname oder Commit-Betreffs gefunden', vim.log.levels.WARN)
+    return
+  end
+
+  local entries, n_files, untagged = e2e_scenarios_for(tickets)
+  if not entries then return end
+
+  if #entries == 0 then
+    -- "Story nicht getaggt" ist etwas anderes als "keine Tests" -- das muss man sehen,
+    -- sonst sucht man den Fehler an der falschen Stelle (Fall DCSRE-258).
+    vim.notify(string.format(
+      'Keine E2E-Szenarien fuer %s.\nKeine .feature-Datei traegt diese Nummer auf Feature-Ebene --\ndie Story ist (noch) nicht getaggt, nicht "ungetestet".',
+      table.concat(tickets, ', ')), vim.log.levels.WARN, { timeout = 10000 })
+    return
+  end
+
+  local label = table.concat(tickets, ', ')
+  if #untagged > 0 then
+    vim.notify('Ohne Treffer (nicht getaggt): ' .. table.concat(untagged, ', '),
+      vim.log.levels.INFO, { timeout = 6000 })
+  end
+
+  if run_all then
+    run_e2e_entries(entries, label .. ' ALLE')
+  else
+    pick_and_run_tests(
+      string.format('E2E %s — %d Szenarien in %d Spec(s) | Tab=mehrere, Enter=starten',
+        label, #entries, n_files),
+      entries,
+      function(sel) run_e2e_entries(sel, label) end,
+      function(e)
+        return {
+          value = e,
+          display = string.format('%-12s %s    (%s)', e.test_id, e.name, e.rel),
+          ordinal = e.test_id .. ' ' .. e.name .. ' ' .. e.rel,
+        }
+      end)
+  end
+end
+
+vim.keymap.set('n', '<leader>sDte', function() dirty_e2e(false) end,
+  { desc = '[S]earch [D]irty [T]ests [e]2e | Picker: Szenarien der Branch-Story (Tab=mehrere)' })
+vim.keymap.set('n', '<leader>sDtE', function() dirty_e2e(true) end,
+  { desc = '[S]earch [D]irty [T]ests [E]2E ALL | alle Szenarien der Branch-Story sofort starten' })
+
+-- ---------------------------------------------------------------------------
+-- <leader>xT — Integrationstest IM DEBUGGER starten (Breakpoints, Variablen ansehen)
+--
+-- Die Luecke, die das schliesst: DAP kann bisher nur ATTACHEN (xc: an den laufenden
+-- WebHost oder per Prozess-Picker). Ein Test laeuft aber in einem eigenen, kurzlebigen
+-- testhost-Prozess -- den kann man nicht vorher auswaehlen, weil es ihn noch nicht gibt.
+--
+-- Der Weg: VSTEST_HOST_DEBUG=1 laesst den testhost beim Start ANHALTEN und seine PID
+-- ausgeben. Das Skript schreibt sie in eine Datei, Neovim pollt darauf und haengt
+-- netcoredbg automatisch an -- kein PID-Abtippen, kein Rider noetig.
+--
+-- Wichtig: OHNE --no-build. Der Debugger braucht aktuelle Symbole (.pdb); mit einem
+-- veralteten Build stehen Breakpoints auf den falschen Zeilen.
+--
+-- Bewusst kein Thread-Prompt wie bei rif/riE: beim Debuggen laeuft genau ein Test,
+-- Parallelitaet wuerde die Sitzung nur unuebersichtlich machen (maxParallelThreads=1).
+local function debug_integration_entries(entries)
+  if #entries ~= 1 then
+    vim.notify(string.format(
+      'Debuggen geht nur mit GENAU EINEM Test (%d gewaehlt).\nMehrere Tests wuerden sich Breakpoints und Container teilen.', #entries),
+      vim.log.levels.WARN, { timeout = 8000 })
+    return
+  end
+  local entry = entries[1]
+  local filter_str = build_fqn_filter(entries, false)
+
+  local ok_dap, dap = pcall(require, 'dap')
+  if not ok_dap then
+    vim.notify('nvim-dap nicht verfuegbar', vim.log.levels.ERROR)
+    return
+  end
+
+  -- Threads auf 1: beim Debuggen soll nichts parallel laufen.
+  if not set_xunit_threads(1) then return end
+
+  local temp = tests_temp()
+  local pid_file = temp .. '\\it-debug-pid.txt'
+  local test_dir = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local script_path = temp .. '\\debug-it.ps1'
+
+  -- Die PID steht in einer Zeile wie "Process Id: 12345, Name: testhost".
+  -- Tee-Object, damit die Ausgabe im Terminal SICHTBAR bleibt und trotzdem parsbar ist.
+  local script = string.format([[$ErrorActionPreference = "Continue"
+$pidFile = "%s"
+if (Test-Path $pidFile) { Remove-Item $pidFile -Force }
+$env:VSTEST_HOST_DEBUG = "1"
+Write-Host "=== Debug-Lauf: warte auf testhost-PID ..." -ForegroundColor Cyan
+dotnet test "%s" --filter "%s" --logger "console;verbosity=detailed" 2>&1 | ForEach-Object {
+    $line = $_
+    Write-Host $line
+    # NUR EINMAL schreiben: vstest gibt die "Process Id"-Zeile mehrfach aus. Ein zweiter
+    # Schreibvorgang waehrend Neovim schon attached kollidiert mit der laufenden Session.
+    if (-not $script:pidWritten -and $line -match 'Process\s+Id:\s*(\d+)') {
+        $script:pidWritten = $true
+        Set-Content -Path $pidFile -Value $Matches[1] -Encoding ascii
+        Write-Host ("=== PID " + $Matches[1] + " -> Neovim haengt den Debugger an ...") -ForegroundColor Green
+    }
+}
+$env:VSTEST_HOST_DEBUG = $null
+Write-Host ""
+Write-Host "=== Debug-Lauf beendet." -ForegroundColor Cyan
+]], pid_file, test_dir, filter_str)
+
+  local f = io.open(script_path, 'w')
+  if not f then
+    vim.notify('Konnte Debug-Skript nicht schreiben: ' .. script_path, vim.log.levels.ERROR)
+    return
+  end
+  f:write(script)
+  f:close()
+
+  vim.notify(string.format('[DEBUG] %s.%s\nBaut neu (fuer aktuelle .pdb) und startet -- Attach folgt automatisch.',
+    entry.class, entry.method), vim.log.levels.INFO, { timeout = 8000 })
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  Terminal:new({
+    cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script_path .. '"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 43,
+    on_exit = function()
+      set_xunit_threads(1)
+    end,
+  }):toggle()
+
+  -- Auf die PID-Datei warten. 180s, weil der erste Lauf baut UND die Container
+  -- (MSSQL, MinIO, Gotenberg) hochfaehrt -- das dauert laut Lane-Doku ~30s plus Build.
+  local waited, step = 0, 500
+  local timer = vim.loop.new_timer()
+  timer:start(step, step, vim.schedule_wrap(function()
+    waited = waited + step
+    local pid
+    if vim.fn.filereadable(pid_file) == 1 then
+      local lines = vim.fn.readfile(pid_file)
+      -- Klammern sind PFLICHT: gsub liefert zwei Werte (Ergebnis, Anzahl Ersetzungen).
+      -- Ohne sie wird daraus tonumber("36980", 0) -- die 0 gilt als Zahlenbasis und
+      -- wirft "bad argument #2 to 'tonumber' (base out of range)".
+      local cleaned = ((lines[1] or ''):gsub('%s', ''))
+      pid = tonumber(cleaned)
+    end
+    if pid then
+      timer:stop()
+      timer:close()
+      -- Datei weg, damit ein spaeterer Lauf nicht die alte PID findet.
+      pcall(vim.fn.delete, pid_file)
+
+      local ok_run, err_run = pcall(dap.run, {
+        type = 'coreclr',
+        name = 'Debug Integration Test: ' .. entry.class .. '.' .. entry.method,
+        request = 'attach',
+        processId = pid,
+      })
+      if not ok_run then
+        vim.notify('[DEBUG] Attach fehlgeschlagen: ' .. tostring(err_run), vim.log.levels.ERROR, { timeout = 10000 })
+        return
+      end
+
+      -- DAP meldet Adapter-Fehler nur ins Log. Kurz nachfassen, ob wirklich eine
+      -- Session steht -- sonst wartet man vor einem haengenden Terminal und weiss nicht,
+      -- dass gar nichts passiert ist.
+      vim.defer_fn(function()
+        if dap.session() then
+          vim.notify(string.format('[DEBUG] An testhost PID %d angehaengt.\n<leader>xc = weiter bis zum Breakpoint, <leader>xh = Wert ansehen.', pid),
+            vim.log.levels.INFO, { timeout = 10000 })
+        else
+          vim.notify(string.format('[DEBUG] Keine Debug-Session trotz PID %d.\nDetails: %s\n(:DapShowLog oeffnet das Log)',
+            pid, vim.fn.stdpath('cache') .. '/dap.log'), vim.log.levels.ERROR, { timeout = 15000 })
+        end
+      end, 3000)
+    elseif waited >= 180000 then
+      timer:stop()
+      timer:close()
+      vim.notify('[DEBUG] Keine testhost-PID nach 180s.\nLaeuft der Build noch? Terminal 43 zeigt die Ausgabe.',
+        vim.log.levels.WARN, { timeout = 10000 })
+    end
+  end))
+end
+
+vim.keymap.set('n', '<leader>xT', function()
+  if vim.g.project_name ~= 'DCSRE' then
+    vim.notify('Nur fuer DCSRE', vim.log.levels.WARN)
+    return
+  end
+  local test_root = vim.g.project_backend_windows .. '\\VDEK.DCSP.IntegrationTests'
+  local prefix_fwd = (test_root:gsub('\\', '/')) .. '/'
+  local files = vim.fn.globpath(test_root, '**/*.cs', false, true)
+  local entries = scan_test_methods(files, prefix_fwd)
+  if #entries == 0 then
+    vim.notify('Keine [Fact]/[Theory]-Tests gefunden unter ' .. test_root, vim.log.levels.ERROR)
+    return
+  end
+  pick_and_run_tests(
+    string.format('DEBUG Integrationstest (%d) — Enter = im Debugger starten (nur EINER)', #entries),
+    entries,
+    function(sel) debug_integration_entries(sel) end)
+end, { desc = 'Debug: Integration[T]est im Debugger starten (Picker -> Attach automatisch)' })
 
 -- <leader>ris - Run Integration Search (all tests from last TRX, Telescope picker)
 vim.keymap.set('n', '<leader>ris', function()

@@ -276,3 +276,85 @@ vim.keymap.set('n', '<leader>rdB', function()
   start:toggle()
   vim.notify('[' .. vim.g.project_name .. '] Starting Backend (docker up)...', vim.log.levels.INFO)
 end, { desc = '[R]un [D]ocker [B]ackend up | docker compose up backend' })
+
+-- <leader>rDc - [C]lean: Wegwerf-Images der Integrationstests loeschen.
+--
+-- Warum ein eigener Key und nicht 'docker image prune': prune kann NICHT nach Namen
+-- filtern. Es kennt nur dangling (ohne Tag), --filter until=<alter> und label=<x>.
+-- Die Test-Images tragen aber alle einen Tag (testdatabase_...:latest) -- fuer prune
+-- sind sie damit unsichtbar. Und 'prune -a' wuerde die Basis-Images (dcsp-*, minio,
+-- gotenberg, keycloak) mitnehmen, die danach alle neu gezogen werden muessten.
+--
+-- Hintergrund: ContainerIntegrationTestBase baut pro Testklasse ein eigenes Image mit
+-- Zeitstempel im Namen (testdatabase_<testname>_<ts>_<guid>). Der Cache greift dadurch
+-- nie, und niemand raeumt sie ab -- gemessen: 144 Stueck a 2,48 GB = ~357 GB.
+--
+-- Das Muster greift am PRAEFIX test<typ>_, nicht an "test" irgendwo im Namen. Sonst
+-- fiele 'dic-mock-server:integration-test' mit rein, das ein echtes Basis-Image ist.
+vim.keymap.set('n', '<leader>rDc', function()
+  local ps = 'powershell.exe -NoProfile -Command "' ..
+    'docker images --format \'{{.Repository}}:{{.Tag}}|{{.Size}}\' | ' ..
+    'Select-String -Pattern \'^test(database|db|minio|gotenberg|smtp|dicmock)_\'"'
+  local raw = vim.fn.systemlist(ps)
+  if vim.v.shell_error ~= 0 then
+    vim.notify('docker images fehlgeschlagen:\n' .. table.concat(raw or {}, '\n'), vim.log.levels.ERROR)
+    return
+  end
+
+  local images = {}
+  for _, line in ipairs(raw or {}) do
+    local name = (line or ''):match('^([^|]+)|')
+    if name then table.insert(images, (name:gsub('%s+$', ''))) end
+  end
+
+  if #images == 0 then
+    vim.notify('Keine Test-Wegwerf-Images vorhanden (nichts aufzuraeumen).', vim.log.levels.INFO)
+    return
+  end
+
+  -- Vorschau: erste 5 zeigen, damit man sieht WAS geloescht wird, bevor man ja sagt.
+  local preview = {}
+  for i = 1, math.min(#images, 5) do table.insert(preview, '  ' .. images[i]) end
+  if #images > 5 then table.insert(preview, '  ... und ' .. (#images - 5) .. ' weitere') end
+
+  local answer = vim.fn.confirm(
+    string.format('%d Test-Images loeschen?\n\n%s\n\nBasis-Images (dcsp-*, minio, gotenberg, keycloak) bleiben unangetastet.',
+      #images, table.concat(preview, '\n')),
+    '&Ja\n&Nein', 2)
+  if answer ~= 1 then
+    vim.notify('Abgebrochen, nichts geloescht.', vim.log.levels.INFO)
+    return
+  end
+
+  -- Ueber eine Datei statt langer Kommandozeile: bei 144 Namen platzt sonst das
+  -- PowerShell-Limit (~8k Zeichen).
+  local temp = os.getenv('TEMP') or os.getenv('TMP')
+  local list_file = temp .. [[\docker-test-images.txt]]
+  vim.fn.writefile(images, list_file)
+
+  local script = temp .. [[\clean-test-images.ps1]]
+  vim.fn.writefile({
+    '$ErrorActionPreference = "Continue"',
+    '$names = Get-Content "' .. list_file .. '"',
+    'Write-Host ("Loesche " + $names.Count + " Test-Images ...") -ForegroundColor Cyan',
+    '$ok = 0; $fail = 0',
+    'foreach ($n in $names) {',
+    '  docker rmi -f $n 2>&1 | Out-Null',
+    '  if ($LASTEXITCODE -eq 0) { $ok++ } else { $fail++; Write-Host ("  FEHLER: " + $n) -ForegroundColor Yellow }',
+    '}',
+    'Write-Host ""',
+    'Write-Host ("Geloescht: " + $ok + "   Fehlgeschlagen: " + $fail) -ForegroundColor Green',
+    'Write-Host ""',
+    'docker system df',
+    'Write-Host ""',
+    'Write-Host "Fertig. Fenster schliessen mit q." -ForegroundColor DarkGray',
+  }, script)
+
+  local Terminal = require('toggleterm.terminal').Terminal
+  Terminal:new({
+    cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' .. script .. '"',
+    direction = 'horizontal',
+    close_on_exit = false,
+    count = 26,
+  }):toggle()
+end, { desc = '[R]un [D]ocker [C]lean | Wegwerf-Images der Integrationstests loeschen (Basis-Images bleiben)' })
