@@ -1539,6 +1539,7 @@ require('lazy').setup({
   -- wird: Mehrzeilen-Spruenge (Ctrl-D/U/F/B, zz/zt/zb, gg/G) UND Mausrad.
   {
     'karb94/neoscroll.nvim',
+    enabled = false, -- 13.10.2026: abgeschaltet, Spruenge (Ctrl-D/U, zz, Mausrad) wieder instant
     event = 'VeryLazy',
     config = function()
       local neoscroll = require('neoscroll')
@@ -1631,6 +1632,22 @@ require('lazy').setup({
       { '<leader>xw', function() require('dapui').toggle() end, desc = 'Debug: [W]indow Toggle (DAP UI)' },
       { '<leader>xe', function() require('dapui').eval() end, desc = 'Debug: [E]val', mode = { 'n', 'v' } },
       { '<leader>xh', function() require('dap.ui.widgets').hover() end, desc = 'Debug: [H]over' },
+      -- Gegenstueck zu xh: schliesst ALLE schwebenden Fenster (Hover, "Cannot evaluate", Eval).
+      -- q greift nur, wenn der Cursor IM Hover steht -- das ist oft nicht der Fall.
+      -- DAP-UI-Panels und Terminals sind normale Splits und bleiben offen.
+      {
+        '<leader>xH',
+        function()
+          local n = 0
+          for _, win in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_get_config(win).relative ~= '' then
+              if pcall(vim.api.nvim_win_close, win, true) then n = n + 1 end
+            end
+          end
+          if n == 0 then vim.notify('Kein Hover offen', vim.log.levels.INFO) end
+        end,
+        desc = 'Debug: [H]over schliessen (alle schwebenden Fenster)',
+      },
     },
     config = function()
       local dap = require('dap')
@@ -4529,8 +4546,9 @@ require('lazy').setup({
       -- Minimap: kleine Uebersicht der ganzen Datei mit Fensterposition.
       -- Schwebendes Fenster, nicht fokussierbar. Zeigt Git-Hunks (gitsigns -> folgt also auch
       -- der Base von hB/hC), Diagnosen und Suchtreffer.
-      -- Rechts als Standard: links laege das Fenster ueber dem Neo-tree-Baum (mini.map zeichnet
-      -- bei side='left' in Spalte 0 des Editors). <leader>nM schaltet die Seite um.
+      -- Links als Standard (Wunsch 13.10.2026). mini.map zeichnet bei side='left' in Spalte 0
+      -- des Editors -- ist Neo-tree links offen, liegt die Map ueber dem Baum. <leader>nM
+      -- schaltet die Seite um.
       -- Startet NICHT automatisch -- <leader>nm schaltet ein/aus.
       local minimap = require 'mini.map'
       minimap.setup {
@@ -4544,10 +4562,41 @@ require('lazy').setup({
           scroll_line = '▶',
           scroll_view = '┃',
         },
-        window = { side = 'right', width = 12, show_integration_count = false },
+        window = { side = 'left', width = 12, show_integration_count = false },
       }
-      vim.keymap.set('n', '<leader>nm', minimap.toggle, { desc = '[N]avigation [M]inimap an/aus' })
-      vim.keymap.set('n', '<leader>nM', minimap.toggle_side, { desc = '[N]avigation [M]inimap Seite links/rechts' })
+
+      -- Links schwebt die Map UEBER Spalte 0..width des Editors und verdeckt Code, Zeichen
+      -- und Zeilennummern. Abhilfe: Fenster, die am linken Editorrand beginnen, bekommen
+      -- eine 'statuscolumn' mit so vielen Leerzeichen vorne, wie die Map breit ist -- die Map
+      -- liegt dann ueber leerer Flaeche, Zeichen + Nummer stehen rechts daneben.
+      -- Geschlossen / rechts: statuscolumn wieder leer (= Neovim-Standarddarstellung).
+      local map_pad = string.rep(' ', minimap.config.window.width) .. '%s%=%l '
+      local function update_map_pad()
+        local map_win = MiniMap.current.win_data[vim.api.nvim_get_current_tabpage()]
+        local open = map_win ~= nil and vim.api.nvim_win_is_valid(map_win)
+        local left = open and (MiniMap.current.opts.window or {}).side == 'left'
+        for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+          if win ~= map_win and vim.api.nvim_win_get_config(win).relative == '' then
+            local at_edge = vim.fn.win_screenpos(win)[2] == 1
+            local buf = vim.api.nvim_win_get_buf(win)
+            local want = (left and at_edge and vim.bo[buf].buftype == '') and map_pad or ''
+            if vim.wo[win].statuscolumn ~= want then vim.wo[win].statuscolumn = want end
+          end
+        end
+      end
+      vim.api.nvim_create_autocmd({ 'WinEnter', 'BufWinEnter', 'WinResized', 'WinNew', 'WinClosed' }, {
+        group = vim.api.nvim_create_augroup('minimap-left-pad', { clear = true }),
+        callback = function() vim.schedule(update_map_pad) end,
+      })
+
+      vim.keymap.set('n', '<leader>nm', function()
+        minimap.toggle()
+        update_map_pad()
+      end, { desc = '[N]avigation [M]inimap an/aus' })
+      vim.keymap.set('n', '<leader>nM', function()
+        minimap.toggle_side()
+        update_map_pad()
+      end, { desc = '[N]avigation [M]inimap Seite links/rechts' })
 
       -- ... and there is more!
       --  Check out: https://github.com/echasnovski/mini.nvim

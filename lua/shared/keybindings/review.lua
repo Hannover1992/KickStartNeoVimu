@@ -177,6 +177,50 @@ vim.keymap.set('n', '<leader>nN', function()
   vim.notify('Notes geoeffnet + komplett ins Clipboard kopiert', vim.log.levels.INFO, { title = 'Review Notes' })
 end, { desc = '[N]otizen [N]-alle anzeigen (alle Notizen dieses Branches + Clipboard)' })
 
+-- Notizen [P]op: ALLE Notizen ins Clipboard UND die Ablage leeren (nN + nD in einem,
+-- ohne Anzeige-Split). Fuer "sammeln -> alles weiterreichen -> frisch weiter". Eine Notiz beginnt an ihrer
+-- Kopfzeile (Format aus save_note: "## datei:zeile  _(YYYY-MM-DD HH:MM)_"); das genaue
+-- Muster statt nur "## ", damit Markdown-Ueberschriften IM Notiztext nicht als Grenze gelten.
+-- Sicherheitsnetz: jede gepoppte Notiz wird zusaetzlich in <ablage>.popped.md angehaengt --
+-- ueberschreibt man das Clipboard, bevor man eingefuegt hat, ist sie dort noch da.
+vim.keymap.set('n', '<leader>np', function()
+  local path = notes_file_path()
+  if vim.fn.filereadable(path) == 0 then
+    vim.notify('Keine Review-Notes vorhanden.', vim.log.levels.INFO)
+    return
+  end
+  local lines = vim.fn.readfile(path)
+  local head = '^## .+:%d+  _%(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d%)_$'
+  local starts = {}
+  for i, l in ipairs(lines) do
+    if l:match(head) then table.insert(starts, i) end
+  end
+  if #starts == 0 then
+    vim.notify('Keine Notiz in der Ablage gefunden.', vim.log.levels.INFO)
+    return
+  end
+
+  -- ALLE Notizen auf einmal, in Ablage-Reihenfolge (aelteste zuerst), ins Clipboard;
+  -- die Ablage ist danach leer. Kein Split wie bei nN -- stattdessen listet die
+  -- Meldung, was im Clipboard gelandet ist.
+  local clip = vim.list_slice(lines, starts[1], #lines)
+  while #clip > 0 and (vim.trim(clip[#clip]) == '' or vim.trim(clip[#clip]) == '---') do
+    table.remove(clip)
+  end
+  vim.fn.setreg('+', table.concat(clip, '\n'))
+
+  vim.fn.writefile(lines, path:gsub('%.md$', '') .. '.popped.md', 'a')
+  vim.fn.delete(path)
+  pcall(vim.cmd, 'checktime')   -- offenes nN-Fenster auf den neuen Stand bringen
+
+  local list = {}
+  for i, s in ipairs(starts) do
+    list[i] = string.format('%d. %s', i, lines[s]:match('^## (.-)  _') or '?')
+  end
+  vim.notify(string.format('%d Notiz(en) ins Clipboard, Ablage leer:\n%s', #starts, table.concat(list, '\n')),
+    vim.log.levels.INFO, { title = 'Review Notes', timeout = 10000 })
+end, { desc = '[N]otizen [P]op (ALLE ins Clipboard + Ablage leeren)' })
+
 -- Notizen loeschen: leert die Append-Ablage fuer diesen Branch komplett
 -- (z.B. nachdem du sie per <leader>nN rauskopiert und verarbeitet hast).
 -- Mit Bestaetigung, weil das nicht rueckgaengig zu machen ist.

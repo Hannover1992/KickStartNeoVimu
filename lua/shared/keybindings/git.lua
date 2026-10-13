@@ -375,6 +375,18 @@ vim.keymap.set('n', '<leader>hC', function()
     gap > 0 and vim.log.levels.WARN or vim.log.levels.INFO, { title = 'hC', timeout = 12000 })
 end, { desc = '[H]unks fuer [C]ommits: Gutter + Quickfix ab Elternteil des aeltesten gewaehlten Commits' })
 
+-- <leader>hO -- [H]unks [O]hne Auswahl: das Gegenstueck zu hC ohne Commit-Eingabe = ALLE
+-- Hunks des Branches (genau die Dateien, die sDo laedt), Gutter + Quickfix. Ruft den
+-- bestehenden qh-Callback auf statt ihn zu kopieren -- qh bleibt damit unangetastet.
+vim.keymap.set('n', '<leader>hO', function()
+  local m = vim.fn.maparg('<leader>qh', 'n', false, true)
+  if type(m) == 'table' and m.callback then
+    m.callback()
+  else
+    vim.notify('<leader>qh nicht gemappt', vim.log.levels.ERROR, { title = 'hO' })
+  end
+end, { desc = '[H]unks: alle [O]ffenen vs Base-Branch (wie qh, Gegenstueck zu hC ohne Commit-Auswahl)' })
+
 -- ]q / [q -- dateiuebergreifende Quickfix-Navigation mit Wrap.
 -- Das ist die eigentliche Review-Bewegung: ein Tastendruck = naechste Aenderung,
 -- egal ob sie in dieser Datei oder in der naechsten liegt. Gilt fuer JEDE
