@@ -361,6 +361,7 @@ vim.keymap.set('n', '<leader>bD', function()
   -- Fenster wegklappen. So bleibt das Layout garantiert stehen.
   local scratch = vim.api.nvim_create_buf(true, false)
   vim.api.nvim_set_current_buf(scratch)
+  vim.g.sdf_ring = nil   -- alles zu = auch der sDf-Fahrplan ist vorbei
 
   local closed, kept, modified = 0, 0, 0
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -392,8 +393,41 @@ end, { desc = '[B]uffer [D]elete ALL (Terminals + ungespeicherte bleiben, Neovim
 -- Standard, nicht anfassen. NICHT Ctrl+Shift+[/]: das Terminal schluckt die Shift-
 -- Modifier-Info bei dieser Kombination, es kam nur <C-]> an (Vims Tag-Jump, daher
 -- "E433: No tags file").
-vim.keymap.set('n', '<A-l>', '<cmd>bnext<cr>', { desc = 'Next buffer' })
-vim.keymap.set('n', '<A-h>', '<cmd>bprevious<cr>', { desc = 'Previous buffer' })
+--
+-- Fahrplan: nach <leader>sDf gehen sie in DESSEN Reihenfolge durch die Episoden-Dateien
+-- (vim.g.sdf_ring = Buffer-Nummern), solange man in einer davon steht. Die uebrigen Buffer
+-- bleiben offen, liegen aber nicht im Weg. Buffer-Nummern lassen sich nicht umsortieren,
+-- darum ein eigener Ring statt bnext. Ausserhalb der Episode: normales bnext/bprevious.
+local function buf_step(dir)
+  local ring = vim.tbl_filter(function(b)
+    return vim.api.nvim_buf_is_valid(b) and vim.bo[b].buflisted
+  end, vim.g.sdf_ring or {})
+  local cur, pos = vim.api.nvim_get_current_buf(), nil
+  for i, b in ipairs(ring) do
+    if b == cur then pos = i; break end
+  end
+  if not pos then
+    vim.cmd(dir > 0 and 'bnext' or 'bprevious')
+    return
+  end
+  local i = (pos - 1 + dir) % #ring + 1
+  local target = ring[i]
+  vim.api.nvim_set_current_buf(target)
+  -- ]q soll in der neuen Datei weitermachen, nicht in der alten: Index der sDf-Liste auf den
+  -- Eintrag VOR deren erstem Hunk setzen (erste Datei: letzter Eintrag, ]q wrappt dann auf 1).
+  local qf = vim.fn.getqflist({ title = 0, items = 0 })
+  if (qf.title or ''):match('^Lese%-Reihenfolge') then
+    for n, it in ipairs(qf.items) do
+      if it.bufnr == target then
+        vim.fn.setqflist({}, 'a', { idx = n > 1 and n - 1 or #qf.items })
+        break
+      end
+    end
+  end
+  vim.api.nvim_echo({ { string.format('Fahrplan %d/%d: %s', i, #ring, vim.fn.expand('%:t')), 'Comment' } }, false, {})
+end
+vim.keymap.set('n', '<A-l>', function() buf_step(1) end, { desc = 'Next buffer (nach sDf: naechste Datei im Fahrplan)' })
+vim.keymap.set('n', '<A-h>', function() buf_step(-1) end, { desc = 'Previous buffer (nach sDf: vorige Datei im Fahrplan)' })
 
 -- Center cursor after half-page jumps
 vim.keymap.set('n', '<C-d>', '<C-d>zz', { desc = 'Half page down + center' })

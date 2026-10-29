@@ -369,6 +369,8 @@ vim.keymap.set('n', '<leader>hC', function(prefill)
     title = string.format('Hunks ab %s~1 (%d Commit(s) gewaehlt)', oldest:sub(1, 9), #wanted),
   })
 
+  vim.g.sdf_ring = nil   -- neue Hunk-Liste = alter sDf-Fahrplan gilt nicht mehr
+
   pcall(function()
     require('gitsigns').change_base(parent, true)
     vim.g.gitsigns_branch_mode = true   -- hB schaltet damit zurueck auf HEAD
@@ -433,6 +435,7 @@ end, { desc = '[H]unks fuer [C]ommits: Gutter + Quickfix ab Elternteil des aelte
 -- Hunks des Branches (genau die Dateien, die sDo laedt), Gutter + Quickfix. Ruft den
 -- bestehenden qh-Callback auf statt ihn zu kopieren -- qh bleibt damit unangetastet.
 vim.keymap.set('n', '<leader>hO', function()
+  vim.g.sdf_ring = nil   -- neue Hunk-Liste = alter sDf-Fahrplan gilt nicht mehr
   local m = vim.fn.maparg('<leader>qh', 'n', false, true)
   if type(m) == 'table' and m.callback then
     m.callback()
@@ -476,7 +479,8 @@ vim.keymap.set('n', '<leader>sDf', function()
   -- ("Foo.cs," / "(Foo.cs)" / "Foo.cs:197"). Nur feste Endungen, damit Prosa wie "z.B." oder
   -- "dbContext.Pruefberichte" nicht als Datei gilt.
   local exts = { cs = 1, csproj = 1, ts = 1, html = 1, scss = 1, css = 1, json = 1, md = 1, sql = 1,
-    xml = 1, lua = 1, js = 1, yml = 1, yaml = 1, feature = 1, props = 1, targets = 1, ps1 = 1, sh = 1 }
+    xml = 1, lua = 1, js = 1, yml = 1, yaml = 1, feature = 1, props = 1, targets = 1, ps1 = 1, sh = 1,
+    j2 = 1, config = 1, txt = 1, http = 1, razor = 1, cshtml = 1, env = 1 }
   local tokens = {}
   for tok in input:gmatch('[^%s,;]+') do
     tok = tok:gsub('^[%(%[\'"`]+', ''):gsub(':%d.*$', ''):gsub('[%)%]\'"`:%.]+$', '')
@@ -492,7 +496,18 @@ vim.keymap.set('n', '<leader>sDf', function()
 
   local tracked = git({ '-C', top, 'ls-files' })
   local function norm(p) return (p:gsub('\\', '/'):lower()) end
-  local files, seen, missing, ambiguous = {}, {}, {}, {}
+
+  -- Mehrdeutige Namen (appsettings.json gibt es 9x, ServiceCollectionExtensions.cs 8x): nur die
+  -- Treffer nehmen, die im Branch oder uncommitted geaendert sind. Sonst kamen alle rein und
+  -- schoben die Lese-Reihenfolge auseinander. Bleibt keiner uebrig: alle nehmen und melden.
+  local changed = {}
+  local base = vim.g.project_git_base or 'origin/develop'
+  for _, args in ipairs({ { 'diff', '--name-only', base .. '...HEAD' }, { 'diff', '--name-only', 'HEAD' } }) do
+    for _, rel in ipairs(git(vim.list_extend({ '-C', top }, args))) do changed[norm(rel)] = true end
+  end
+
+  -- pos = Platz in der Eingabe; mehrere Treffer eines Namens teilen sich die Nummer.
+  local files, seen, missing, ambiguous, file_pos, pos = {}, {}, {}, {}, {}, 0
   for _, tok in ipairs(tokens) do
     local hits = {}
     local t = norm(tok)
@@ -508,11 +523,17 @@ vim.keymap.set('n', '<leader>sDf', function()
     if #hits == 0 then
       table.insert(missing, tok)
     else
-      if #hits > 1 then table.insert(ambiguous, string.format('%s (%d)', tok, #hits)) end
+      if #hits > 1 then
+        local in_branch = vim.tbl_filter(function(rel) return changed[norm(rel)] end, hits)
+        if #in_branch > 0 then hits = in_branch end
+        if #hits > 1 then table.insert(ambiguous, string.format('%s (%d)', tok, #hits)) end
+      end
+      pos = pos + 1
       for _, rel in ipairs(hits) do
         if not seen[rel] then
           seen[rel] = true
           table.insert(files, rel)
+          file_pos[rel] = pos
         end
       end
     end
@@ -533,6 +554,11 @@ vim.keymap.set('n', '<leader>sDf', function()
   if vim.api.nvim_buf_is_valid(original) and vim.api.nvim_buf_get_name(original) ~= '' then
     vim.api.nvim_set_current_buf(original)
   end
+  -- Fahrplan fuer <A-l>/<A-h> (core.lua buf_step): genau diese Dateien, in dieser Reihenfolge.
+  -- bufadd() liefert fuer schon offene Dateien deren Nummer, aendert nichts am Buffer.
+  local ring = {}
+  for _, rel in ipairs(files) do table.insert(ring, vim.fn.bufadd(top .. '/' .. rel)) end
+  vim.g.sdf_ring = ring
 
   -- Juengste Hunk-Liste im Quickfix-Verlauf suchen (Titel von hC bzw. qh/hO).
   local hunk_items, hunk_title = nil, nil
@@ -553,7 +579,8 @@ vim.keymap.set('n', '<leader>sDf', function()
   end
 
   local items, n_hunks, no_hunk = {}, 0, 0
-  for i, rel in ipairs(files) do
+  for _, rel in ipairs(files) do
+    local i = file_pos[rel]
     local abs = top .. '/' .. rel
     local list = by_file[norm(abs)]
     if list and #list > 0 then
@@ -577,7 +604,7 @@ vim.keymap.set('n', '<leader>sDf', function()
   vim.cmd('copen')
   vim.cmd('cfirst')
 
-  local msg = { string.format('%d Dateien als Buffer geladen, %d Hunks in Lese-Reihenfolge\n]q / [q = weiter / zurueck, :colder = vorige Liste', opened, n_hunks) }
+  local msg = { string.format('%d Dateien als Buffer geladen, %d Hunks in Lese-Reihenfolge\nAlt+l / Alt+h = naechste / vorige Datei im Fahrplan\n]q / [q = naechster / voriger Hunk, :colder = vorige Liste', opened, n_hunks) }
   if not hunk_items then
     table.insert(msg, 'KEINE Hunk-Liste im Verlauf -- erst sDC/hC oder hO, dann sDf. Jetzt nur Zeile 1 je Datei.')
   else
