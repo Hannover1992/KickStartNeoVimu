@@ -163,15 +163,16 @@ local function pick_backend_project(prompt, callback)
   end)
 end
 
--- rbp: Schneller Build (nutzt Cache + inkrementellen Build-Mechanismus)
-vim.keymap.set('n', '<leader>rbp', function()
+-- rbpb: Schneller Build (nutzt Cache + inkrementellen Build-Mechanismus)
+-- Frueher <leader>rbp -- umbenannt, weil rbpb/rbpr sonst hinter rbp auf 'timeoutlen' warten.
+vim.keymap.set('n', '<leader>rbpb', function()
   pick_backend_project('Backend Projekt builden (schnell):', function(name, rel_path, backend_win)
     local Terminal = require('toggleterm.terminal').Terminal
     local cmd = 'powershell.exe -Command "Set-Location \'' .. backend_win .. '\'; dotnet build \'' .. rel_path .. '\'"'
     Terminal:new({ cmd = cmd, direction = 'horizontal', close_on_exit = false }):toggle()
     vim.notify('[' .. vim.g.project_name .. '] Building: ' .. name, vim.log.levels.INFO)
   end)
-end, { desc = '[R]un [B]ackend [P]roject | Picker schnell (Cache, inkrementell)' })
+end, { desc = '[R]un [B]ackend [P]rojekt [B]uild | Picker schnell (Cache, inkrementell)' })
 
 -- rbP: Nuclear Clean Build (dotnet clean + dotnet build --verbosity detailed)
 vim.keymap.set('n', '<leader>rbP', function()
@@ -265,6 +266,15 @@ vim.keymap.set('n', '<leader>rbR', function()
     end)
   end)
 end, { desc = '[R]un [B]ackend [R]un | 2-Stufen: Projekt → LaunchProfile (launchSettings.json)' })
+
+-- rbpr: [P]rojekt [R]un -- Gegenstueck zu rbpb, derselbe Ablauf wie rbR (Projekt-Picker ->
+-- Startprofil -> dotnet run). Ruft den rbR-Callback auf statt ihn zu kopieren.
+-- Beispiel: VDEK.DCSP.Setup waehlen -> Migrationen + Testdaten in die laufende DB, ohne
+-- den Docker-Stack neu hoch-/runterzufahren.
+vim.keymap.set('n', '<leader>rbpr', function()
+  local m = vim.fn.maparg('<leader>rbR', 'n', false, true)
+  if type(m) == 'table' and m.callback then m.callback() end
+end, { desc = '[R]un [B]ackend [P]rojekt [R]un | Picker: Projekt → Profil → dotnet run (wie rbR)' })
 
 -- Run Backend Build: Compile the backend solution
 vim.keymap.set('n', '<leader>rbb', function()

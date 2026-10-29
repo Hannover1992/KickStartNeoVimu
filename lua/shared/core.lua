@@ -2054,6 +2054,20 @@ require('lazy').setup({
           local wt = self:ls_files(file)
           if wt then info.i_crlf, info.w_crlf = wt.i_crlf, wt.w_crlf end
         end
+        -- Datei fehlt in der Base-Revision (neu angelegt nach der Base, z.B. bei hC):
+        -- Original liefert dann nil + "<pfad> not found in <rev>" (ls_tree). Folge, gemessen
+        -- 2026-10-29 in LaneC:
+        -- Obj.new gibt nil -> neu geoeffnete Buffer haengen sich nicht an; refresh() behaelt
+        -- den ALTEN object_name (Index-Blob) -> Vergleich gegen sich selbst -> 0 Hunks, kein
+        -- Zeichen. Stattdessen: relpath aus dem Arbeitsbaum, object_name = nil -> gitsigns
+        -- vergleicht gegen leer = ganze Datei ein Hunk ('untracked'-Zeichen, hier '+').
+        if not info and revision and Repo.from_tree(revision)
+          and (not err or tostring(err):find(' not found in ', 1, true)) then
+          local wt = self:ls_files(file)
+          if wt and wt.relpath then
+            return { relpath = wt.relpath, i_crlf = wt.i_crlf, w_crlf = wt.w_crlf }, nil
+          end
+        end
         return info, err
       end
       require('gitsigns').setup(opts)
@@ -2065,7 +2079,15 @@ require('lazy').setup({
         delete = { text = '_' },
         topdelete = { text = '‾' },
         changedelete = { text = '»' },
+        -- Datei existiert in der Base nicht (neu angelegt; z.B. bei hC/hB/qh gegen einen
+        -- Commit/Branch): gitsigns behandelt sie wie 'untracked' -- ohne attach_to_untracked
+        -- haengt es sich gar nicht an (attach.lua: "File is untracked"), die Datei bekam KEIN
+        -- Zeichen. Mit attach_to_untracked ist sie ein einziger Hunk mit dem 'untracked'-Zeichen;
+        -- das ist hier '+' statt des kaum sichtbaren Standard-'┆' -> "alles neu" auf einen Blick.
+        -- Nebenwirkung, gewollt: auch noch nie ge-addete neue Dateien zeigen jetzt '+'.
+        untracked = { text = '+' },
       },
+      attach_to_untracked = true,
       on_attach = function(bufnr)
         local gitsigns = require('gitsigns')
 
@@ -2371,6 +2393,8 @@ require('lazy').setup({
         { '<leader>s', group = '[S]earch' },
         { '<leader>sD', group = '[D]irty (vs develop)' },
         { '<leader>sDt', group = 'Dirty [T]ests' },
+        { '<leader>dd', group = '[D]iagnose [D]atei (aktuelle Datei)' },
+        { '<leader>dB', group = '[D]iagnose [B]uffer (alle offenen)' },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
       },
@@ -2954,7 +2978,7 @@ require('lazy').setup({
         local base = vim.g.project_git_base or 'origin/develop'
         local cwd = vim.fn.getcwd()
 
-        local input = vim.fn.input({ prompt = 'Commit-Hashes (Leerzeichen/Komma): ' })
+        local input = require('shared.input').multiline({ prompt = 'Commit-Hashes (Leerzeichen/Komma/Zeilen): ' })
         if not input or input:gsub('%s', '') == '' then
           vim.notify('Abgebrochen', vim.log.levels.INFO)
           return
@@ -3052,7 +3076,14 @@ require('lazy').setup({
             table.concat(outside, ', '), base)
         end
         vim.notify(msg, vim.log.levels.INFO, { timeout = 8000 })
-      end, { desc = '[S]earch [D]irty: [C]ommit-Hashes eingeben -> deren Dateien laden (ohne Picker)' })
+
+        -- Danach dieselben Hashes an hC: Gutter + Quickfix mit den Hunks ab diesen Commits.
+        -- Ein Eintippen statt zweimal. hC prueft selbst (Branch-Zugehoerigkeit, Luecken) und meldet.
+        local hc = vim.fn.maparg('<leader>hC', 'n', false, true)
+        if type(hc) == 'table' and hc.callback then
+          hc.callback(input)
+        end
+      end, { desc = '[S]earch [D]irty: [C]ommit-Hashes eingeben -> Dateien laden + Hunks (wie hC)' })
 
       -- Gemeinsame Basis fuer sDb/sDS: Diagnostics NUR in Branch-geaenderten Dateien des aktiven Profils.
       -- opts.source_filter: nil = alle Quellen | Funktion(source) -> bool (z.B. nur SonarQube)
@@ -3339,6 +3370,86 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>si', function()
         builtin.diagnostics({ bufnr = 0 })
       end, { desc = '[S]earch [I]ssues (current file only)' })
+      -- <leader>dd{e,w,i,h,b} -- [D]atei-[D]iagnostics: NUR die aktuelle Datei, je Stufe.
+      -- Gleiche Endbuchstaben wie sDe/sDw/sDi/sDh/sDb (die gehen ueber alle Dirty-Dateien).
+      -- Exakte Stufe, nicht "und schlimmer". Telescope-Liste -> <C-q> schickt alles in die Quickfix.
+      for key, sev in pairs({
+        e = { 'Errors', vim.diagnostic.severity.ERROR },
+        w = { 'Warnings', vim.diagnostic.severity.WARN },
+        i = { 'Info', vim.diagnostic.severity.INFO },
+        h = { 'Hints', vim.diagnostic.severity.HINT },
+      }) do
+        vim.keymap.set('n', '<leader>dd' .. key, function()
+          builtin.diagnostics({ bufnr = 0, severity = sev[2], prompt_title = sev[1] .. ' (aktuelle Datei) | <C-q> = Quickfix' })
+        end, { desc = '[D]atei-[D]iagnostics: nur ' .. sev[1] })
+      end
+      local function file_all()
+        builtin.diagnostics({ bufnr = 0, prompt_title = 'Alle Diagnostics (aktuelle Datei) | <C-q> = Quickfix' })
+      end
+      vim.keymap.set('n', '<leader>ddb', file_all, { desc = '[D]atei-[D]iagnostics: alle Stufen' })
+      vim.keymap.set('n', '<leader>dD', file_all, { desc = '[D]iagnose [D]atei: alle Stufen (wie ddb)' })
+
+      -- <leader>dB{e,w,i,h,b} -- [D]iagnose [B]uffer: alle OFFENEN Buffer (geladen + gelistet),
+      -- je Stufe. Nicht builtin.diagnostics ohne bufnr: OmniSharp meldet mit
+      -- AnalyzeOpenDocumentsOnly=false auch Dateien, die gar nicht offen sind -- die sollen hier
+      -- NICHT rein (dafuer gibt es sD*). Darum eigene Liste, Aufbau wie dirty_diagnostics.
+      local function open_buffer_diagnostics(label, severity)
+        local open = {}
+        for _, b in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buflisted and vim.bo[b].buftype == '' then
+            open[b] = true
+          end
+        end
+        local sevnames = vim.diagnostic.severity
+        local items, seen, nbufs = {}, {}, {}
+        for _, d in ipairs(vim.diagnostic.get(nil)) do
+          if open[d.bufnr] and (not severity or d.severity == severity) then
+            local name = vim.api.nvim_buf_get_name(d.bufnr)
+            -- Dedup wie bei sD*: OmniSharp published manche Regeln doppelt
+            local key = table.concat({ d.bufnr, d.lnum, d.col, tostring(d.code), d.message }, '|')
+            if not seen[key] then
+              seen[key] = true
+              nbufs[d.bufnr] = true
+              table.insert(items, {
+                bufnr = d.bufnr,
+                filename = vim.fn.fnamemodify(name, ':.'),
+                lnum = d.lnum + 1,
+                col = d.col + 1,
+                text = vim.trim(d.message:gsub('[\n]', '')) .. (d.code and (' [' .. tostring(d.code) .. ']') or ''),
+                type = sevnames[d.severity] or sevnames[1],
+              })
+            end
+          end
+        end
+        if #items == 0 then
+          vim.notify(string.format('Keine %s in den %d offenen Buffern', label, vim.tbl_count(open)), vim.log.levels.INFO)
+          return
+        end
+        table.sort(items, function(a, b)
+          if a.filename ~= b.filename then return a.filename < b.filename end
+          return a.lnum < b.lnum
+        end)
+        require('telescope.pickers').new({}, {
+          prompt_title = string.format('%s in %d offenen Buffern (%d) | <C-q> = Quickfix', label, vim.tbl_count(nbufs), #items),
+          finder = require('telescope.finders').new_table({
+            results = items,
+            entry_maker = require('telescope.make_entry').gen_from_diagnostics({}),
+          }),
+          previewer = require('telescope.config').values.qflist_previewer({}),
+          sorter = require('telescope.config').values.generic_sorter({}),
+        }):find()
+      end
+      for key, sev in pairs({
+        e = { 'Errors', vim.diagnostic.severity.ERROR },
+        w = { 'Warnings', vim.diagnostic.severity.WARN },
+        i = { 'Info', vim.diagnostic.severity.INFO },
+        h = { 'Hints', vim.diagnostic.severity.HINT },
+        b = { 'Diagnostics', nil },
+      }) do
+        vim.keymap.set('n', '<leader>dB' .. key, function()
+          open_buffer_diagnostics(sev[1], sev[2])
+        end, { desc = '[D]iagnose [B]uffer: ' .. (sev[2] and ('nur ' .. sev[1]) or 'alle Stufen') .. ' aller offenen Buffer' })
+      end
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
       vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       -- Buffers-Picker mit Delete-Funktion.

@@ -250,7 +250,9 @@ end, { desc = '[Q]uickfix: alle [H]unks vs Base-Branch (Branch-Review)' })
 -- bildet daraus die Merge-Base. Ist die Base ein Vorfahre von HEAD, ist die Merge-Base
 -- die Base selbst -- also wird die Variable nur fuer den Aufruf umgebogen und danach
 -- zurueckgesetzt.
-vim.keymap.set('n', '<leader>hC', function()
+-- prefill: sDC ruft diesen Callback mit den dort eingegebenen Hashes auf, damit man sie nicht
+-- zweimal eintippt. Per Tastendruck kommt kein Argument -> normale Abfrage.
+vim.keymap.set('n', '<leader>hC', function(prefill)
   local base = vim.g.project_git_base or 'origin/develop'
   local cwd = vim.fn.getcwd()
 
@@ -261,7 +263,8 @@ vim.keymap.set('n', '<leader>hC', function()
     return vim.split(r.stdout or '', '\r?\n', { regex = true, trimempty = true }), r.code, r.stderr or ''
   end
 
-  local input = vim.fn.input({ prompt = 'Commit-Hashes (Leerzeichen/Komma): ' })
+  local input = type(prefill) == 'string' and prefill
+    or require('shared.input').multiline({ prompt = 'Commit-Hashes (Leerzeichen/Komma/Zeilen): ' })
   if not input or input:gsub('%s', '') == '' then
     vim.notify('Abgebrochen', vim.log.levels.INFO)
     return
@@ -335,8 +338,29 @@ vim.keymap.set('n', '<leader>hC', function()
   end
   if not r then return end
 
+  -- Nur Hunks aus Dateien, die die gewaehlten Commits selbst anfassen. Der Diff ab dem
+  -- Elternteil enthaelt sonst alles bis heute: nicht gewaehlte Commits UND jeden
+  -- "develop into feature"-Merge (gemessen 2026-10-29, LaneC: 3 Commits/35 Dateien ->
+  -- ungefiltert 213 Dateien). Der Gutter bleibt ungefiltert (gitsigns kennt nur eine Base).
+  local function norm(p) return (p:gsub('\\', '/'):lower()) end
+  local touched = {}
+  for _, sha in ipairs(wanted) do
+    local names = git({ 'show', '--name-only', '--format=', sha })
+    for _, rel in ipairs(names) do touched[norm(cwd .. '/' .. rel)] = true end
+  end
+  local total_items, total_files = #r.items, r.nfiles
+  local kept, kept_files = {}, {}
+  for _, it in ipairs(r.items) do
+    if touched[norm(vim.api.nvim_buf_get_name(it.bufnr))] then
+      table.insert(kept, it)
+      kept_files[it.bufnr] = true
+    end
+  end
+  r.items, r.nfiles = kept, vim.tbl_count(kept_files)
+
   if #r.items == 0 then
-    vim.notify(string.format('Keine Hunks ab %s~1.', oldest:sub(1, 9)), vim.log.levels.WARN, { title = 'hC' })
+    vim.notify(string.format('Keine Hunks ab %s~1 in den Dateien der gewaehlten Commits.', oldest:sub(1, 9)),
+      vim.log.levels.WARN, { title = 'hC' })
     return
   end
 
@@ -350,6 +374,32 @@ vim.keymap.set('n', '<leader>hC', function()
     vim.g.gitsigns_branch_mode = true   -- hB schaltet damit zurueck auf HEAD
   end)
 
+  -- Nachzuegler: sDC oeffnet die Dateien unmittelbar vorher, gitsigns haengt sich verzoegert
+  -- an. Wer beim change_base noch nicht im Cache war, hat die Base schon VORHER gelesen und
+  -- behaelt HEAD -> 0 Hunks, kein Zeichen (gemessen 2026-10-29, LaneC: config.base = Elternteil,
+  -- Buffer-Revision nil). Darum ein paar Sekunden nachsehen und die Base erneut setzen, solange
+  -- ein angehaengter Buffer eine andere Revision traegt.
+  local ok_cache, gs_cache = pcall(function() return require('gitsigns.cache').cache end)
+  if ok_cache then
+    local tries = 0
+    local timer = vim.uv.new_timer()
+    timer:start(500, 500, vim.schedule_wrap(function()
+      tries = tries + 1
+      -- Stop, sobald jemand anders die globale Base umgestellt hat (hB, qh/hO, neues hC)
+      -- oder nach 15 s -- sonst wuerde dieser Timer deren Base zurueckdrehen.
+      local cur = require('gitsigns.config').config.base
+      if cur ~= parent or tries > 30 then
+        timer:stop(); timer:close()
+        return
+      end
+      local wrong = false
+      for _, bc in pairs(gs_cache) do
+        if bc.git_obj and bc.git_obj.revision ~= parent then wrong = true; break end
+      end
+      if wrong then pcall(require('gitsigns').change_base, parent, true) end
+    end))
+  end
+
   vim.cmd('copen')
   vim.cmd('cfirst')
 
@@ -361,8 +411,12 @@ vim.keymap.set('n', '<leader>hC', function()
     if not seen[branch[i]] and not is_merge[branch[i]] then gap = gap + 1 end
   end
   local extra = ''
+  if total_files > r.nfiles then
+    extra = string.format('\n(begrenzt auf die Dateien der Commits -- ungefiltert waeren es %d Hunks in %d Dateien)',
+      total_items, total_files)
+  end
   if gap > 0 then
-    extra = string.format('\nWARNUNG: %d Commit(s) im Bereich nicht angegeben -- deren Aenderungen sind mit drin', gap)
+    extra = extra .. string.format('\nWARNUNG: %d Commit(s) im Bereich nicht angegeben -- in diesen Dateien koennen deren Aenderungen mit drin sein', gap)
   end
   if r.n_deleted > 0 then
     extra = extra .. string.format('\n%d geloeschte Datei(en) NICHT in der Liste', r.n_deleted)
@@ -386,6 +440,156 @@ vim.keymap.set('n', '<leader>hO', function()
     vim.notify('<leader>qh nicht gemappt', vim.log.levels.ERROR, { title = 'hO' })
   end
 end, { desc = '[H]unks: alle [O]ffenen vs Base-Branch (wie qh, Gegenstueck zu hC ohne Commit-Auswahl)' })
+
+-- <leader>sDf -- [D]irty [F]ahrplan / Episoden-Modus: Dateien in LESE-REIHENFOLGE.
+-- Eingabe wie bei sDC (Komma/Leerzeichen/Zeilen). Auch ein ganzer kopierter Abschnitt
+-- "Quelldateien -- der rote Faden" geht: nur Tokens mit Dateiendung zaehlen, Prosa faellt raus.
+-- Namen werden gegen `git ls-files` aufgeloest (Endung des Pfads, ohne Gross/Klein), also reicht
+-- der Dateiname; ein Pfadteil davor macht ihn eindeutig.
+-- Die Dateien werden als Buffer geladen (wie sDC), auch ohne Hunk-Liste.
+-- Die Hunks kommen aus der juengsten Hunk-Liste im Quickfix-Verlauf (hC/sDC, qh/hO) -- auch wenn
+-- danach eine Diagnose-Liste per <C-q> drueberkam. Neue Liste = nur diese Dateien, in dieser
+-- Reihenfolge, je Datei ihre Hunks; Datei ohne Hunk bekommt einen Eintrag in Zeile 1.
+-- ]q geht so die Episode Datei fuer Datei, Hunk fuer Hunk durch. Die Hunk-Liste bleibt im Verlauf
+-- (:colder).
+vim.keymap.set('n', '<leader>sDf', function()
+  local function git(args)
+    local cmd = { 'git', '-C', vim.fn.getcwd() }
+    vim.list_extend(cmd, args)
+    local r = vim.system(cmd, { text = true }):wait()
+    return vim.split(r.stdout or '', '\r?\n', { regex = true, trimempty = true }), r.code
+  end
+  local top_out, top_code = git({ 'rev-parse', '--show-toplevel' })
+  if top_code ~= 0 or not top_out[1] then
+    vim.notify('Kein git-Repo im aktuellen Ordner', vim.log.levels.ERROR, { title = 'sDf' })
+    return
+  end
+  local top = top_out[1]:gsub('\\', '/')
+
+  local input = require('shared.input').multiline({ prompt = 'Dateien in Lese-Reihenfolge (Komma/Leerzeichen/Zeilen): ' })
+  if not input or input:gsub('%s', '') == '' then
+    vim.notify('Abgebrochen', vim.log.levels.INFO)
+    return
+  end
+
+  -- Tokens mit bekannter Datei-Endung; Satzzeichen am Rand und ":Zeile" ab
+  -- ("Foo.cs," / "(Foo.cs)" / "Foo.cs:197"). Nur feste Endungen, damit Prosa wie "z.B." oder
+  -- "dbContext.Pruefberichte" nicht als Datei gilt.
+  local exts = { cs = 1, csproj = 1, ts = 1, html = 1, scss = 1, css = 1, json = 1, md = 1, sql = 1,
+    xml = 1, lua = 1, js = 1, yml = 1, yaml = 1, feature = 1, props = 1, targets = 1, ps1 = 1, sh = 1 }
+  local tokens = {}
+  for tok in input:gmatch('[^%s,;]+') do
+    tok = tok:gsub('^[%(%[\'"`]+', ''):gsub(':%d.*$', ''):gsub('[%)%]\'"`:%.]+$', '')
+    local ext = tok:match('[%w_%-]%.(%a%w*)$')
+    if ext and exts[ext:lower()] and not tok:match('^%a+://') then
+      table.insert(tokens, (tok:gsub('\\', '/')))
+    end
+  end
+  if #tokens == 0 then
+    vim.notify('Keine Dateinamen in der Eingabe gefunden', vim.log.levels.WARN, { title = 'sDf' })
+    return
+  end
+
+  local tracked = git({ '-C', top, 'ls-files' })
+  local function norm(p) return (p:gsub('\\', '/'):lower()) end
+  local files, seen, missing, ambiguous = {}, {}, {}, {}
+  for _, tok in ipairs(tokens) do
+    local hits = {}
+    local t = norm(tok)
+    if t:match('^%a:/') then
+      -- absoluter Pfad: nur der Teil im Repo zaehlt
+      local rel = t:sub(#norm(top) + 2)
+      if t:sub(1, #norm(top)) == norm(top) then t = rel end
+    end
+    for _, rel in ipairs(tracked) do
+      local r = norm(rel)
+      if r == t or r:sub(-(#t + 1)) == '/' .. t then table.insert(hits, rel) end
+    end
+    if #hits == 0 then
+      table.insert(missing, tok)
+    else
+      if #hits > 1 then table.insert(ambiguous, string.format('%s (%d)', tok, #hits)) end
+      for _, rel in ipairs(hits) do
+        if not seen[rel] then
+          seen[rel] = true
+          table.insert(files, rel)
+        end
+      end
+    end
+  end
+  if #files == 0 then
+    vim.notify('Keine der Dateien im Repo gefunden: ' .. table.concat(missing, ', '),
+      vim.log.levels.ERROR, { title = 'sDf' })
+    return
+  end
+
+  -- Dateien als Buffer laden, exakt wie sDo/sDC: 'silent edit', nicht badd/bufload -- letztere
+  -- feuern kein FileType, also kein LSP/gitsigns. Nur genau diese Dateien offen: vorher <leader>bD.
+  local original = vim.api.nvim_get_current_buf()
+  local opened = 0
+  for _, rel in ipairs(files) do
+    if pcall(vim.cmd, 'silent edit ' .. vim.fn.fnameescape(top .. '/' .. rel)) then opened = opened + 1 end
+  end
+  if vim.api.nvim_buf_is_valid(original) and vim.api.nvim_buf_get_name(original) ~= '' then
+    vim.api.nvim_set_current_buf(original)
+  end
+
+  -- Juengste Hunk-Liste im Quickfix-Verlauf suchen (Titel von hC bzw. qh/hO).
+  local hunk_items, hunk_title = nil, nil
+  local last = vim.fn.getqflist({ nr = '$' }).nr
+  for nr = last, 1, -1 do
+    local l = vim.fn.getqflist({ nr = nr, title = 0, items = 0 })
+    if l.title and (l.title:match('^Hunks ab ') or l.title:match('^Branch%-Hunks ')) then
+      hunk_items, hunk_title = l.items, l.title
+      break
+    end
+  end
+
+  local by_file = {}
+  for _, it in ipairs(hunk_items or {}) do
+    local k = norm(vim.api.nvim_buf_get_name(it.bufnr))
+    by_file[k] = by_file[k] or {}
+    table.insert(by_file[k], it)
+  end
+
+  local items, n_hunks, no_hunk = {}, 0, 0
+  for i, rel in ipairs(files) do
+    local abs = top .. '/' .. rel
+    local list = by_file[norm(abs)]
+    if list and #list > 0 then
+      table.sort(list, function(a, b) return a.lnum < b.lnum end)
+      for _, it in ipairs(list) do
+        table.insert(items, { bufnr = it.bufnr, lnum = it.lnum, col = it.col,
+          text = string.format('[%d] %s', i, it.text) })
+        n_hunks = n_hunks + 1
+      end
+    else
+      no_hunk = no_hunk + 1
+      table.insert(items, { bufnr = vim.fn.bufadd(abs), lnum = 1, col = 1,
+        text = string.format('[%d] (keine Hunks in der Liste)', i) })
+    end
+  end
+
+  vim.fn.setqflist({}, ' ', {
+    items = items,
+    title = string.format('Lese-Reihenfolge: %d Dateien, %d Hunks', #files, n_hunks),
+  })
+  vim.cmd('copen')
+  vim.cmd('cfirst')
+
+  local msg = { string.format('%d Dateien als Buffer geladen, %d Hunks in Lese-Reihenfolge\n]q / [q = weiter / zurueck, :colder = vorige Liste', opened, n_hunks) }
+  if not hunk_items then
+    table.insert(msg, 'KEINE Hunk-Liste im Verlauf -- erst sDC/hC oder hO, dann sDf. Jetzt nur Zeile 1 je Datei.')
+  else
+    table.insert(msg, 'Hunks aus: ' .. hunk_title)
+  end
+  if no_hunk > 0 and hunk_items then table.insert(msg, no_hunk .. ' Datei(en) ohne Hunk -- Eintrag in Zeile 1') end
+  if #missing > 0 then table.insert(msg, 'Nicht gefunden: ' .. table.concat(missing, ', ')) end
+  if #ambiguous > 0 then table.insert(msg, 'Mehrdeutig (alle genommen): ' .. table.concat(ambiguous, ', ')) end
+  vim.notify(table.concat(msg, '\n'),
+    (#missing > 0 or not hunk_items) and vim.log.levels.WARN or vim.log.levels.INFO,
+    { title = 'sDf', timeout = 12000 })
+end, { desc = '[S]earch [D]irty [F]ahrplan: Dateien in Lese-Reihenfolge -> Quickfix mit ihren Hunks' })
 
 -- ]q / [q -- dateiuebergreifende Quickfix-Navigation mit Wrap.
 -- Das ist die eigentliche Review-Bewegung: ein Tastendruck = naechste Aenderung,
